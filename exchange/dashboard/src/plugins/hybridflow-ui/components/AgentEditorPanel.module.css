@@ -1,0 +1,51 @@
+/* The agent editor, on the central area's stack: room for every field of a definition. */
+.editor {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    max-width: 720px;
+    padding: 4px 2px;
+}
+
+.field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+}
+
+.row {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.grow {
+    flex: 1 1 200px;
+}
+
+.label {
+    font-weight: 600;
+}
+
+.actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.hint {
+    padding: 8px 4px;
+    color: var(--muted);
+    font-size: 0.85rem;
+}
+
+/* The id, for whoever names the agent outside this panel — a card's settings hold it, and so does
+   every API call about one. Small because it is read rarely and copied when it is. */
+.id {
+    color: var(--muted);
+    font-size: 0.7rem;
+    font-family: monospace;
+    overflow-wrap: anywhere;
+    user-select: all;
+}

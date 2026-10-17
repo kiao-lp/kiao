@@ -1,0 +1,206 @@
+{
+  "components": [
+    {
+      "id": "uv",
+      "kind": "runtime",
+      "title": "uv",
+      "role": "Python package and tool installer — the channel five of the MCP servers come through",
+      "recipes": {
+        "generic": { "channel": "uv-bootstrap", "bin": "uv" }
+      }
+    },
+    {
+      "id": "node",
+      "kind": "runtime",
+      "title": "Node.js LTS",
+      "role": "JavaScript runtime and npm — needed by the npm-channel MCP servers",
+      "recipes": {
+        "generic": { "channel": "node-tarball", "version": "lts", "bin": "node", "alsoProvides": ["npm"] },
+        "alpine": { "channel": "system", "packages": ["nodejs", "npm"], "bin": "node", "alsoProvides": ["npm"] }
+      }
+    },
+    {
+      "id": "jdk",
+      "kind": "runtime",
+      "title": "JDK 21 (Temurin)",
+      "role": "Java runtime and compiler",
+      "recipes": {
+        "generic": { "channel": "temurin", "version": "21", "bin": "java" },
+        "alpine": { "channel": "system", "packages": ["openjdk21-jdk"], "bin": "java" }
+      }
+    },
+    {
+      "id": "python",
+      "kind": "runtime",
+      "title": "Python 3.12",
+      "role": "Python interpreter on PATH",
+      "requires": ["uv"],
+      "recipes": {
+        "generic": { "channel": "uv-python", "version": "3.12", "bin": "python3" },
+        "alpine": { "channel": "system", "packages": ["python3"], "bin": "python3" }
+      }
+    },
+    {
+      "id": "claude-cli",
+      "kind": "runtime",
+      "agent": "claude",
+      "title": "Claude Code CLI",
+      "role": "the agent behind the chat tab, the board's playback, and every skill",
+      "recipes": {
+        "generic": { "channel": "claude-release", "bin": "claude" }
+      }
+    },
+    {
+      "id": "codex-cli",
+      "kind": "runtime",
+      "agent": "codex",
+      "title": "Codex CLI",
+      "role": "the second agent behind the chat tab, and its own skills",
+      "recipes": {
+        "generic": { "channel": "codex-release", "version": "latest", "bin": "codex" }
+      }
+    },
+    {
+      "id": "muse-cli",
+      "kind": "runtime",
+      "agent": "muse",
+      "title": "Muse CLI",
+      "role": "the third agent behind the chat tab — Muse, and the Spark models — and its own skills",
+      "recipes": {
+        "generic": { "channel": "muse-release", "bin": "muse" }
+      }
+    },
+    {
+      "id": "opencode-cli",
+      "kind": "runtime",
+      "agent": "opencode",
+      "title": "OpenCode CLI",
+      "role": "the fourth agent behind the chat tab — OpenCode, with DeepSeek Pro and Mistral Large 4 — and its own skills",
+      "recipes": {
+        "generic": { "channel": "opencode-release", "bin": "opencode" }
+      }
+    },
+    {
+      "id": "ffmpeg",
+      "kind": "runtime",
+      "title": "FFmpeg",
+      "role": "what saves the segments of a video as files of their own — AV1 and Opus, in Matroska",
+      "recipes": {
+        "generic": { "channel": "ffmpeg-release", "version": "9.0", "bin": "ffmpeg" },
+        "alpine": { "channel": "system", "packages": ["ffmpeg"], "bin": "ffmpeg" }
+      }
+    },
+    {
+      "id": "graphviz",
+      "kind": "runtime",
+      "title": "Graphviz",
+      "role": "the dot layout engine PlantUML lays its diagrams out with",
+      "recipes": {
+        "generic": { "channel": "detect", "bin": "dot", "packages": ["graphviz"] }
+      }
+    },
+
+    {
+      "id": "fetch",
+      "kind": "mcp",
+      "title": "fetch",
+      "role": "web page to markdown, with pagination for long documents",
+      "server": "fetch",
+      "requires": ["uv"],
+      "recipes": {
+        "generic": { "channel": "uv", "package": "mcp-server-fetch", "with": ["mcp<2"], "bin": "mcp-server-fetch" }
+      }
+    },
+    {
+      "id": "duckduckgo",
+      "kind": "mcp",
+      "title": "duckduckgo",
+      "role": "a second, independent search engine, for cross-checking",
+      "server": "duckduckgo",
+      "requires": ["uv"],
+      "recipes": {
+        "generic": { "channel": "uv", "package": "duckduckgo-mcp-server", "bin": "duckduckgo-mcp-server" }
+      }
+    },
+    {
+      "id": "markitdown",
+      "kind": "mcp",
+      "title": "markitdown",
+      "role": "PDF, DOCX, PPTX, XLSX and EPUB to markdown",
+      "server": "markitdown",
+      "requires": ["uv"],
+      "recipes": {
+        "generic": { "channel": "uv", "package": "markitdown-mcp", "bin": "markitdown-mcp" }
+      }
+    },
+    {
+      "id": "git",
+      "kind": "mcp",
+      "title": "git",
+      "role": "reading local Git repositories",
+      "server": "git",
+      "requires": ["uv"],
+      "recipes": {
+        "generic": { "channel": "uv", "package": "mcp-server-git", "with": ["mcp<2"], "bin": "mcp-server-git" }
+      }
+    },
+    {
+      "id": "papers",
+      "kind": "mcp",
+      "title": "papers",
+      "role": "arXiv, SSRN, HAL, OpenAlex, Crossref and Zenodo",
+      "server": "papers",
+      "requires": ["uv"],
+      "recipes": {
+        "generic": { "channel": "uv", "package": "paper-search-mcp", "bin": "paper-search-mcp" }
+      }
+    },
+    {
+      "id": "playwright",
+      "kind": "mcp",
+      "title": "playwright",
+      "role": "pages that need JavaScript, and consent banners",
+      "server": "playwright",
+      "requires": ["node"],
+      "serverArgs": ["--headless", "--isolated", "--browser", "chromium"],
+      "serverEnv": { "PLAYWRIGHT_BROWSERS_PATH": "${toolbox:browsers}" },
+      "recipes": {
+        "generic": { "channel": "npm", "package": "@playwright/mcp",
+                     "postInstall": { "bin": "playwright", "args": ["install", "chromium"] } }
+      }
+    },
+    {
+      "id": "github",
+      "kind": "mcp",
+      "title": "github",
+      "role": "GitHub over the hosted MCP endpoint",
+      "server": "github",
+      "requiresEnv": ["GITHUB_TOKEN", "GITHUB_PERSONAL_ACCESS_TOKEN"],
+      "preconditionHint": "set GITHUB_TOKEN or GITHUB_PERSONAL_ACCESS_TOKEN in the service environment",
+      "recipes": {
+        "generic": { "channel": "remote", "url": "https://api.githubcopilot.com/mcp/" }
+      }
+    },
+
+    {
+      "id": "kiao-files",
+      "kind": "mcp",
+      "title": "kiao-files",
+      "role": "the store's files with the link-fix pass a plain mv does not run",
+      "server": "kiao-files",
+      "recipes": {
+        "generic": { "channel": "bundled", "package": "files" }
+      }
+    },
+    {
+      "id": "kiao-hybridflow",
+      "kind": "mcp",
+      "title": "kiao-hybridflow",
+      "role": "the boards: create one, read one whole, add cards, patch a card",
+      "server": "kiao-hybridflow",
+      "recipes": {
+        "generic": { "channel": "bundled", "package": "hybridflow" }
+      }
+    }
+  ]
+}

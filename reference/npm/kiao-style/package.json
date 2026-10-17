@@ -1,0 +1,66 @@
+{
+  "name": "kiao-style",
+  "version": "0.1.0",
+  "description": "KIAO design system - Dark theme CSS with design tokens",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./kiao-dark.css": {
+      "default": "./dist/kiao-dark.css"
+    },
+    "./kiao-light.css": {
+      "default": "./dist/kiao-light.css"
+    },
+    "./kiao-sober-dark.css": {
+      "default": "./dist/kiao-sober-dark.css"
+    },
+    "./kiao-sober-light.css": {
+      "default": "./dist/kiao-sober-light.css"
+    },
+    "./style-tools.css": {
+      "default": "./dist/style-tools.css"
+    }
+
+  },
+  "files": [
+    "dist",
+    "index.d.ts",
+    "src"
+  ],
+  "scripts": {
+    "build": "npm run build:css && npm run build:ts",
+    "build:css": "postcss src/kiao-dark.css -o dist/kiao-dark.css && postcss src/kiao-light.css -o dist/kiao-light.css && postcss src/kiao-sober-dark.css -o dist/kiao-sober-dark.css && postcss src/kiao-sober-light.css -o dist/kiao-sober-light.css && postcss src/style-tools.css -o dist/style-tools.css",
+
+    "build:ts": "tsc",
+    "dev": "postcss src/kiao-dark.css -o dist/kiao-dark.css & postcss src/kiao-light.css -o dist/kiao-light.css & postcss src/kiao-sober-dark.css -o dist/kiao-sober-dark.css & postcss src/kiao-sober-light.css -o dist/kiao-sober-light.css & postcss src/style-tools.css -o dist/style-tools.css --watch",
+
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "css",
+    "design-system",
+    "theme",
+    "dark-theme",
+    "css-variables"
+  ],
+  "author": "",
+  "license": "MIT",
+  "peerDependencies": {
+    "antd": "^5.0.0 || ^6.0.0",
+    "react": ">=16.8.0"
+  },
+  "devDependencies": {
+    "autoprefixer": "^10.4.16",
+    "cssnano": "^6.0.2",
+    "postcss": "^8.4.32",
+    "postcss-cli": "^11.0.0",
+    "typescript": "^5.0.0",
+    "@types/node": "^20.0.0"
+  }
+}

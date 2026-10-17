@@ -1,0 +1,83 @@
+{
+  "title": "Platform Comparison",
+  "children": [
+    {
+      "id": "Z1",
+      "title": "Z_Echange",
+      "tooltip": "External facing interfaces",
+      "children": [
+        {
+          "id": "Q1",
+          "title": "Q_multimedia",
+          "tooltip": "Multimedia processing queue",
+          "moscow": "M"
+        },
+        {
+          "id": "I1",
+          "title": "I_Presentation",
+          "tooltip": "Presentation layer"
+        }
+      ]
+    },
+    {
+      "id": "Z2",
+      "title": "Z_Operation",
+      "children": [
+        {
+          "id": "Q2",
+          "title": "Q_Gestion_reservation",
+          "children": [
+            {
+              "id": "I2",
+              "title": "I_Gestion_catalogue",
+              "moscow": "S"
+            },
+            {
+              "id": "I3",
+              "title": "I_Gestion_calendrier",
+              "moscow": "C"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "options": [
+    {
+      "title": "Vendor Alpha",
+      "entries": {
+        "Q1": {
+          "support": "ootb",
+          "comment": "Fully integrated"
+        },
+        "I1": {
+          "support": "configuration"
+        },
+        "I2": {
+          "support": "customization",
+          "comment": "Requires custom plugin"
+        },
+        "I3": {
+          "support": "not-supported"
+        }
+      }
+    },
+    {
+      "title": "Vendor Beta",
+      "entries": {
+        "Q1": {
+          "support": "configuration"
+        },
+        "I1": {
+          "support": "ootb"
+        },
+        "I2": {
+          "support": "ootb"
+        },
+        "I3": {
+          "support": "ootb"
+        }
+      }
+    }
+  ]
+}

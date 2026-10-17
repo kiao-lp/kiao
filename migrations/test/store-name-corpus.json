@@ -1,0 +1,121 @@
+{
+  "_comment": "The table that pins the two implementations of toStoreName to each other: kiao-worker/src/utils.ts (what Dashboard and kiao-mcp name a NEW document's folder with) and migrations/lib/store-name.js (what a migration renames an EXISTING one with). Both test suites read this file, so a change to the rule goes here first. `fallback` is what an unusable title resolves to; every case passes the same one so the table stays readable. Control characters are written as \\u escapes.",
+  "fallback": "abc123",
+  "cases": [
+    {
+      "why": "a title a path can carry is kept exactly as it reads",
+      "title": "Doux comme le miel",
+      "name": "Doux comme le miel"
+    },
+    {
+      "why": "accents, case and hyphens all survive — they travel through a URL and a filesystem",
+      "title": "1 · Votre réseau est un capital",
+      "name": "1 · Votre réseau est un capital"
+    },
+    {
+      "why": "an em dash, an ampersand and parentheses are ordinary characters",
+      "title": "S1 - Enterprise Architecture & the TOGAF Framework (OGEA-101) — 2026",
+      "name": "S1 - Enterprise Architecture & the TOGAF Framework (OGEA-101) — 2026"
+    },
+    {
+      "why": "a colon goes: Windows refuses it, and it ends a path token for the link fixer",
+      "title": "CNV - 0 : Bienvenue et vue d'ensemble",
+      "name": "CNV - 0 Bienvenue et vue d'ensemble"
+    },
+    {
+      "why": "a colon with no space in front leaves the words it separated apart",
+      "title": "S 1 — Azure Monitor: the mental model",
+      "name": "S 1 — Azure Monitor the mental model"
+    },
+    {
+      "why": "a question mark goes: Windows refuses it, and it opens a query string",
+      "title": "S5 - Is my system high-risk?",
+      "name": "S5 - Is my system high-risk"
+    },
+    {
+      "why": "a hash goes: it opens a URL fragment and would cut a hand-written link there",
+      "title": "My Friend John #1",
+      "name": "My Friend John 1"
+    },
+    {
+      "why": "the rest of what Windows refuses goes too",
+      "title": "a*b\"c<d>e|f",
+      "name": "abcdef"
+    },
+    {
+      "why": "a slash becomes a hyphen, so a number stays one number",
+      "title": "The EU AI Act (Regulation 2024/1689)",
+      "name": "The EU AI Act (Regulation 2024-1689)"
+    },
+    {
+      "why": "a backslash is the other separator and reads the same way",
+      "title": "Either\\Or",
+      "name": "Either-Or"
+    },
+    {
+      "why": "control characters go, and the gap they leave closes",
+      "title": "before\u0007after end",
+      "name": "beforeafter end"
+    },
+    {
+      "why": "the runs of whitespace a removal leaves behind are collapsed to one space",
+      "title": "A  :  B",
+      "name": "A B"
+    },
+    {
+      "why": "a leading dot would hide the folder — `.*` is in the exclusions a store is seeded with",
+      "title": ".hidden",
+      "name": "hidden"
+    },
+    {
+      "why": "a trailing dot is silently dropped by Windows, so it is dropped here instead",
+      "title": "Trailing dot.",
+      "name": "Trailing dot"
+    },
+    {
+      "why": "surrounding whitespace is trimmed",
+      "title": "  spaced  ",
+      "name": "spaced"
+    },
+    {
+      "why": "an empty title has no name to give",
+      "title": "",
+      "name": "abc123"
+    },
+    {
+      "why": "a title that is nothing but punctuation a path refuses has none either",
+      "title": " :?# ",
+      "name": "abc123"
+    },
+    {
+      "why": "a title that is only dots and spaces has none either",
+      "title": " ... ",
+      "name": "abc123"
+    },
+    {
+      "why": "a Windows device name would be unusable on Windows whatever the case",
+      "title": "nul",
+      "name": "abc123"
+    },
+    {
+      "why": "a device name with an extension is reserved too",
+      "title": "COM3.txt",
+      "name": "abc123"
+    },
+    {
+      "why": "a name that merely starts with a device name is not reserved",
+      "title": "NULL",
+      "name": "NULL"
+    },
+    {
+      "why": "a long title is cut to 180 UTF-8 bytes, never inside a character, and re-trimmed",
+      "title": "éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé",
+      "name": "éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé"
+    },
+    {
+      "why": "an emoji is one character, kept whole, and is fine in a path",
+      "title": "🎓 Cursus",
+      "name": "🎓 Cursus"
+    }
+  ]
+}

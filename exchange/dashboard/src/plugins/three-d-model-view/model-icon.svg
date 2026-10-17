@@ -1,0 +1,17 @@
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    .m3d-body { stroke: #34D399; }
+    .m3d-edge { stroke: #A78BFA; }
+    @media (prefers-color-scheme: light) {
+      .m3d-body { stroke: #059669; }
+      .m3d-edge { stroke: #7C3AED; }
+    }
+  </style>
+
+  <!-- The cube's silhouette -->
+  <path class="m3d-body" d="M12 2L20.66 7V17L12 22L3.34 17V7L12 2Z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- The three edges meeting at the near corner, which is what makes it a solid -->
+  <path class="m3d-edge" d="M3.34 7L12 12L20.66 7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <path class="m3d-edge" d="M12 12V22" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

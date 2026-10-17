@@ -1,0 +1,92 @@
+{
+  "content": {
+    "elements": {
+      "notes": [
+        {
+          "id": "NOTE-one",
+          "userBounds": [
+            200,
+            200,
+            null,
+            null
+          ],
+          "bounds": [
+            200,
+            200,
+            120,
+            60
+          ],
+          "content": "# Note One",
+          "zIndex": 3
+        },
+        {
+          "id": "NOTE-two",
+          "userBounds": [
+            460,
+            200,
+            null,
+            null
+          ],
+          "bounds": [
+            460,
+            200,
+            120,
+            60
+          ],
+          "content": "# Note Two",
+          "zIndex": 3
+        },
+        {
+          "id": "NOTE-three",
+          "userBounds": [
+            460,
+            420,
+            null,
+            null
+          ],
+          "bounds": [
+            460,
+            420,
+            120,
+            60
+          ],
+          "content": "# Note Three",
+          "zIndex": 3
+        }
+      ],
+      "relations": [
+        {
+          "id": "REL-one-two",
+          "ends": [
+            {
+              "id": "END-one",
+              "target": "NOTE-one"
+            },
+            {
+              "id": "END-two",
+              "target": "NOTE-two"
+            }
+          ]
+        },
+        {
+          "id": "REL-two-three",
+          "ends": [
+            {
+              "id": "END-two-b",
+              "target": "NOTE-two"
+            },
+            {
+              "id": "END-three",
+              "target": "NOTE-three"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "docType": "QuickMindmap",
+  "docId": "0f2b6c48-2a5e-4d1f-9a1c-7c2f3b8d5e10",
+  "docTypeVersion": 1,
+  "createdAt": "2026-08-25T08:00:00.000Z",
+  "updatedAt": "2026-08-25T08:00:00.000Z"
+}

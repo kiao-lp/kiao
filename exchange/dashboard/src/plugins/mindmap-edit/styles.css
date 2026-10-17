@@ -1,0 +1,638 @@
+/* Merged styles for mindmap-editor */
+
+/* 
+   Refactored Rich Text Styles 
+   Replaces .rich-text-area, .kiao-rich-text, etc.
+*/
+
+/* Editor wrapper (Toolbar + Textarea) — fixed, positioned via inline style.
+   Resizable from its bottom right corner: the textarea takes all the height the
+   toolbar leaves, so enlarging the popup enlarges the editing area. */
+.mindmap-rich-text-editor-wrapper {
+    position: fixed;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+    border-radius: 6px;
+    border: 1px solid var(--mindmap-relation);
+    background-color: var(--accent-bg);
+    box-sizing: border-box;
+    overflow: hidden;
+    resize: both;
+    /* never narrower than the toolbar row, which would push the trash button out of sight. The
+       selectors having been stripped of their arrows, the row is a quarter narrower than the
+       popup used to be built for, and the popup follows it down rather than standing off it. The
+       row wraps rather than being clipped (below), so this is what keeps it on one line rather
+       than what keeps it reachable. */
+    min-width: 420px;
+    min-height: 140px;
+    max-width: calc(100vw - 20px);
+    max-height: calc(100vh - 20px);
+    /* free strip along the bottom for the resize grip and the voice input button */
+    padding-bottom: 16px;
+    z-index: 10000;
+}
+
+/* Toolbar row above the textarea. It wraps onto a second line rather than running past the popup,
+   which is `overflow: hidden` and would take the trash button off the end of it — the rule the
+   bar beside the zoom goes by, and what keeps a control added to the row reachable whatever the
+   popup is narrowed to. */
+.mindmap-note-edit-toolbar {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 6px;
+    border-bottom: 1px solid var(--mindmap-relation);
+    background-color: var(--accent-bg);
+    flex: 0 0 auto;
+}
+
+/* Every one of the toolbar's selectors is a picture of what it sets — a swatch, a line of the
+   weight it means, an alignment icon — so the chosen value is the whole message and the arrow
+   beside it says nothing the popup opening on a click does not. Dropped, the row fits over a
+   note rather than past its edges. antd v6 lays the box out as a flex row, so the arrow is the
+   suffix and the space before it is the content's own end margin: both have to go, or the gap
+   outlives the arrow. */
+.mindmap-note-edit-toolbar .ant-select .ant-select-suffix,
+.relation-context-menu .ant-select .ant-select-suffix {
+    display: none;
+}
+
+.mindmap-note-edit-toolbar .ant-select .ant-select-content,
+.relation-context-menu .ant-select .ant-select-content {
+    margin-inline-end: 0;
+}
+
+/* The list a colour is chosen from — a note's fill, a note's border, a relation — is a rectangle
+   and not a column. Eleven swatches stacked are taller than the list opens, so half the palette
+   is reached by scrolling past the other half; and a palette is not a sequence to be walked
+   through but a set of equals, which is what a rectangle says and a column does not. Six to a
+   row puts the whole of it in sight in two.
+
+   Applied through `classNames.popup.root` (see lib/color-select.ts), which also turns the
+   windowing off — the rows are laid out here rather than by the list, which knows only its own.
+   The grid has to outweigh the flex column antd sets inline on that element; nothing else here
+   does, so the `!important` is the whole of the override. */
+.mindmap-color-grid .rc-virtual-list-holder-inner {
+    display: grid !important;
+    grid-template-columns: repeat(6, auto);
+}
+
+/* And a cell is its swatch: the room antd leaves around an option is meant to hold a word off
+   the edge of a list, and around a picture it only spreads the rectangle out. Every swatch is
+   the same size, so the cells come out square with each other without being told to. */
+.mindmap-color-grid .ant-select-item-option {
+    padding: 4px 6px;
+}
+
+/* Editor slot — fills the remaining space in the wrapper. VoiceTextArea puts this
+   class either on the textarea itself or, when a microphone is available, on the
+   wrapper it adds around it. */
+.mindmap-rich-text-editor {
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100%;
+}
+
+/* Microphone available: the textarea sits inside .voice-input-wrapper, which has
+   to stretch it rather than lay it out on a text baseline. */
+.mindmap-rich-text-editor-wrapper .voice-input-wrapper {
+    display: flex;
+}
+
+/* Editor (Textarea) — fills its slot in both cases. Both selectors outweigh antd's
+   own `textarea.ant-input`, which would otherwise impose `height: auto` (leaving
+   the field at its default two rows) and `resize: vertical` (a second grip growing
+   the textarea inside the popup instead of growing the popup itself). */
+.mindmap-rich-text-editor-wrapper textarea.mindmap-rich-text-editor,
+.mindmap-rich-text-editor-wrapper .voice-input-wrapper textarea {
+    flex: 1 1 auto;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    resize: none;
+    outline: none;
+    box-shadow: none;
+    box-sizing: border-box;
+    padding: 12px;
+    font-size: 15px;
+    line-height: 1.5;
+    color: var(--text);
+    font-family: Arial, "Helvetica Neue", Helvetica, sans-serif;
+    border: none;
+    background-color: var(--accent-bg);
+}
+
+/* View (Rendered Markdown) */
+.mindmap-rich-text-view {
+    color: var(--text);
+    font-family: Arial, "Helvetica Neue", Helvetica, sans-serif;
+}
+
+.mindmap-rich-text-view a,
+.mindmap-rich-text-view a:visited,
+.mindmap-rich-text-view a:hover,
+.mindmap-rich-text-view a:active {
+    color: var(--text) !important;
+}
+
+.editable-rich-text * {
+    color: var(--text);
+    font-family: Arial, "Helvetica Neue", Helvetica, sans-serif;
+}
+
+/* from mindmap-core/elements/MindmapRect-cmp.css */
+.floating {
+    position: absolute;
+}
+
+.mindmap-rect {
+    border-radius: 3px;
+    /* removing this might result in bugs */
+    box-sizing: border-box;
+}
+
+/* from mindmap-core/elements/MindmapText-cmp.css */
+
+/* View Mode inside Mindmap Text */
+.mindmap-text-rich-text .mindmap-rich-text-view {
+    padding-top: 8px;
+    padding-bottom: 8px;
+    font-size: 20px;
+}
+
+/* Once a note reaches its auto width limit, long words and code lines wrap
+   instead of overflowing the note */
+.mindmap-text-rich-text .mindmap-rich-text-view {
+    overflow-wrap: break-word;
+}
+
+.mindmap-text-rich-text .mindmap-rich-text-view pre,
+.mindmap-text-rich-text .mindmap-rich-text-view code {
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+}
+
+.mindmap-text-rich-text .mindmap-rich-text-view ul,
+.mindmap-text-rich-text .mindmap-rich-text-view ol {
+    margin: 0;
+    padding-left: 35px;
+    padding-right: 8px;
+}
+
+.mindmap-text-rich-text .mindmap-rich-text-view p,
+.mindmap-text-rich-text .mindmap-rich-text-view h1,
+.mindmap-text-rich-text .mindmap-rich-text-view h2,
+.mindmap-text-rich-text .mindmap-rich-text-view h3,
+.mindmap-text-rich-text .mindmap-rich-text-view pre {
+    margin: 0;
+    margin-left: 8px;
+    margin-right: 8px;
+    text-align: center;
+}
+
+
+
+/* from mindmap-core/viewport/MindmapViewport-cmp.css */
+.mindmap {
+    position: relative;
+    align-self: stretch;
+    flex: 1;
+}
+
+.mindmap-visualize {
+    background-color: var(--bg);
+}
+
+.mindmap-edit {
+    background-color: var(--accent-bg);
+}
+
+.mindmap * {
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+}
+
+/* from mindmap-notes/Note-cmp.css */
+/* Note Shapes */
+.note-shape-ellipse .mindmap-rect {
+    border-radius: 50%;
+}
+
+.note-shape-diamond .mindmap-rect {
+    /* clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%); */
+    border: none !important;
+    background-color: transparent !important;
+}
+
+.note-shape-diamond .mindmap-rich-text-view {
+    /* A diamond pinches towards its top and bottom points, so the text there is held further
+       from the edge than it is on the sides, and the shape stays clear of the words. */
+    padding: 26px 16px !important;
+}
+
+/* Note Edges */
+.note-edge-none .mindmap-rect {
+    border: none;
+}
+
+.note-edge-dotted .mindmap-rect {
+    border-style: dotted;
+    border-width: 2px;
+}
+
+.note-edge-solid-1 .mindmap-rect {
+    border-style: solid;
+    border-width: 1px;
+}
+
+.note-edge-solid-2 .mindmap-rect {
+    border-style: solid;
+    border-width: 2px;
+}
+
+.note-edge-solid-4 .mindmap-rect {
+    border-style: solid;
+    border-width: 4px;
+}
+
+.note-edge-solid-6 .mindmap-rect {
+    border-style: solid;
+    border-width: 6px;
+}
+
+.note-edge-solid-8 .mindmap-rect {
+    border-style: solid;
+    border-width: 8px;
+}
+
+/* Note Backgrounds — the ten fills, and the canvas showing through. A rule to a line here:
+   what a palette says is one property per colour, and a table of it is read at a glance
+   where forty lines of the file's usual shape would have to be scrolled. */
+.note-bg-none .mindmap-rect { background-color: transparent; }
+.note-bg-red .mindmap-rect { background-color: var(--color-red-bg); }
+.note-bg-orange .mindmap-rect { background-color: var(--color-orange-bg); }
+.note-bg-yellow .mindmap-rect { background-color: var(--color-yellow-bg); }
+.note-bg-green .mindmap-rect { background-color: var(--color-green-bg); }
+.note-bg-teal .mindmap-rect { background-color: var(--color-teal-bg); }
+.note-bg-blue .mindmap-rect { background-color: var(--color-blue-bg); }
+.note-bg-violet .mindmap-rect { background-color: var(--color-violet-bg); }
+.note-bg-pink .mindmap-rect { background-color: var(--color-pink-bg); }
+.note-bg-brown .mindmap-rect { background-color: var(--color-brown-bg); }
+.note-bg-grey .mindmap-rect { background-color: var(--color-grey-bg); }
+
+/* Note Border Colours — the same ten names, inked rather than filled: a border is a line on
+   the canvas, so it takes the colour a relation of that name is drawn in. Absent, the border
+   keeps the one every border is drawn in. Its weight is the family above. */
+.note-border-red .mindmap-rect { border-color: var(--mindmap-relation-red); }
+.note-border-orange .mindmap-rect { border-color: var(--mindmap-relation-orange); }
+.note-border-yellow .mindmap-rect { border-color: var(--mindmap-relation-yellow); }
+.note-border-green .mindmap-rect { border-color: var(--mindmap-relation-green); }
+.note-border-teal .mindmap-rect { border-color: var(--mindmap-relation-teal); }
+.note-border-blue .mindmap-rect { border-color: var(--mindmap-relation-blue); }
+.note-border-violet .mindmap-rect { border-color: var(--mindmap-relation-violet); }
+.note-border-pink .mindmap-rect { border-color: var(--mindmap-relation-pink); }
+.note-border-brown .mindmap-rect { border-color: var(--mindmap-relation-brown); }
+.note-border-grey .mindmap-rect { border-color: var(--mindmap-relation-grey); }
+
+/* Note Text Alignment */
+.note-align-left .mindmap-rich-text-view p,
+.note-align-left .mindmap-rich-text-view h1,
+.note-align-left .mindmap-rich-text-view h2,
+.note-align-left .mindmap-rich-text-view h3,
+.note-align-left .mindmap-rich-text-view pre {
+    text-align: left !important;
+}
+
+.note-align-center .mindmap-rich-text-view p,
+.note-align-center .mindmap-rich-text-view h1,
+.note-align-center .mindmap-rich-text-view h2,
+.note-align-center .mindmap-rich-text-view h3,
+.note-align-center .mindmap-rich-text-view pre {
+    text-align: center !important;
+}
+
+.note-align-right .mindmap-rich-text-view p,
+.note-align-right .mindmap-rich-text-view h1,
+.note-align-right .mindmap-rich-text-view h2,
+.note-align-right .mindmap-rich-text-view h3,
+.note-align-right .mindmap-rich-text-view pre {
+    text-align: right !important;
+}
+
+/* Note Vertical Alignment */
+.note-valign-top .mindmap-rect {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+}
+
+.note-valign-middle .mindmap-rect {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.note-valign-bottom .mindmap-rect {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+}
+
+.mindmap-rect,
+.mindmap-rect textarea {
+    border: solid 1px var(--mindmap-relation);
+    background-color: var(--accent-bg);
+}
+
+/* A selected note is ringed rather than tinted: its background is its own, chosen in its style,
+   and a tint would overrule it. `outline` draws outside the box without taking room in the
+   layout, so the note keeps its measured bounds — and with them the centre relations aim at. */
+.mindmap .selected .mindmap-rect {
+    outline: 4px solid var(--accent);
+    outline-offset: 3px;
+}
+
+/* The four handles a note picked out on its own is resized by — one strip along each of its
+   sides, straddling the edge so it can be caught from just inside or just outside the note. They
+   are the wheel's alternative for a device that has none, so they are as wide as a fingertip
+   needs and they take the gesture off the browser (`touch-action`) rather than letting a drag
+   scroll the page. Transparent until the pointer finds one, which is the rule the whole map goes
+   by; the cursor says which way that one moves. */
+.mindmap-note-resize {
+    position: absolute;
+    background-color: transparent;
+    touch-action: none;
+}
+
+.mindmap-note-resize:hover {
+    background-color: var(--accent);
+    opacity: 0.35;
+}
+
+.mindmap-note-resize-left,
+.mindmap-note-resize-right {
+    top: 0;
+    bottom: 0;
+    width: 10px;
+    cursor: ew-resize;
+}
+
+.mindmap-note-resize-left { left: -5px; }
+.mindmap-note-resize-right { right: -5px; }
+
+.mindmap-note-resize-top,
+.mindmap-note-resize-bottom {
+    left: 0;
+    right: 0;
+    height: 10px;
+    cursor: ns-resize;
+}
+
+.mindmap-note-resize-top { top: -5px; }
+.mindmap-note-resize-bottom { bottom: -5px; }
+
+/* A note with a file held over it: the link is about to go at the end of what that note says,
+   rather than onto the map as a note of its own — the whole difference a drop makes here, and
+   nothing else on screen tells the two apart. Ringed like a selected note so that the mark reads
+   as the same kind of thing, and dashed so it is not mistaken for one. */
+.mindmap .mindmap-rect.file-drop-target {
+    outline: 4px dashed var(--accent);
+    outline-offset: 3px;
+}
+
+/* What the whole of a relation is drawn in: its curve, its body, its decorations and its centre.
+   The colour is set once, on the wrapper, and everything reads it from there — so a relation has
+   one colour rather than four places where a colour could be got wrong. */
+.relation {
+    --relation-ink: var(--mindmap-relation);
+}
+
+.relation-color-red { --relation-ink: var(--mindmap-relation-red); }
+.relation-color-orange { --relation-ink: var(--mindmap-relation-orange); }
+.relation-color-yellow { --relation-ink: var(--mindmap-relation-yellow); }
+.relation-color-green { --relation-ink: var(--mindmap-relation-green); }
+.relation-color-teal { --relation-ink: var(--mindmap-relation-teal); }
+.relation-color-blue { --relation-ink: var(--mindmap-relation-blue); }
+.relation-color-violet { --relation-ink: var(--mindmap-relation-violet); }
+.relation-color-pink { --relation-ink: var(--mindmap-relation-pink); }
+.relation-color-brown { --relation-ink: var(--mindmap-relation-brown); }
+.relation-color-grey { --relation-ink: var(--mindmap-relation-grey); }
+
+/* from mindmap-relations/MindmapRelation-cmp.css. The anchor is the relation's centre and the
+   handle it is dragged by, so it is a target far wider than the dot it draws. */
+.relation-anchor {
+    position: absolute;
+    background-color: transparent;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transform: translate(-12px, -12px);
+    border-radius: 12px;
+}
+
+.mindmap-edit .relation-anchor {
+    cursor: move;
+}
+
+/* As wide as the lines are thick: the two halves of a bent relation meet here at an angle, and a
+   disc of half their thickness is exactly what fills the notch they leave on the outside of it. */
+.relation-anchor-join {
+    background-color: var(--relation-ink);
+    width: 8px;
+    height: 8px;
+    border-radius: 4px;
+}
+
+/* An empty rectangle has no notch to fill — its two outlines already meet at the centre, point
+   for point — so the disc would be nothing but a dot inside an otherwise empty shape. It keeps
+   its size, and so the handle keeps the reach it always had; it simply carries no ink until the
+   pointer is on it, which is the rule the whole map goes by. */
+.relation-anchor-join.hollow {
+    background-color: transparent;
+}
+
+/* The menu the anchor opens — the relation's own toolbar, and where everything it is drawn with
+   is chosen. It hugs what it holds rather than borrowing the note editor's resizable 500 by 140,
+   which is that size because it is built around a textarea this menu does not have. */
+.relation-context-menu {
+    position: fixed;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 6px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+    border-radius: 6px;
+    border: 1px solid var(--mindmap-relation);
+    background-color: var(--accent-bg);
+    z-index: 10000;
+}
+
+/* from mindmap-relations/MindmapRelationEnd-cmp.css. A relation is one curve from note to note
+   through its centre, drawn as the two halves it is cut into there — one per end, so that pointing
+   an end lights its own half. The halves leave the centre along the same tangent and each carries
+   a round cap that fills the join, so the pair reads as the one curve it was cut from.
+
+   The surface is stretched over the whole map and clips nothing: a relation bent far enough passes
+   well outside the box its two notes make, and the map's own coordinates are the ones the geometry
+   already speaks, so there is no box worth computing. It catches no pointer itself — only the hit
+   path inside it does — so the surfaces stacked over one another are not in each other's way. */
+.relation-curves {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+    pointer-events: none;
+}
+
+/* The decoration is drawn in `currentColor`, so it follows the line it terminates. */
+.relation-end {
+    color: var(--relation-ink);
+}
+
+.relation-curve {
+    fill: none;
+    stroke: var(--relation-ink);
+    stroke-width: 8;
+    stroke-linecap: round;
+}
+
+/* A relation given a width is a shape rather than a line: cut square at the ends, which is what
+   makes a rectangle a rectangle and a triangle's base a base.
+
+   It is outlined in its own colour so that the two halves overlap by half a pixel where they meet
+   at the centre: two filled shapes sharing an edge leave a hairline of the canvas between them,
+   and on a wide body that hairline reads as a seam across it. */
+.relation-body {
+    fill: var(--relation-ink);
+    stroke: var(--relation-ink);
+    stroke-width: 1;
+}
+
+/* The rectangle is an empty one: its own outline, drawn along the two edges of the band and shut
+   square where it meets each note. A rectangle says what it is by its shape, and a slab of ink as
+   wide as the body says it a second time — it also puts that much ink between the two notes it
+   joins, which is a lot to read a map through. The triangle stays filled: its point is the whole
+   of what it means, and an outline would leave it a hairline exactly where it matters. */
+.relation-body.hollow {
+    fill: none;
+    stroke-width: 3;
+    stroke-linejoin: round;
+}
+
+/* Under the ink: what the pointer is caught by, and what a selected relation is ringed with. The
+   width comes from the drawing above it, so a body is ringed rather than covered; the ends are cut
+   square, so the ring stops at the note instead of reaching round it. A relation is ringed and not
+   tinted for the reason a note is — the colour it is drawn in is its own, and a tint would
+   overrule the very choice being made in the menu the selection opened. */
+.relation-halo {
+    fill: none;
+    stroke: transparent;
+    pointer-events: stroke;
+}
+
+/* And ringed in the very colour a note is ringed in, which is the accent: relations and notes are
+   gathered into one selection, so one colour has to say of both that they are in it. The selected
+   *surface* tint was the wrong family here — it is meant to lift a background, and under a line it
+   reads as a shade of the canvas rather than as a mark. */
+.mindmap .selected .relation-halo {
+    stroke: var(--accent);
+}
+
+/* A relation is ink, not a surface: the pointed tint that lifts a note's background
+   would sink its curve, its decorations and its centre into the canvas instead, so under
+   the pointer they brighten to the text colour. Weighted past the `.selected` stroke, and
+   past the `.selected` tint on the centre, which is `!important` and would otherwise keep a
+   selected relation dark under the pointer. */
+.mindmap .relation-end.pointed {
+    color: var(--text);
+}
+
+.mindmap .relation-end.pointed .relation-curve {
+    stroke: var(--text);
+}
+
+.mindmap .relation-end.pointed .relation-body {
+    fill: var(--text);
+    stroke: var(--text);
+}
+
+/* Brightening an empty rectangle means its outline, not filling it in. */
+.mindmap .relation-end.pointed .relation-body.hollow {
+    fill: none;
+}
+
+.mindmap .pointed .relation-anchor-join {
+    background-color: var(--text) !important;
+}
+
+/* Box Selection Overlay */
+.box-selection-overlay {
+    position: absolute;
+    background-color: rgba(59, 130, 246, 0.15);
+    border: 1px dashed rgba(59, 130, 246, 0.8);
+    pointer-events: none;
+    z-index: 1000;
+}
+
+/* The relation a shift drag is pulling out of a note, until it is let go: a promise of a
+   relation, so dashed, and untouchable — the drop belongs to whatever lies under the pointer. */
+.relation-draft {
+    position: absolute;
+    height: 0;
+    border-top: 2px dashed var(--mindmap-relation);
+    pointer-events: none;
+}
+
+/* Zoom Container */
+.mindmap-zoom-container {
+    transform-origin: top left;
+}
+
+/* Zoom Control in Status Bar */
+.mindmap-zoom-control {
+    margin-left: 16px;
+}
+
+/* The map drawn beside another document (see MindmapSideDocument): the style new notes are made
+   with and the zoom control, pinned to the top of the pane the map scrolls inside — a map of its
+   own puts them in the top banner, which a pane sits too far inside to reach. A narrow pane wraps
+   them onto a second line rather than pushing either out of reach. */
+.mindmap-side-bar {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    align-self: flex-end;
+    flex: 0 0 auto;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 4px 8px;
+    padding: 4px 6px;
+    background-color: var(--bg);
+    border-radius: 0 0 0 6px;
+}
+
+/* Beside the zoom, the two are one bar rather than two — the map's own margin does the spacing. */
+.mindmap-side-bar .mindmap-zoom-control {
+    margin-left: 0;
+}
+
+/* The one colour the map is being drawn in, the style new notes are made with, the style new
+   relations are drawn in: three runs of little pictures that would otherwise read as one long
+   one, so a rule before each of the last two says where the colour ends, where the notes end and
+   where the relations begin. */
+.mindmap-new-note-style,
+.mindmap-new-relation-style {
+    padding-left: 8px;
+    border-left: 1px solid var(--border);
+}

@@ -1,0 +1,63 @@
+{
+  "category": "hr",
+  "label": "Employment, payroll and personnel records",
+  "description": "What an employer knows about the people who work for it. Rarely secret in the technical sense and almost always confidential in the contractual one: a payslip, an appraisal or a redundancy plan reaching a shared store is the most common accidental disclosure there is.",
+  "criticality": "high",
+  "matchers": [
+    {
+      "label": "Payslip or payroll document",
+      "pattern": "\\b(?:bulletin\\s+de\\s+(?:paie|salaire)|fiche\\s+de\\s+paie|payslip|pay\\s+stub|livre\\s+de\\s+paie|journal\\s+de\\s+paie|DSN\\b|net\\s+[àa]\\s+payer|net\\s+imposable|brut\\s+annuel|cotisations?\\s+salariales?)\\b",
+      "criticality": "critical"
+    },
+    {
+      "label": "Salary or compensation",
+      "pattern": "\\b(?:salaire|r[ée]mun[ée]ration|salary|compensation\\s+package|base\\s+salary|augmentation\\s+(?:salariale|de\\s+salaire)|grille\\s+salariale|salary\\s+band|taux\\s+horaire|hourly\\s+rate)\\b"
+    },
+    {
+      "label": "Bonus, equity and incentives",
+      "pattern": "\\b(?:bonus|prime\\s+(?:annuelle|exceptionnelle|d['’]objectifs?|de\\s+performance)|int[ée]ressement|participation\\s+aux\\s+b[ée]n[ée]fices|stock[\\s-]?options?|\\bRSUs?\\b|\\bBSPCE\\b|actions\\s+gratuites|equity\\s+grant|commission\\s+de\\s+vente)\\b",
+      "criticality": "medium"
+    },
+    {
+      "label": "Performance review",
+      "pattern": "\\b(?:entretien\\s+(?:annuel|professionnel|d['’][ée]valuation)|[ée]valuation\\s+(?:annuelle|de\\s+performance)|performance\\s+review|appraisal|360[°\\s]*feedback|calibration\\s+meeting|notation\\s+annuelle|potentiel\\s+d['’][ée]volution|performance\\s+improvement\\s+plan|plan\\s+d['’]am[ée]lioration)\\b"
+    },
+    {
+      "label": "Discipline or dismissal",
+      "pattern": "\\b(?:licenciement|rupture\\s+conventionnelle|mise\\s+[àa]\\s+pied|avertissement\\s+disciplinaire|proc[ée]dure\\s+disciplinaire|entretien\\s+pr[ée]alable|faute\\s+(?:grave|lourde)|(?:unfair\\s+|notice\\s+of\\s+|letter\\s+of\\s+)dismissal|termination\\s+letter|severance|gardening\\s+leave|d[ée]mission|pr[ée]avis\\s+de\\s+(?:d[ée]part|licenciement|d[ée]mission))\\b",
+      "criticality": "critical"
+    },
+    {
+      "label": "Collective redundancy or restructuring",
+      "pattern": "\\b(?:plan\\s+(?:social|de\\s+sauvegarde\\s+de\\s+l['’]emploi)|\\bPSE\\b|plan\\s+de\\s+d[ée]part|restructuration|r[ée]organisation\\s+(?:interne|des\\s+[ée]quipes)|layoffs?|redundanc(?:y|ies)|headcount\\s+reduction|effectifs\\s+cibles?|RIF\\b)\\b",
+      "criticality": "critical",
+      "hint": "Unannounced restructuring is both market-sensitive and legally sequenced."
+    },
+    {
+      "label": "Employment contract",
+      "pattern": "\\b(?:contrat\\s+de\\s+travail|\\bCDI\\b|\\bCDD\\b|avenant\\s+au\\s+contrat|p[ée]riode\\s+d['’]essai|employment\\s+(?:contract|agreement)|offer\\s+letter|promesse\\s+d['’]embauche|convention\\s+collective|clause\\s+de\\s+non[\\s-]concurrence)\\b",
+      "criticality": "medium"
+    },
+    {
+      "label": "Recruitment file",
+      "pattern": "\\b(?:curriculum\\s+vitae|lettre\\s+de\\s+motivation|candidature\\s+(?:spontan[ée]e|retenue)|entretien\\s+d['’]embauche|short[\\s-]?list\\s+candidats?|prise\\s+de\\s+r[ée]f[ée]rences|background\\s+check|scorecard\\s+candidat)\\b",
+      "criticality": "medium"
+    },
+    {
+      "label": "Absence and leave",
+      "pattern": "\\b(?:cong[ée]s?\\s+(?:pay[ée]s|maladie|maternit[ée]|paternit[ée]|parental|sabbatique|sans\\s+solde)|\\bRTT\\b|absent[ée]isme|compteur\\s+de\\s+cong[ée]s|sick\\s+leave|parental\\s+leave)\\b",
+      "criticality": "medium"
+    },
+    {
+      "label": "Employee identifier",
+      "pattern": "\\b(?:matricule|num[ée]ro\\s+d['’]employ[ée]|employee\\s+(?:id|number)|\\bUID\\s+salari[ée])\\b[ \\t]*[:=#]?[ \\t]*[A-Z0-9-]{3,}\\b",
+      "criticality": "medium"
+    },
+    {
+      "label": "Whistleblowing or investigation",
+      "pattern": "\\b(?:alerte\\s+professionnelle|lanceur\\s+d['’]alerte|whistleblow(?:er|ing)|signalement\\s+(?:interne|harc[èe]lement)|enqu[êe]te\\s+interne|internal\\s+investigation|harc[èe]lement\\s+(?:moral|sexuel)|discrimination)\\b",
+      "criticality": "critical",
+      "hint": "A protected report. Disclosing who made it is itself an offence in most jurisdictions."
+    }
+  ]
+}

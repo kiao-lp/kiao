@@ -1,0 +1,17 @@
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    .pdf-doc { stroke: #F87171; }
+    .pdf-text { fill: #F87171; }
+    @media (prefers-color-scheme: light) {
+      .pdf-doc { stroke: #DC2626; }
+      .pdf-text { fill: #DC2626; }
+    }
+  </style>
+  
+  <!-- Document outline with folded corner -->
+  <path class="pdf-doc" d="M14 2H6C4.89543 2 4 2.89543 4 4V20C4 21.1046 4.89543 22 6 22H18C19.1046 22 20 21.1046 20 20V8L14 2Z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <path class="pdf-doc" d="M14 2V8H20" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  
+  <!-- PDF text -->
+  <text class="pdf-text" x="12" y="16" font-family="system-ui, sans-serif" font-size="6" font-weight="bold" text-anchor="middle">PDF</text>
+</svg>

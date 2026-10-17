@@ -1,0 +1,1087 @@
+/* Declare on each ancestor scope, including the portalled select popup, so status colours inherit. */
+.boardArea,
+.board,
+.meta,
+.editorBody,
+.metaPopup {
+    --flow-node-draft: #718096;
+    --flow-node-ready: #b7791f;
+    --flow-node-blocked: #b83280;
+    --flow-node-running: #2b6cb0;
+    --flow-node-waiting-refresh: #c05621;
+    --flow-node-interrupted: #805ad5;
+    --flow-node-done: #2f855a;
+    --flow-node-error: #c53030;
+}
+
+.boardArea {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+    background: var(--bg);
+}
+
+.filterBar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    background: var(--accent-bg);
+    border-bottom: 1px solid var(--border);
+    /* Reserve room for the floating cms-close-document button (28px, inset 14px). */
+    padding: 6px 50px 6px 12px;
+}
+
+.filterZoom {
+    margin-left: auto;
+}
+
+.filterTag {
+    display: inline-flex;
+    align-items: center;
+    border: none;
+    border-radius: 9px;
+    padding: 0;
+    background: none;
+    cursor: pointer;
+    outline-offset: 2px;
+}
+
+.filterTagOff {
+    opacity: 0.45;
+}
+
+.filterTagOff:hover {
+    opacity: 0.8;
+}
+
+.filterTagOn {
+    box-shadow: 0 0 0 2px var(--accent);
+}
+
+.filterCount {
+    margin-left: 4px;
+    color: var(--muted);
+    font-size: 0.8rem;
+}
+
+.filterClear {
+    color: var(--muted);
+}
+
+/* Task cards wear the unified diagram box look (see kiao-diagram.ts in kiao-style):
+   the fill and outline of an archdia container, with its 8px radius. The status
+   stripe on the left edge stays: it is what says the card's state at a glance. */
+.card {
+    position: relative;
+    /* Keep title-only cards tall enough for the chain knob. */
+    min-height: 48px;
+    padding: 6px;
+    border: 1.5px solid var(--muted);
+    /* Keep stripe width constant across statuses to avoid shifting card text. */
+    border-left-width: 3px;
+    border-radius: 8px;
+    background: var(--diagram-box-fill);
+    color: var(--text);
+    text-align: left;
+    cursor: pointer;
+    /* Clicks and drags act on the card rather than selecting its title. */
+    user-select: none;
+}
+
+.card:hover {
+    background: var(--state-pointed-bg);
+}
+
+.card:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+
+.cardSelected {
+    background: var(--state-selected-bg);
+}
+
+.cardClass {
+    border-style: dotted;
+    border-width: 2px;
+    border-left-width: 2px;
+}
+
+.cardClassRef {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 4px;
+    font-size: 12px;
+    color: var(--muted);
+}
+
+.cardClassUnlink {
+    border: none;
+    background: none;
+    padding: 0 2px;
+    color: var(--muted);
+    cursor: pointer;
+}
+
+.cardClassUnlink:hover {
+    color: var(--text);
+}
+
+.cardDraft {
+    border-left-color: var(--flow-node-draft);
+}
+
+.cardReady {
+    border-left-color: var(--flow-node-ready);
+}
+
+.cardBlocked {
+    border-left-color: var(--flow-node-blocked);
+}
+
+.cardRunning {
+    border-left-color: var(--flow-node-running);
+}
+
+.cardWaitingRefresh {
+    border-left-color: var(--flow-node-waiting-refresh);
+}
+
+.cardInterrupted {
+    border-left-color: var(--flow-node-interrupted);
+}
+
+.cardDone {
+    border-left-color: var(--flow-node-done);
+}
+
+.cardFailed {
+    border-color: var(--flow-node-error);
+}
+
+/* Override status borders while playing; the status remains in the text below the title. */
+.cardPlaying {
+    border-color: var(--accent);
+}
+
+/* Use an inset highlight so the chain target does not move. */
+.cardChainTarget {
+    box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.cardTitle {
+    font-weight: normal;
+    overflow-wrap: anywhere;
+}
+
+.cardPlay {
+    float: left;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    margin: 1px 6px 0 0;
+    padding: 0;
+    border: none;
+    border-radius: 4px;
+    background: none;
+    color: var(--muted);
+    line-height: 1;
+    cursor: pointer;
+}
+
+.cardPlay:hover:not(:disabled) {
+    background: var(--state-pointed-bg);
+    color: var(--text);
+}
+
+.cardPlay:disabled {
+    cursor: default;
+}
+
+/* Keep the running card's Stop control undimmed even when disabled. */
+.cardPlay:disabled svg {
+    opacity: 0.45;
+}
+
+.cardPlaying .cardPlay {
+    color: var(--accent);
+}
+
+.cardPlaying .cardPlay:disabled svg {
+    opacity: 1;
+}
+
+.cardKind {
+    float: left;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    margin: 1px 6px 0 0;
+    color: var(--muted);
+    line-height: 1;
+    cursor: inherit;
+}
+
+.cardState {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 4px;
+    color: var(--muted);
+    font-size: 0.75rem;
+}
+
+.cardStateDraft {
+    color: var(--flow-node-draft);
+}
+
+.cardStateBlocked {
+    color: var(--flow-node-blocked);
+}
+
+.cardStateRunning {
+    color: var(--flow-node-running);
+}
+
+.cardStateWaitingRefresh {
+    color: var(--flow-node-waiting-refresh);
+}
+
+.cardStateInterrupted {
+    color: var(--flow-node-interrupted);
+}
+
+.cardStateDone {
+    color: var(--flow-node-done);
+}
+
+.cardStateBad {
+    color: var(--flow-node-error);
+}
+
+.cardChips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+    margin-top: 4px;
+}
+
+.cardChip {
+    display: inline-flex;
+    align-items: center;
+    max-width: 100%;
+    padding: 0 6px;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    background: var(--inner-area-bg);
+    color: var(--muted);
+    font-size: 0.72rem;
+    line-height: 15px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.cardChipMissing {
+    border-color: var(--flow-node-error);
+    background: none;
+    color: var(--flow-node-error);
+}
+
+.cardChipSpin {
+    display: inline-flex;
+    align-items: center;
+    margin-right: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .cardChipSpin,
+    .cardChipSpin svg {
+        animation: none;
+    }
+}
+
+.cardInvalid {
+    display: inline-flex;
+    margin-top: 4px;
+    color: var(--flow-node-error);
+    font-size: 0.8rem;
+    line-height: 1;
+}
+
+.cardTags {
+    margin-top: 4px;
+}
+
+.cardChat {
+    position: absolute;
+    right: 25px;
+    bottom: 3px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: none;
+    border-radius: 4px;
+    background: none;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.cardChat:hover {
+    background: var(--state-pointed-bg);
+    color: var(--accent);
+}
+
+/* Reserve space for both the chat mark and chain knob to prevent text overlap. */
+.cardChatted {
+    padding-right: 48px;
+}
+
+.chainKnob {
+    position: absolute;
+    right: 5px;
+    bottom: 5px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    border: 1px solid var(--muted);
+    border-radius: 50%;
+    background: var(--bg);
+    color: var(--muted);
+    font-size: 9px;
+    line-height: 1;
+    cursor: crosshair;
+    /* Prevent touch scrolling while drawing a chain. */
+    touch-action: none;
+}
+
+.chainKnobTied {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.chainKnob:hover {
+    border-color: var(--accent);
+    background: var(--state-pointed-bg);
+    color: var(--accent);
+}
+
+.chainKnobBroken,
+.chainKnobBroken:hover {
+    border-color: var(--warning-border, #ffe58f);
+    background: var(--warning-bg, #fffbe6);
+}
+
+.chainKnobDrawing {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: var(--bg);
+}
+
+.board {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    background: var(--bg);
+}
+
+/* The sheet uses zoomed screen pixels so scroll bounds match the scaled board. */
+.boardSheet {
+    position: relative;
+}
+
+/* Cards and arrows share canvas coordinates; scale from the top left to preserve alignment. */
+.boardScaled {
+    position: relative;
+    transform-origin: top left;
+}
+
+/* Arrows must not intercept pointer hit-testing for chain targets. */
+.boardLinks {
+    position: absolute;
+    top: 0;
+    left: 0;
+    pointer-events: none;
+}
+
+.boardLinks marker path {
+    fill: var(--accent);
+}
+
+/* Solid links pass the conversation on (continue or compact). */
+.boardLink {
+    stroke: var(--accent);
+    stroke-width: 2;
+    stroke-linecap: round;
+}
+
+/* Dashed links start a new conversation. */
+.boardLinkEnds {
+    stroke: var(--accent);
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-dasharray: 6 5;
+    opacity: 0.75;
+}
+
+/* Keep cards above workflow rectangles so their solid backgrounds cannot intercept card clicks. */
+.boardCard {
+    position: absolute;
+    z-index: 2;
+}
+
+/* Workflow rectangles wear the package look of the unified diagram palette (see
+   kiao-diagram.ts in kiao-style): the group fill under a dashed outline, the way
+   archdia draws the packages of the Flows view. Class rectangles stay dotted,
+   the way class cards stay dotted beside task cards. */
+.workflowRect {
+    position: absolute;
+    z-index: 1;
+    border: 1.5px dashed var(--border);
+    border-radius: 8px;
+    background: var(--diagram-group-bg);
+    cursor: grab;
+}
+
+.workflowRectClass {
+    border-style: dotted;
+    border-width: 2px;
+}
+
+.workflowRectSelected {
+    border-width: 2px;
+}
+
+.workflowLabel {
+    position: absolute;
+    top: 6px;
+    left: 12px;
+    right: 8px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+    pointer-events: none;
+}
+
+.boardCardMoving {
+    z-index: 20;
+    opacity: 0.85;
+    /* Offsets update every frame; transitions would make the card lag behind the pointer. */
+    cursor: grabbing;
+}
+
+/* Do not intercept pointer events while selecting cards beneath the overlay. */
+.boxSelect {
+    position: absolute;
+    z-index: 30;
+    border: 1px solid var(--accent);
+    background: var(--state-selected-bg);
+    opacity: 0.55;
+    pointer-events: none;
+}
+
+.boardEmpty {
+    padding: 24px;
+    color: var(--muted);
+}
+
+/* Keep the preview out of hit-testing so the pointer resolves to the actual chain target. */
+.chainLine {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    pointer-events: none;
+    z-index: 100;
+}
+
+.chainLine line {
+    stroke: var(--accent);
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-dasharray: 5 4;
+}
+
+.empty {
+    padding: 24px;
+    color: var(--muted);
+}
+
+.panel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    gap: 8px;
+}
+
+.panelHeader {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    color: var(--muted);
+    font-size: 0.85rem;
+}
+
+.panelKind {
+    margin-right: auto;
+}
+
+.meta {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.metaRow {
+    display: flex;
+    gap: 6px;
+}
+
+.metaRowWrap {
+    flex-wrap: wrap;
+}
+
+.metaSelect {
+    flex: 1;
+    min-width: 0;
+}
+
+.metaCheck {
+    flex: 0 0 auto;
+    align-self: center;
+    font-size: 11px;
+    white-space: nowrap;
+}
+
+.metaCheckBroken {
+    border: 1px solid var(--warning-border, #ffe58f);
+    border-radius: 4px;
+    background: var(--warning-bg, #fffbe6);
+    padding: 0 4px;
+}
+
+.metaChat {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.metaChatOpen {
+    padding-inline: 4px;
+    font-size: 0.75rem;
+}
+
+.metaChatNone {
+    flex: 1;
+    align-self: center;
+    color: var(--muted);
+    font-size: 0.75rem;
+}
+
+/* Ant Design v6 sizes selects through these custom properties. */
+.meta :global(.ant-select),
+.nodePanel :global(.ant-select),
+.editorRow :global(.ant-select) {
+    --select-font-size: 11px;
+    --select-line-height: 1.45;
+    --select-font-height: 16px;
+    --select-height: 22px;
+    --select-padding-horizontal: 6px;
+}
+
+.meta :global(.ant-select-suffix),
+.nodePanel :global(.ant-select-suffix),
+.editorRow :global(.ant-select-suffix) {
+    font-size: 9px;
+}
+
+.nodePanel :global(.ant-input) {
+    font-size: 11px;
+    line-height: 1.45;
+}
+
+/* Style our label span, shared by the selected value and options, independently of Ant Design internals. */
+.statusTone {
+    font-weight: 600;
+}
+
+.statusTone[data-status='draft'] {
+    color: var(--flow-node-draft);
+}
+
+.statusTone[data-status='ready'] {
+    color: var(--flow-node-ready);
+}
+
+.statusTone[data-status='blocked'] {
+    color: var(--flow-node-blocked);
+}
+
+.statusTone[data-status='running'] {
+    color: var(--flow-node-running);
+}
+
+.statusTone[data-status='waiting-refresh'] {
+    color: var(--flow-node-waiting-refresh);
+}
+
+.statusTone[data-status='interrupted'] {
+    color: var(--flow-node-interrupted);
+}
+
+.statusTone[data-status='done'] {
+    color: var(--flow-node-done);
+}
+
+.statusTone[data-status='error'] {
+    color: var(--flow-node-error);
+}
+
+.metaPopup :global(.ant-select-item) {
+    min-height: 22px;
+    padding: 2px 8px;
+    font-size: 11px;
+    line-height: 1.45;
+}
+
+/* Highlight bypass permissions; Ant Design v6 exposes colours on the select root. */
+.metaSelectRisky:global(.ant-select) {
+    --select-border-color: var(--warning-border, #ffe58f);
+    --select-background: var(--warning-bg, #fffbe6);
+}
+
+.metaFolder {
+    min-width: 0;
+}
+
+/* The reveal suffix makes this an affix wrapper; borders, surface and padding belong to the wrapper. */
+
+.metaFolderDrop:global(.ant-input-affix-wrapper) {
+    border-color: var(--accent);
+    background: var(--state-pointed-bg);
+}
+
+.metaFolder:global(.ant-input-affix-wrapper) {
+    font-size: 11px;
+    line-height: 1.45;
+    padding-block: 2px;
+    padding-inline: 6px;
+}
+
+.metaFolder :global(.ant-input) {
+    font-size: 11px;
+    line-height: 1.45;
+}
+
+.metaFolder :global(.cms-reveal-in-tree) {
+    margin-inline-start: 0;
+    font-size: 12px;
+}
+
+.panelTitle {
+    font-weight: 600;
+}
+
+.panelEditor {
+    flex: 1;
+    min-height: 0;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.panelVersions {
+    flex: 1;
+    min-height: 0;
+}
+
+.panelVersionBody {
+    flex: 1;
+    resize: none;
+}
+
+.panelHint {
+    color: var(--muted);
+    font-size: 0.8rem;
+}
+
+.editorBody {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    gap: 8px;
+}
+
+.editorTitleRow {
+    display: flex;
+    /* Reserve room for the floating cms-stack-close button (28px, inset 14px). */
+    padding-right: 36px;
+}
+
+.editorTitleInput {
+    flex: 1;
+    min-width: 0;
+    font-weight: 600;
+}
+
+.editorTitleInput:global(.ant-input),
+.editorTitleInput :global(.ant-input) {
+    font-size: inherit;
+}
+
+.editorTools {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* Wrap controls to prevent narrow selects from painting over adjacent buttons. */
+.editorRow {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.editorRow .metaSelect {
+    flex: 0 0 auto;
+    min-width: 130px;
+}
+
+.editorRow .metaFolder {
+    flex: 1 1 240px;
+}
+
+.editorRow .metaStatus {
+    flex: 0 0 auto;
+    min-width: 0;
+}
+
+.editorRow .metaNext {
+    flex: 1 1 240px;
+}
+
+.editorRow .metaChatNone {
+    flex: 0 0 auto;
+}
+
+.editorCosts {
+    color: var(--muted);
+    font-size: 0.75rem;
+    white-space: nowrap;
+}
+
+.templateRow {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.editorToolbar .templateRow .metaSelect {
+    flex: 0 0 auto;
+    min-width: 110px;
+}
+
+.editorToolbar {
+    display: flex;
+    align-items: center;
+    flex: 0 0 auto;
+    margin-left: auto;
+}
+
+.editorPanes {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    gap: 8px;
+}
+
+.editorColumn {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    gap: 8px;
+}
+
+.editorMain {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.metaTags {
+    margin-top: 4px;
+}
+
+.metaTagPicker {
+    width: 100%;
+}
+
+.editorTags {
+    flex: 0 1 240px;
+    min-width: 120px;
+}
+
+.metaCriteria {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.metaCriterionRow {
+    display: flex;
+    gap: 4px;
+    align-items: flex-start;
+}
+
+.metaCriterionBox {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow-x: hidden;
+}
+
+.symbol {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    /* Keep the shape flush with the node top: shapeAnchor in boardSpots.ts targets it there. */
+    padding: 0 8px 8px;
+    color: var(--text);
+    text-align: center;
+    cursor: pointer;
+    user-select: none;
+}
+
+.symbol:hover .symbolEvent,
+.symbol:hover .symbolGateway {
+    background: var(--state-pointed-bg);
+}
+
+.symbol:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+    border-radius: 4px;
+}
+
+.symbolSelected .symbolEvent,
+.symbolSelected .symbolGateway {
+    background: var(--state-selected-bg);
+    box-shadow: 0 0 0 2px var(--accent);
+}
+
+/* Heights must match EVENT_WRAP_HEIGHT and GATEWAY_WRAP_HEIGHT in boardSpots.ts. */
+.symbolEventWrap,
+.symbolGatewayWrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.symbolEventWrap {
+    height: 62px;
+}
+
+.symbolGatewayWrap {
+    height: 80px;
+}
+
+/* The thicker Shutdown ring denotes a BPMN end event. */
+.symbolEvent {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 54px;
+    height: 54px;
+    box-sizing: border-box;
+    border: 2px solid var(--symbol-ring, var(--border));
+    border-radius: 50%;
+    background: var(--diagram-box-fill);
+    color: var(--muted);
+    font-size: 32px;
+    line-height: 1;
+}
+
+.symbolEventEnd {
+    border-width: 4px;
+}
+
+.symbolGateway {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 50px;
+    height: 50px;
+    box-sizing: border-box;
+    border: 2px solid var(--symbol-ring, var(--border));
+    border-radius: 0;
+    background: var(--diagram-box-fill);
+    color: var(--muted);
+    transform: rotate(45deg);
+}
+
+.symbolGatewayInner {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transform: rotate(-45deg);
+}
+
+.symbolPlaying .symbolEvent,
+.symbolPlaying .symbolGateway {
+    color: var(--accent);
+}
+
+.symbolClass .symbolEvent,
+.symbolClass .symbolGateway {
+    border-style: dotted;
+}
+
+.symbolDraft {
+    --symbol-ring: var(--flow-node-draft);
+}
+
+.symbolReady {
+    --symbol-ring: var(--flow-node-ready);
+}
+
+.symbolBlocked {
+    --symbol-ring: var(--flow-node-blocked);
+}
+
+.symbolRunning {
+    --symbol-ring: var(--flow-node-running);
+}
+
+.symbolWaitingRefresh {
+    --symbol-ring: var(--flow-node-waiting-refresh);
+}
+
+.symbolInterrupted {
+    --symbol-ring: var(--flow-node-interrupted);
+}
+
+.symbolDone {
+    --symbol-ring: var(--flow-node-done);
+}
+
+.symbolError {
+    --symbol-ring: var(--flow-node-error);
+}
+
+.symbolError .symbolEvent,
+.symbolError .symbolGateway {
+    border-width: 3px;
+}
+
+.symbolError .symbolEventEnd {
+    border-width: 5px;
+}
+
+.symbolPlaying {
+    --symbol-ring: var(--accent);
+}
+
+/* Use an inset highlight so the chain target does not move. */
+.symbolChainTarget .symbolEvent,
+.symbolChainTarget .symbolGateway {
+    box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.symbolKnob {
+    right: calc(50% - 44px);
+    bottom: auto;
+    top: 50%;
+    margin-top: -8px;
+}
+
+.symbolEventWrap .symbolKnob {
+    right: calc(50% - 36px);
+}
+
+.symbolChat {
+    position: absolute;
+    left: calc(50% - 44px);
+    top: 50%;
+    margin-top: -10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: none;
+    border-radius: 4px;
+    background: none;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.symbolChat:hover {
+    background: var(--state-pointed-bg);
+    color: var(--accent);
+}
+
+.symbolEventWrap .symbolChat {
+    left: calc(50% - 36px);
+}
+
+.symbolLabel {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.symbolTitle {
+    font-weight: normal;
+    overflow-wrap: anywhere;
+}
+
+.symbolTags {
+    justify-content: center;
+    margin-top: 4px;
+}
+
+.symbolLabel .cardClassRef,
+.symbolLabel .cardState,
+.symbolLabel .cardChips {
+    justify-content: center;
+}
+
+/* A scheduler keeps its clock glyph and offers the task-sized play beside the circle. */
+.symbolPlay {
+    position: absolute;
+    left: calc(50% - 55px);
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+}

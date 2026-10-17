@@ -1,0 +1,21 @@
+
+.cms-split-row {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    overflow: hidden;
+}
+
+/* min-width: 0 lets flex items shrink below their content's width (e.g. long editor lines). */
+.cms-split-part {
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+/* Return hidden panes' width to the others (SideDocumentRow.hostHidden). */
+.cms-split-part-collapsed {
+    flex: 0 0 0;
+}
+
+/* Dividers use cms-resize-handle from ui/ResizeHandle.css. */

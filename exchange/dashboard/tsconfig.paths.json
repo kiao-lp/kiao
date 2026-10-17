@@ -1,0 +1,70 @@
+{
+    "compilerOptions": {
+        "baseUrl": "./",
+        "paths": {
+            "@/*": [
+                "src/*"
+            ],
+            "react-advanced-interactions/*": [
+                "src/cms-core/lib/react-advanced-interactions/*"
+            ],
+            "react-advanced-interactions": [
+                "src/cms-core/lib/react-advanced-interactions/index.ts"
+            ],
+            "react-concise/*": [
+                "src/cms-core/lib/react-concise.tsx"
+            ],
+            "react-concise": [
+                "src/cms-core/lib/react-concise.tsx"
+            ],
+            "@cms-core": [
+                "src/cms-core/public-api.ts"
+            ],
+            "@cms-kit/markdown-editor": [
+                "src/kit/MarkdownEditor/index.ts"
+            ],
+            "@cms-kit/reorder": [
+                "src/kit/reorder/index.ts"
+            ],
+            "@cms-kit/tts": [
+                "src/kit/tts/index.ts"
+            ],
+            "@cms-kit/markdown": [
+                "src/kit/markdown/index.ts"
+            ],
+            "@cms-kit/template-lang": [
+                "src/kit/template-lang/index.ts"
+            ],
+            "@cms-kit/color": [
+                "src/kit/color/index.ts"
+            ],
+            "@cms-kit/zoom-control": [
+                "src/kit/ZoomControl/index.tsx"
+            ],
+            "@cms-kit/doc-id": [
+                "src/kit/doc-id/index.ts"
+            ],
+            "@cms-kit/components": [
+                "src/kit/components/index.ts"
+            ],
+            "@cms-kit/template-fields": [
+                "src/kit/template-fields/index.ts"
+            ],
+            "@cms-kit/code-editor": [
+                "src/kit/code-editor/index.ts"
+            ],
+            "@cms-kit/capabilities": [
+                "src/kit/capabilities/index.ts"
+            ],
+            "@cms-kit/archdia": [
+                "src/kit/archdia/index.ts"
+            ],
+            "@cms-kit/graph": [
+                "src/kit/graph/index.ts"
+            ],
+            "@cms-kit/diagram-shared": [
+                "src/kit/diagram-shared/index.ts"
+            ]
+        }
+    }
+}

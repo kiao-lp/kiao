@@ -1,0 +1,215 @@
+/* The tool bars: a strip across the top and a column down each side of the document.
+   Which tab is drawn in which is the document's own — see tool-bars/barsModel.ts. */
+
+.cms-tool-bar-side {
+    display: flex;
+    flex-direction: row;
+    overflow: hidden;
+    flex-shrink: 0;
+    background: var(--bg);
+}
+
+.cms-tool-bar-side-left {
+    border-right: 1px solid var(--border);
+}
+
+.cms-tool-bar-side-right {
+    border-left: 1px solid var(--border);
+}
+
+/* The centre takes whatever width the side columns leave: no width of its own, no resize
+   handle, and no divider — the columns draw the ones on their document-facing edge. */
+.cms-tool-bar-side-center {
+    flex: 1;
+    min-width: 0;
+}
+
+/* The document fills its tab pane whole, as it filled the central area before it was one: the
+   pane's own scroll never engages, the document's shared scroller inside it does. */
+.cms-tool-bar-side-center .cms-document-area {
+    height: 100%;
+}
+
+/* The top strip is as tall as what it holds — one line for the file navigation — and never more
+   than a slice of the window, so a panel meant for a column cannot push the document off screen. */
+.cms-tool-bar-side-top {
+    width: 100%;
+    max-height: 40vh;
+    background: var(--accent-bg);
+    border-bottom: 1px solid var(--border);
+}
+
+/* The bars of one side, stacked. One today; a side split vertically shares the column's width. */
+.cms-tool-bar-stack {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.cms-tool-bar-side-top .cms-tool-bar-stack {
+    overflow: auto;
+}
+
+.cms-tool-bar {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.cms-tool-bar .ant-tabs {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.cms-tool-bar .ant-tabs-nav {
+    margin: 0;
+    padding: 0 8px;
+    background: var(--accent-bg);
+    border-bottom: 1px solid var(--border);
+}
+
+/* One tab needs no chooser: the row of icons would be a line of the screen spent saying which of
+   one panel is showing. Scoped to the bar's own strip with child selectors: a panel may hold tabs
+   of its own — the file-optimizations view does — and a descendant selector would take those
+   with it, leaving the panel with no way to change tab. */
+.cms-tool-bar-single > .ant-tabs > .ant-tabs-nav {
+    display: none;
+}
+
+.cms-tool-bar .ant-tabs-tab {
+    padding: 8px 10px;
+}
+
+/* Icon-only labels: antd's default inter-tab gap is sized for text */
+.cms-tool-bar .ant-tabs-tab + .ant-tabs-tab {
+    margin-left: 4px;
+}
+
+.cms-tool-bar .ant-tabs-tab .anticon {
+    margin: 0;
+    font-size: 16px;
+}
+
+.cms-tool-bar .ant-tabs-content-holder {
+    flex: 1;
+    overflow: hidden;
+}
+
+.cms-tool-bar .ant-tabs-content {
+    height: 100%;
+}
+
+.cms-tool-bar .ant-tabs-tabpane {
+    height: 100%;
+    overflow: auto;
+    padding: 4px;
+}
+
+.cms-tool-bar .ant-tabs-tabpane.cms-tool-bar-pane-flush {
+    padding: 0;
+}
+
+/* The top strip is laid out by what it holds rather than stretched to a height of its own. */
+.cms-tool-bar-side-top .cms-tool-bar,
+.cms-tool-bar-side-top .cms-tool-bar .ant-tabs,
+.cms-tool-bar-side-top .cms-tool-bar .ant-tabs-content,
+.cms-tool-bar-side-top .cms-tool-bar .ant-tabs-tabpane {
+    height: auto;
+    overflow: visible;
+}
+
+.cms-tool-bar-side-top .cms-tool-bar .ant-tabs-content-holder {
+    overflow: visible;
+}
+
+.cms-tool-bar-side-top .cms-tool-bar .ant-tabs-tabpane {
+    padding: 0;
+}
+
+/* The strip a column is widened by is the divider the centre is divided by, and is drawn by the
+   same rule — `cms-resize-handle`, in ui/ResizeHandle.css. Nothing of its own. */
+
+/* --- The layout grid: the picture of Dashboard the Show menu moves a tab around in --------- */
+
+.cms-layout-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    width: 132px;
+    padding: 4px 0;
+}
+
+.cms-layout-grid-row {
+    display: flex;
+    flex-direction: row;
+    gap: 3px;
+    height: 46px;
+}
+
+/* Every property the theme's global `button` rule sets is set back here: these are rectangles of a
+   drawing, not buttons of a form, and the accent fill it gives a button would read as "this one" on
+   all four of them. `!important` for the two the global rule forces on `:hover`. */
+.cms-layout-grid-cell {
+    flex: 1;
+    min-height: 8px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: var(--bg);
+    padding: 0;
+    margin: 0;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+}
+
+/* The house hover colour, said here rather than inherited, so what the rectangles do on the way
+   past does not depend on a rule written for form buttons. */
+.cms-layout-grid-cell:hover {
+    background: var(--accent) !important;
+    border-color: var(--accent) !important;
+}
+
+/* Where the tab is now: greyed, because it is not somewhere to move it to. Clicking it is what
+   takes the tab out of the layout. */
+.cms-layout-grid-cell[aria-pressed='true'] {
+    background: var(--border);
+    border-color: var(--muted);
+}
+
+/* A bar this tab does not go in — the file line anywhere but the top, the tree anywhere but a
+   column. Drawn faint and dashed, and still drawn: the picture has to stay the picture of the app,
+   and a rectangle missing from it would read as a bar that is not there. `!important` for the
+   hover, which the rule above forces on every cell. */
+.cms-layout-grid-cell-barred,
+.cms-layout-grid-cell-barred:hover {
+    background: transparent !important;
+    border-style: dashed;
+    border-color: var(--border) !important;
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.cms-layout-grid-top {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    height: 14px;
+}
+
+.cms-layout-grid-column {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    width: 34px;
+}
+
+/* The central area, holding the document and any tab put beside it. Wider than the columns, as in
+   the app, and a target like them: this is the rectangle a panel is moved to the centre with. */
+.cms-layout-grid-column-center {
+    flex: 1;
+    width: auto;
+}
