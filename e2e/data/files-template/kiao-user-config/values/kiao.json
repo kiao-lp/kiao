@@ -1,0 +1,10 @@
+[
+    { "type": "KiaoComponent", "value": "cms-core", "path": "pub/exchange/dashboard/src/cms-core" },
+    { "type": "KiaoComponent", "value": "mindmap-edit", "path": "pub/exchange/dashboard/src/plugins/mindmap-edit" },
+    { "type": "KiaoComponent", "value": "markdown-edit", "path": "pub/exchange/dashboard/src/plugins/markdown-edit" },
+    { "type": "KiaoComponent", "value": "code-edit", "path": "pub/exchange/dashboard/src/plugins/code-edit" },
+    { "type": "KiaoComponent", "value": "template-edit", "path": "pub/exchange/dashboard/src/plugins/template-edit" },
+    { "type": "KiaoComponent", "value": "archdia-edit", "path": "pub/exchange/dashboard/src/plugins/archdia-edit" },
+    { "type": "KiaoComponent", "value": "worker", "path": "pub/operation/worker" },
+    { "type": "KiaoComponent", "value": "dashboard", "path": "pub/exchange/dashboard" }
+]

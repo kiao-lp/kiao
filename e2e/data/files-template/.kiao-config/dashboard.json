@@ -1,0 +1,26 @@
+{
+  "chatEnabled": true,
+  "gitEnabled": true,
+  "plugins": [
+    "markdown-edit",
+    "code-edit",
+    "text-edit",
+    "image-view",
+    "pdf-view",
+    "epub-view",
+    "archdia-edit",
+    "graph-edit",
+    "mindmap-edit",
+    "featmat-view",
+    "template-edit",
+    "activity-log",
+    "hybridflow-ui",
+    "tags",
+    "bookmarks",
+    "chat",
+    "ttst-edit",
+    "movie-edit",
+    "three-d-model-view",
+    "svg-edit"
+  ]
+}

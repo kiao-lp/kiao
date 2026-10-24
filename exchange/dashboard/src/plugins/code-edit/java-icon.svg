@@ -1,0 +1,20 @@
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    .java-glyph { stroke: #F87171; }
+    @media (prefers-color-scheme: light) {
+      .java-glyph { stroke: #B91C1C; }
+    }
+  </style>
+
+  <!-- Cup -->
+  <path class="java-glyph" d="M5.5 10.5H16V15.5C16 17.2 14.7 18.5 13 18.5H8.5C6.8 18.5 5.5 17.2 5.5 15.5V10.5Z"
+        stroke-width="2" stroke-linejoin="round"/>
+
+  <!-- Handle -->
+  <path class="java-glyph" d="M16 12H17.5C19 12 20 13 20 14.25C20 15.5 19 16.5 17.5 16.5H16"
+        stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Steam -->
+  <path class="java-glyph" d="M9 3.5C10 4.8 8 5.7 9 7.5" stroke-width="2" stroke-linecap="round"/>
+  <path class="java-glyph" d="M13 3.5C14 4.8 12 5.7 13 7.5" stroke-width="2" stroke-linecap="round"/>
+</svg>

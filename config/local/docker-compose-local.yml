@@ -1,0 +1,20 @@
+networks:
+  kiao-local-network:
+    driver: bridge
+
+services:
+  db:
+    # pgvector rather than plain postgres: a drop-in superset of the same PG16, kept so
+    # the `vector` extension is available without recreating the container.
+    image: pgvector/pgvector:pg16
+    restart: always
+    ports:
+      - ${LOCAL_DB_PORT:-48233}:5432
+    environment:
+      POSTGRES_PASSWORD: glg203
+      POSTGRES_USER: postgres
+    volumes:
+      - ./init-postgresql-local.sql:/docker-entrypoint-initdb.d/init-postgresql.sql
+      - /var/lib/postgresql/data:/var/lib/postgresql/data
+    networks:
+      - kiao-local-network

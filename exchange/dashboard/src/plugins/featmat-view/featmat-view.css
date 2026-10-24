@@ -1,0 +1,5 @@
+/* Global zebra stripes distort MoSCoW row colours; :nth-child outranks the global rule. */
+.fm-table tbody tr:nth-child(odd),
+.fm-table tbody tr:nth-child(even) {
+    background-color: transparent;
+}

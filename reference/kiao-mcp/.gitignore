@@ -1,0 +1,7 @@
+node_modules
+dist
+coverage
+*.tsbuildinfo
+
+# tool-call log (logging.ts) — never committed
+logs

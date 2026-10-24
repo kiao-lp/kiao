@@ -1,0 +1,505 @@
+/* === KIAO Theme === */
+/* Unified graphical charter for KIAO applications */
+
+/* ============================================
+   DESIGN TOKENS - CSS Variables
+   ============================================ */
+
+:root,
+[data-theme="dark"] {
+  /* Primary Colors */
+  --bg: #020511;
+  --text: #FFFFFF;
+  --accent: #FFF2A8;
+  --accent-bg: #1c2438;
+
+  /* Diagrams — box fill, a light grey over the page (see kiao-diagram.ts) */
+  --diagram-box-fill: #121826;
+  /* Diagrams — fill of what holds other shapes: packages, clusters, groups */
+  --diagram-group-bg: #070b18;
+
+  /* Secondary Colors */
+  --border: #263040;
+  --muted: #D5DEEF;
+  --text-disabled: #6B7280;
+
+  /* Links */
+  --link: #3C8DFF;
+  --link-visited: #84A6E0;
+
+  /* Code & Tech */
+  --code: #FF667D;
+  --code-bg: #1E222F;
+
+  /* Forms */
+  --input-bg: #0E1320;
+  --input-bg-focus: #151A27;
+
+  /* Tables — odd is the quiet base row, even carries the whole stripe.
+     Keep --table-even clearly below --state-pointed-bg (#1a2236) so a striped
+     row never reads as hovered. */
+  --table-odd: #0D111E;
+  --table-even: #161C2A;
+
+  /* Messages & Alerts */
+  --notice-bg: #1E2430;
+
+  /* Internal Areas */
+  --inner-area-bg: #262626;
+
+  /* Spacing */
+  --padding: 11px;
+
+  /* Application Height */
+  --app-height: 100vh;
+
+  /* Additional Palette — the ten colours a note is filled with, one per name of the mindmap
+     ink below. Quiet, because a note's text is read over its fill. */
+  --color-red-bg: #4a1e1e;
+  --color-orange-bg: #4a3b1e;
+  --color-yellow-bg: #47441e;
+  --color-green-bg: #1e4a1e;
+  --color-teal-bg: #1e4a45;
+  --color-blue-bg: #1e1e4a;
+  --color-violet-bg: #4a1e4a;
+  --color-pink-bg: #4a1e33;
+  --color-brown-bg: #3d2c1e;
+  --color-grey-bg: #33383f;
+
+  --warning-bg: #4a3b1e;
+
+  /* MLScript / Units */
+  --unit-vocab-text: #4ade80;
+  --unit-question-text: #60a5fa;
+  --unit-title-text: var(--text);
+  /* Or specific if needed */
+
+  --unit-border-vocab: #15803d;
+  --unit-border-question: #1d4ed8;
+  --unit-border-exercise: #c026d3;
+  --unit-border-para: #6b7280;
+
+  /* Mindmap */
+  --mindmap-relation: rgb(62, 77, 102);
+
+  /* The ten colours a mindmap is inked in, when it is not to be inked in the one above: a
+     relation over its whole length, and a note's border. Ink rather than fill — it sits on
+     the canvas and not behind text — so these are the theme's own accent colours rather
+     than the quiet `--color-*-bg` a note of the same name is filled with. */
+  --mindmap-relation-red: #ff6b81;
+  --mindmap-relation-orange: #ffb86c;
+  --mindmap-relation-yellow: #f1fa8c;
+  --mindmap-relation-green: #4ade80;
+  --mindmap-relation-teal: #5eead4;
+  --mindmap-relation-blue: #60a5fa;
+  --mindmap-relation-violet: #bd93f9;
+  --mindmap-relation-pink: #ff79c6;
+  --mindmap-relation-brown: #c99a6e;
+  --mindmap-relation-grey: #9ca3af;
+
+  /* Interaction States */
+  --state-pointed-bg: #1a2236;
+  --state-selected-bg: #2F3B54;
+
+  /* Heading Hierarchy (Markdown / Editor) */
+  --heading-1: #FFF2A8;
+  --heading-2: #FFB86C;
+  --heading-3: #4ade80;
+  --heading-4: #8BE9FD;
+  --heading-5: #BD93F9;
+  --heading-6: #D5DEEF;
+}
+
+/* ============================================
+   BASE - Background and Text
+   ============================================ */
+
+body {
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: "Atkinson Hyperlegible", "Inter", sans-serif;
+  font-size: 15px;
+  margin: 0;
+}
+
+/* ============================================
+   TYPOGRAPHY
+   ============================================ */
+
+/* Headings */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-weight: 600;
+}
+
+h1 { color: var(--heading-1); }
+h2 { color: var(--heading-2); }
+h3 { color: var(--heading-3); }
+h4 { color: var(--heading-4); }
+h5 { color: var(--heading-5); }
+h6 { color: var(--heading-6); }
+
+h1 {
+  text-align: center;
+  font-size: 150%;
+}
+
+h3 {
+  font-size: 100%;
+}
+
+/* Passive / Secondary Elements */
+small,
+.muted,
+time,
+footer {
+  color: var(--muted);
+}
+
+/* ============================================
+   LINKS
+   ============================================ */
+
+a {
+  color: var(--link);
+  text-decoration: underline;
+}
+
+a:visited {
+  color: var(--link-visited);
+}
+
+a:hover {
+  color: var(--accent);
+}
+
+/* ============================================
+   BUTTONS
+   ============================================ */
+
+button,
+input[type="submit"],
+input[type="button"] {
+  background-color: var(--accent);
+  color: var(--accent-bg);
+  border: 1px solid var(--border);
+  padding: var(--padding);
+  border-radius: 20px;
+}
+
+button:hover,
+input[type="submit"]:hover,
+input[type="button"]:hover {
+  border-color: var(--accent) !important;
+  background-color: var(--accent) !important;
+  color: var(--bg) !important;
+}
+
+button:disabled,
+input[type="submit"]:disabled,
+input[type="button"]:disabled {
+  background-color: var(--border);
+  color: var(--text-disabled);
+  border: 1px solid var(--border);
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* ============================================
+   FORMS
+   ============================================ */
+
+label {
+  color: var(--muted);
+}
+
+input,
+textarea,
+select {
+  background-color: var(--input-bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: var(--padding);
+  border-radius: 20px;
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  outline: 2px solid var(--accent);
+  background-color: var(--input-bg-focus);
+}
+
+/* Override Ant Design checkbox style */
+.ant-checkbox .ant-checkbox-inner {
+  border-radius: 4px;
+}
+
+input[type="checkbox"] {
+  border-radius: 4px;
+  padding: 0;
+  width: 1rem;
+  height: 1rem;
+}
+
+/* ============================================
+   CODE AND PRE-FORMATTED
+   ============================================ */
+
+code,
+pre {
+  background-color: var(--code-bg);
+  color: var(--code);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* ============================================
+   TABLES
+   ============================================ */
+
+table thead {
+  background-color: var(--accent-bg);
+  color: var(--accent);
+}
+
+table tbody tr:nth-child(odd) {
+  background-color: var(--table-odd);
+}
+
+table tbody tr:nth-child(even) {
+  background-color: var(--table-even);
+}
+
+/* ============================================
+   BORDERS AND SEPARATORS
+   ============================================ */
+
+hr,
+table,
+blockquote {
+  border-color: var(--border);
+}
+
+/* ============================================
+   MESSAGES AND ALERTS
+   ============================================ */
+
+.notice,
+.success,
+.error {
+  border-left: 4px solid var(--accent);
+  background-color: var(--notice-bg);
+  padding-left: 1rem;
+}
+
+/* ============================================
+   KIAO UTILITY CLASSES
+   ============================================ */
+
+/* Spacing */
+.margin-top {
+  margin-top: 21px;
+}
+
+/* Styled Fieldset */
+.fieldset {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 21px;
+}
+
+.fieldset label {
+  margin-left: 11px;
+  margin-bottom: 4px;
+  font-size: 80%;
+}
+
+/* Footer Note */
+.bottom-note {
+  font-size: 90%;
+  color: var(--muted);
+  text-align: center;
+}
+
+/* Inner Area with Background */
+.inner-area {
+  background-color: var(--inner-area-bg);
+  border-radius: 27px;
+  margin-bottom: 85px;
+}
+
+/* Ensure cards have compact headers by default */
+.kiao-card h1,
+.kiao-card h3 {
+  margin: 0;
+}
+
+/* ============================================
+   COMPONENTS - Cards and Sections
+   ============================================ */
+
+/* Main Content Card (inspired by play) */
+.kiao-card {
+  background-color: var(--accent-bg);
+  border: 1px solid var(--border);
+  border-radius: 27px;
+  padding: 40px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  margin-bottom: 30px;
+}
+
+
+.kiao-card.prose h1 {
+  margin-bottom: 30px;
+  font-size: 200%;
+}
+
+.kiao-card.prose h2 {
+  margin-bottom: 20px;
+  font-size: 150%;
+}
+
+.kiao-card.prose h3 {
+  margin-bottom: 15px;
+  font-size: 120%;
+}
+
+.kiao-card p {
+  color: var(--muted);
+}
+
+.kiao-card.prose p {
+  line-height: 1.6;
+  margin-bottom: 15px;
+}
+
+.kiao-card.prose ul {
+  list-style: none;
+  padding-left: 0;
+  margin: 15px 0;
+}
+
+.kiao-card li {
+  color: var(--text);
+}
+
+.kiao-card.formatted li {
+  padding: 10px 0;
+  line-height: 1.6;
+}
+
+/* Warning Section */
+.kiao-warning {
+  background-color: rgba(255, 102, 125, 0.1);
+  border-left: 4px solid var(--code);
+  padding: 20px;
+  border-radius: 13px;
+  margin-bottom: 30px;
+}
+
+.kiao-warning h3 {
+  margin-bottom: 15px;
+  color: var(--code);
+  font-size: 110%;
+}
+
+.kiao-warning p {
+  line-height: 1.6;
+  margin-bottom: 15px;
+  color: var(--muted);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .kiao-card {
+    padding: 30px 20px;
+  }
+
+  .kiao-card h1 {
+    font-size: 150%;
+  }
+}
+
+/* ============================================
+   SHARED ELEMENTS
+   ============================================ */
+
+/* File Upload Dropzone */
+/* The padding counts inside the 92%, so the zone never reaches past its container: a phone has
+   no 60px to spare beyond the 8% left over, and what it cannot fit it scrolls sideways. */
+.kiao-upload-zone {
+  box-sizing: border-box;
+  border: 2px dashed var(--muted);
+  border-radius: 20px;
+  width: 92%;
+  max-width: 100%;
+  margin: 25px auto;
+  padding: 30px;
+}
+
+.kiao-upload-zone.highlight {
+  border-color: var(--accent);
+}
+
+/* Generic Rich Text Styles (Diagrams etc.) */
+.kiao-rich-text {
+  cursor: default;
+}
+
+.kiao-rich-text p {
+  font-size: 100%;
+}
+
+.kiao-rich-text h1 {
+  font-size: 160%;
+}
+
+.kiao-rich-text h2 {
+  font-size: 140%;
+}
+
+.kiao-rich-text h3 {
+  font-size: 120%;
+}
+
+.kiao-rich-text strong {
+  font-size: inherit;
+  font-weight: bold;
+}
+
+.kiao-rich-text code {
+  white-space: pre-wrap !important;
+  word-wrap: break-word;
+}
+
+/* Interactive States */
+.pointed .pointed-background {
+  background-color: var(--state-pointed-bg) !important;
+}
+
+.selected .selected-background {
+  background-color: var(--state-selected-bg) !important;
+}
+
+/* ============================================
+   VARIANTS
+   ============================================ */
+
+/* Compact Card */
+.kiao-card.kiao-compact {
+  padding: 20px;
+}
+
+.kiao-card.kiao-compact h1,
+.kiao-card.kiao-compact h2,
+.kiao-card.kiao-compact h3 {
+  margin-bottom: 10px;
+}
+
+.kiao-card.kiao-compact p {
+  margin-bottom: 8px;
+}

@@ -1,0 +1,22 @@
+[
+  { "id": "markdown-edit", "title": "Markdown", "description": "Writes and previews .md — the store's ordinary document." },
+  { "id": "code-edit", "title": "Code", "description": "Opens any source or data file as text with syntax colouring. The fallback when nothing more specific claims a file." },
+  { "id": "text-edit", "title": "Plain text", "description": "Opens .txt, .csv and the store's own markers as plain text." },
+  { "id": "image-view", "title": "Images", "description": "Shows PNG, JPEG, GIF and the rest, stepping through a folder's pictures and deleting one." },
+  { "id": "svg-edit", "title": "SVG images", "description": "Draws .svg on a canvas — moving, resizing and styling its shapes — and edits its source." },
+  { "id": "pdf-view", "title": "PDF", "description": "Reads a PDF page by page." },
+  { "id": "epub-view", "title": "ePub", "description": "Reads an ePub book." },
+  { "id": "archdia-edit", "title": "Architecture diagrams", "description": "Draws .arch.md as an interactive canvas, and the fenced archdia blocks inside a markdown file." },
+  { "id": "graph-edit", "title": "Graphs", "description": "Edits .graph.json — nodes and edges." },
+  { "id": "mindmap-edit", "title": "Mindmaps", "description": "Edits .mmap.json, and offers one beside a markdown document." },
+  { "id": "featmat-view", "title": "Feature matrices", "description": "Scores options against MoSCoW-weighted features (.fmat.json)." },
+  { "id": "template-edit", "title": "Templates", "description": "Edits .temp.md and instantiates one into the store." },
+  { "id": "activity-log", "title": "Activity log", "description": "Records time against projects in .actlog.jsonl." },
+  { "id": "hybridflow-ui", "title": "Hybridflow boards", "description": "A board as cards on a canvas, chained to what comes after them, and a panel listing the chains being played. Plays them where the assembly holds a chat." },
+  { "id": "tags", "title": "Tags", "description": "The words a store files its work under, and the colour each is worn in." },
+  { "id": "bookmarks", "title": "Bookmarks", "description": "The documents kept at hand, as a panel over one JSON file." },
+  { "id": "chat", "title": "Conversations", "description": "The chat with the agents — Claude, Codex, Muse — and what plays a board's flow nodes." },
+  { "id": "ttst-edit", "title": "TTS scripts", "description": "Edits a .ttst.md — the monolingual text read aloud to synthesize audio." },
+  { "id": "movie-edit", "title": "Video", "description": "Plays videos and recordings, steps a video image by image or key image by key image, and marks named segments of either in a sidecar beside it." },
+  { "id": "three-d-model-view", "title": "3D models", "description": "Turns a .glb on a stage." }
+]

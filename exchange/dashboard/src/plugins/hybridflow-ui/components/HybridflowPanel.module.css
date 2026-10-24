@@ -1,0 +1,145 @@
+/* The chain runs panel: the store's own tree rows (cms-nav-tree-*, in cms-core.css) with the few
+   things a run has that a file does not — a state glyph, a second line saying what it is doing, and
+   the buttons that act on it. Only those are here; the rows themselves are deliberately the tree's,
+   because what is being shown is a nesting of one level and there was no reason to draw a second
+   kind of one. */
+
+.panel {
+    display: flex;
+    flex-direction: column;
+    padding: 4px 0 8px 0;
+    user-select: none;
+    overflow: auto;
+}
+
+/* The eight status colours, as the board declares them (Hybridflow.module.css). Repeated rather
+   than shared because the panel is in a tool bar and the board is in the document area: neither is
+   inside the other, so a variable declared on one reaches nothing of the other. */
+.panel {
+    --flow-node-draft: #718096;
+    --flow-node-ready: #b7791f;
+    --flow-node-blocked: #b83280;
+    --flow-node-running: #2b6cb0;
+    --flow-node-waiting-refresh: #c05621;
+    --flow-node-interrupted: #805ad5;
+    --flow-node-done: #2f855a;
+    --flow-node-error: #c53030;
+}
+
+.runRow {
+    align-items: flex-start;
+    padding-top: 2px;
+}
+
+/* What the run is doing, before any of the words are read. */
+.runGlyph {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 4px 0 0;
+    font-size: 11px;
+    color: var(--accent, #2b6cb0);
+}
+
+.runGlyph[data-state='ended'],
+.runGlyph[data-state='suspended'] {
+    color: var(--muted);
+}
+
+.runName {
+    display: flex;
+    flex-direction: column;
+    cursor: pointer;
+    line-height: 1.35;
+}
+
+.runTitle {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 600;
+}
+
+/* The second line: what it is doing, or why it stopped. An ending is a sentence and may be long, so
+   it is given two lines and then cut — a panel is not where an error is read in full, the board is. */
+.runNote {
+    font-size: 11px;
+    color: var(--muted);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.runNote[data-state='playing'],
+.runNote[data-state='compacting'] {
+    color: var(--flow-node-running);
+}
+
+.runNote[data-state='waiting'],
+.runNote[data-state='refreshing'],
+.runNote[data-state='scheduled'] {
+    color: var(--flow-node-waiting-refresh);
+}
+
+.runActions {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+}
+
+/* The buttons appear on the row being pointed at, and stay for the keyboard: a column of four
+   glyphs down a narrow pane would read as the panel's subject rather than as what it offers. */
+.runActions :global(.ant-btn) {
+    opacity: 0;
+    width: 22px;
+    height: 22px;
+    min-width: 22px;
+    font-size: 12px;
+}
+
+.runRow:hover .runActions :global(.ant-btn),
+.runActions :global(.ant-btn:focus-visible) {
+    opacity: 1;
+}
+
+/* Which board it plays, under the name. Dimmed and small: it is what tells two runs of two boards
+   apart, and nothing anybody reads twice. */
+.runBoard {
+    font-size: 10px;
+    color: var(--text-disabled, var(--muted));
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin-top: -2px;
+    padding-bottom: 2px;
+}
+
+.flowNodeRow[data-current] {
+    background-color: var(--state-selected-bg);
+}
+
+.flowNodeTitle {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12px;
+}
+
+/* The card's status, in the colour its stripe wears on the board. */
+.flowNodeStatus {
+    flex: 0 0 auto;
+    padding-left: 6px;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--muted);
+}
+
+.flowNodeStatus[data-status='draft'] { color: var(--flow-node-draft); }
+.flowNodeStatus[data-status='ready'] { color: var(--flow-node-ready); }
+.flowNodeStatus[data-status='blocked'] { color: var(--flow-node-blocked); }
+.flowNodeStatus[data-status='running'] { color: var(--flow-node-running); }
+.flowNodeStatus[data-status='waiting-refresh'] { color: var(--flow-node-waiting-refresh); }
+.flowNodeStatus[data-status='interrupted'] { color: var(--flow-node-interrupted); }
+.flowNodeStatus[data-status='done'] { color: var(--flow-node-done); }
+.flowNodeStatus[data-status='error'] { color: var(--flow-node-error); }

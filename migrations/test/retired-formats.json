@@ -1,0 +1,13 @@
+{
+  "mountLinks": [
+    {"before":"[framing](/quickcms/docs/frame.md)","after":"[framing](/dashboard/docs/frame.md)"},
+    {"before":"[ref]: https://example.com/quickcms/docs/a.md\n<https://example.com/quickcms/docs/b.md>","after":"[ref]: https://example.com/dashboard/docs/a.md\n<https://example.com/dashboard/docs/b.md>"},
+    {"before":"`[sample](/quickcms/a.md)`\n```md\n[x](/quickcms/b.md)\n```\n/quickcms in prose\n[x](/quickcmsx/a.md)","after":null}
+  ],
+  "values": [
+    {"before":{"type":"Topic","value":"Rain","objective":"listen","__pinned":true},"after":{"type":"Topic","value":"Rain","object":{"objective":"listen"},"__pinned":true}},
+    {"before":{"type":"Topic","value":"Rain","objective":"root","object":{"objective":"nested","level":2}},"after":{"type":"Topic","value":"Rain","object":{"objective":"root","level":2}}},
+    {"before":{"type":"Topic","value":"Rain","object":[]},"after":null},
+    {"before":{"value":"Rain","objective":"unrelated JSON"},"after":null}
+  ]
+}

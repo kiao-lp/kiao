@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <title>Renewing session</title>
+</head>
+<body>
+    <script>
+        // The hidden frame oidc-client-ts drives for a prompt=none re-authentication, when the
+        // refresh-token grant is refused but the identity provider's own session is still good.
+        // Its whole job is to hand the authorization response back to the app that opened it.
+        //
+        // It exists because `silent_redirect_uri` otherwise defaults to `redirect_uri` — the app
+        // itself — and a second, invisible Dashboard would boot in this frame on every renewal,
+        // sharing the tab's sessionStorage and re-running everything the real one does.
+        //
+        // The message is oidc-client-ts' AbstractChildWindow protocol; the opener matches it on
+        // `source` and validates the `state` parameter itself, so relaying the URL is enough.
+        try {
+            window.parent.postMessage(
+                { source: 'oidc-client', url: window.location.href, keepOpen: false },
+                window.location.origin,
+            );
+        } catch (e) {
+            // Loaded outside a frame — someone opened this URL by hand. There is nothing to renew.
+        }
+    </script>
+</body>
+</html>

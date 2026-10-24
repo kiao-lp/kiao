@@ -1,0 +1,11 @@
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    .go-glyph { fill: #22D3EE; }
+    @media (prefers-color-scheme: light) {
+      .go-glyph { fill: #0E7490; }
+    }
+  </style>
+
+  <text class="go-glyph" x="12" y="17" text-anchor="middle"
+        font-family="ui-monospace, Menlo, Consolas, monospace" font-size="14" font-weight="bold">GO</text>
+</svg>
