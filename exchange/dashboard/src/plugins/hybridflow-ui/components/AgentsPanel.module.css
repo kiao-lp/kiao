@@ -1,0 +1,116 @@
+/* The flow-node agents panel, in whichever tool bar the document keeps it. A clean list:
+   a name, what it runs on, and the two gestures a row answers to — the definition itself
+   is edited in the central area, where there is room for every field of one. */
+.panel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    gap: 8px;
+}
+
+.header {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.spacer {
+    flex: 1;
+}
+
+.list {
+    flex: 1 1 auto;
+    min-height: 40px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.center {
+    display: flex;
+    justify-content: center;
+    padding: 16px;
+}
+
+.hint {
+    padding: 8px 4px;
+    color: var(--muted);
+    font-size: 0.85rem;
+}
+
+/* One agent: its name and what it runs on. The row is a box with two gestures at its end
+   rather than a form: the description unfolds below, and the definition is edited in the
+   central area. */
+.row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+}
+
+.main {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1;
+    min-width: 0;
+}
+
+.titleRow {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+}
+
+.name {
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* What it runs on. Muted because it is read at a glance, small because the row is mostly
+   its name. */
+.meta {
+    color: var(--muted);
+    font-size: 0.8rem;
+}
+
+/* The selection guidance, unfolded by its toggle. Kept whole rather than ellipsized: it is
+   what a task's agent is chosen by. */
+.description {
+    margin: 4px 0 0;
+    font-size: 0.85rem;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+/* The two gestures a row answers to. Out of the way until the row is read — but never out of
+   reach: dimmed, not removed, so a keyboard still lands on them, and :focus-within lights them
+   back up when it does. */
+.actions {
+    display: flex;
+    gap: 2px;
+    flex: none;
+    opacity: 0;
+    transition: opacity 120ms;
+}
+
+.row:hover .actions,
+.row:focus-within .actions {
+    opacity: 1;
+}
+
+/* The id, for whoever names the agent outside this panel — a card's settings hold it, and so does
+   every API call about one. Small because it is read rarely and copied when it is. */
+.id {
+    color: var(--muted);
+    font-size: 0.7rem;
+    font-family: monospace;
+    overflow-wrap: anywhere;
+    user-select: all;
+}

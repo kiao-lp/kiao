@@ -1,0 +1,50 @@
+{
+  "category": "classified",
+  "label": "Classification and handling markings",
+  "description": "A document that says what may be done with it. These markings are the one signal in this catalogue written *on purpose* by the document's author, so a hit is rarely a false positive — and a state marking imported into an ordinary store is a legal problem, not a tidiness one.",
+  "criticality": "critical",
+  "matchers": [
+    {
+      "label": "French defence classification",
+      "pattern": "\\b(?:TR[ÈE]S\\s+SECRET(?:\\s+D[ÉE]FENSE)?|SECRET\\s+D[ÉE]FENSE|CONFIDENTIEL\\s+D[ÉE]FENSE|SP[ÉE]CIAL\\s+FRANCE)\\b",
+      "hint": "IGI 1300. This document should not be in an ordinary store at all."
+    },
+    {
+      "label": "French restricted distribution",
+      "pattern": "\\bDIFFUSION\\s+RESTREINTE\\b|\\bNON\\s+PROT[ÉE]G[ÉE]\\b|\\bSECRET\\s+INDUSTRIE\\b",
+      "criticality": "high"
+    },
+    {
+      "label": "NATO marking",
+      "pattern": "\\b(?:COSMIC\\s+TOP\\s+SECRET|NATO\\s+(?:SECRET|CONFIDENTIAL|RESTRICTED|UNCLASSIFIED)|ATOMAL|BOHEMIA|BALK)\\b",
+      "caseSensitive": true
+    },
+    {
+      "label": "EU marking",
+      "pattern": "\\b(?:EU\\s+(?:TOP\\s+SECRET|SECRET|CONFIDENTIAL|RESTRICTED)|TR[ÈE]S\\s+SECRET\\s+UE|SECRET\\s+UE|CONFIDENTIEL\\s+UE|RESTREINT\\s+UE)\\b"
+    },
+    {
+      "label": "US classification and control markings",
+      "pattern": "\\bTOP\\s+SECRET\\b|\\b(?:TOP\\s+SECRET|SECRET|CONFIDENTIAL|UNCLASSIFIED)\\s*//\\s*[A-Z]|\\b(?:NOFORN|ORCON|REL\\s+TO|FOUO|CUI//|SCI\\b|SAP\\b|HCS\\b)"
+    },
+    {
+      "label": "UK marking",
+      "pattern": "\\bOFFICIAL[\\s-]SENSITIVE\\b|\\bUK\\s+(?:SECRET|TOP\\s+SECRET)\\b"
+    },
+    {
+      "label": "Export control",
+      "pattern": "\\b(?:ITAR|EAR99|ECCN\\s*[0-9][A-E][0-9]{3}|export[\\s-]controlled|contr[ôo]l[ée]\\s+[àa]\\s+l['’]exportation|dual[\\s-]use\\s+item|bien\\s+[àa]\\s+double\\s+usage)\\b",
+      "criticality": "high"
+    },
+    {
+      "label": "Corporate handling marking",
+      "pattern": "\\b(?:STRICTLY\\s+CONFIDENTIAL|COMPANY\\s+CONFIDENTIAL|CONFIDENTIEL(?:\\s+(?:ENTREPRISE|SOCI[ÉE]T[ÉE]))?|INTERNAL\\s+USE\\s+ONLY|USAGE\\s+INTERNE(?:\\s+UNIQUEMENT)?|FOR\\s+INTERNAL\\s+DISTRIBUTION|DO\\s+NOT\\s+DISTRIBUTE|NE\\s+PAS\\s+DIFFUSER|PROPRIETARY\\s+AND\\s+CONFIDENTIAL|EMBARGO(?:ED)?\\s+UNTIL)\\b",
+      "criticality": "high"
+    },
+    {
+      "label": "Named recipient list",
+      "pattern": "\\b(?:eyes\\s+only|for\\s+your\\s+eyes\\s+only|limited\\s+distribution|distribution\\s+restreinte|need[\\s-]to[\\s-]know|besoin\\s+d['’]en\\s+conna[îi]tre)\\b",
+      "criticality": "high"
+    }
+  ]
+}

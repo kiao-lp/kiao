@@ -1,0 +1,12 @@
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    .sql-glyph { fill: #818CF8; }
+    @media (prefers-color-scheme: light) {
+      .sql-glyph { fill: #4338CA; }
+    }
+  </style>
+
+  <!-- The language's own three letters, as for the other source kinds: at 11px the mark reads where a pictogram does not -->
+  <text class="sql-glyph" x="12" y="17" text-anchor="middle"
+        font-family="ui-monospace, Menlo, Consolas, monospace" font-size="11" font-weight="bold">SQL</text>
+</svg>

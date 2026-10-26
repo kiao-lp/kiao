@@ -1,0 +1,143 @@
+/* The configuration panel, in whichever tool bar the document keeps it. */
+.panel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    gap: 8px;
+    min-width: 0;
+}
+
+.header {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.title {
+    flex: 1;
+    min-width: 0;
+    font-weight: 600;
+}
+
+/* The list scrolls on its own, so the job log below it stays where it is put. */
+.list {
+    flex: 1 1 auto;
+    min-height: 60px;
+    overflow-y: auto;
+}
+
+.center {
+    display: flex;
+    justify-content: center;
+    padding: 16px;
+}
+
+/* Search on the left, the kind chips on the right; they drop under each other when the column the
+   panel sits in is narrow, which is most of the time. */
+.filters {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px 6px;
+}
+
+.search {
+    flex: 1 1 120px;
+    min-width: 0;
+}
+
+/* What tells a runtime from a server from a plugin, now that no title above the row does. */
+.rowIcon {
+    display: inline-flex;
+    align-items: center;
+    opacity: 0.55;
+}
+
+.empty {
+    padding: 12px 2px;
+    font-size: 0.85em;
+    opacity: 0.65;
+}
+
+/* The one sentence the panel owes the reader: once anything is registered here, a turn gets
+   exactly these servers and not the ones registered with the CLI itself. */
+.notice {
+    font-size: 0.82em;
+    opacity: 0.7;
+    line-height: 1.35;
+    padding: 2px 0 4px;
+}
+
+.row {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 6px 2px;
+    border-bottom: 1px solid var(--border);
+}
+
+.row:hover {
+    background: var(--state-pointed-bg);
+}
+
+.rowHead {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+.rowName {
+    flex: 1;
+    min-width: 0;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.rowRole {
+    font-size: 0.85em;
+    opacity: 0.72;
+    line-height: 1.3;
+}
+
+/* Version, channel, tool count: the small print of a row, on one wrapping line. */
+.rowMeta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 10px;
+    font-size: 0.78em;
+    opacity: 0.6;
+}
+
+.rowReason {
+    font-size: 0.8em;
+    color: var(--text-warning, #c98a10);
+    line-height: 1.3;
+}
+
+/* The job log: monospace, scrolling, and pinned to a height that shows progress without taking
+   the panel over. */
+.log {
+    flex: 0 0 auto;
+    max-height: 190px;
+    overflow: auto;
+    margin: 0;
+    padding: 6px 8px;
+    font-family: var(--font-mono, monospace);
+    font-size: 0.75em;
+    line-height: 1.35;
+    white-space: pre-wrap;
+    word-break: break-word;
+    background: var(--surface-sunken, rgba(127, 127, 127, 0.08));
+    border: 1px solid var(--border);
+    border-radius: 4px;
+}
+
+.logHead {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.8em;
+}

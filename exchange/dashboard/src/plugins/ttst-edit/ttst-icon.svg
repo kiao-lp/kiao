@@ -1,0 +1,24 @@
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    .ttst-sheet { stroke: #FBBF24; }
+    .ttst-lines { stroke: #A78BFA; }
+    .ttst-wave { stroke: #9CA3AF; }
+    @media (prefers-color-scheme: light) {
+      .ttst-sheet { stroke: #D97706; }
+      .ttst-lines { stroke: #7C3AED; }
+      .ttst-wave { stroke: #6B7280; }
+    }
+  </style>
+
+  <!-- Script sheet -->
+  <rect class="ttst-sheet" x="3" y="2" width="14" height="20" rx="2" stroke-width="2"/>
+
+  <!-- Script lines -->
+  <line class="ttst-lines" x1="6.5" y1="7" x2="13.5" y2="7" stroke-width="2" stroke-linecap="round"/>
+  <line class="ttst-lines" x1="6.5" y1="11" x2="13.5" y2="11" stroke-width="2" stroke-linecap="round"/>
+  <line class="ttst-lines" x1="6.5" y1="15" x2="11" y2="15" stroke-width="2" stroke-linecap="round"/>
+
+  <!-- Spoken output -->
+  <path class="ttst-wave" d="M19 9 A 4 4 0 0 1 19 15" stroke-width="2" stroke-linecap="round"/>
+  <path class="ttst-wave" d="M21.5 6.5 A 7.5 7.5 0 0 1 21.5 17.5" stroke-width="2" stroke-linecap="round"/>
+</svg>

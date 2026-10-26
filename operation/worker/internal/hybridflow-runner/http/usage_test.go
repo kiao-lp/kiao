@@ -1,0 +1,140 @@
+package runnerhttp
+
+import (
+	"encoding/json"
+	"errors"
+	agentapi "kiao/worker/internal/hybridflow-runner/agents"
+	"kiao/worker/internal/hybridflow-runner/assembly"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+)
+
+// usageServiceFor is a service whose two agents report the windows a test names — or, for a nil
+// snapshot, do not answer the quota port at all.
+func usageServiceFor(t *testing.T, claude, codex *agentapi.AgentUsageDto) *Service {
+	t.Helper()
+	convs, cfg := newTurnRegistry(t)
+	hub := assembly.NewEngine(cfg, convs)
+	set := func(name string, dto *agentapi.AgentUsageDto) {
+		if dto == nil {
+			hub.Agents.Set(name, &stubAgent{})
+			return
+		}
+		hub.Agents.Set(name, &usageAgent{dto: *dto})
+	}
+	set(agentapi.AgentClaude, claude)
+	set(agentapi.AgentCodex, codex)
+	svc := &Service{cfg: cfg, hub: hub, conversations: convs, liveness: hub.IsRunning}
+	svc.bindAgents(hub.Agents)
+	return svc
+}
+
+func oneWindow(percent int) *agentapi.AgentUsageDto {
+	return &agentapi.AgentUsageDto{Windows: []agentapi.AgentWindow{
+		{WindowMinutes: 300, PercentUsed: percent, ResetAtEpochSeconds: 1791148787}}}
+}
+
+// readWindows is the answer as the client reads it.
+func readWindows(t *testing.T, rec *httptest.ResponseRecorder) []agentapi.AgentWindow {
+	t.Helper()
+	var dto agentapi.AgentUsageDto
+	if err := json.Unmarshal(rec.Body.Bytes(), &dto); err != nil {
+		t.Fatalf("the answer could not be read: %v (%s)", err, rec.Body.String())
+	}
+	return dto.Windows
+}
+
+// Each agent answers about its own account, and the two do not cross.
+func TestUsageAnswersAboutTheAgentAskedFor(t *testing.T) {
+	svc := usageServiceFor(t, oneWindow(11), oneWindow(77))
+
+	for path, want := range map[string]int{
+		"/hybridflow-runner/usage?agent=claude": 11,
+		"/hybridflow-runner/usage?agent=codex":  77,
+		// No agent at all is the default's, which is what this endpoint has always answered and what
+		// a client written before there was more than one agent keeps getting.
+		"/hybridflow-runner/usage": 11,
+	} {
+		rec := do(svc, httptest.NewRequest(http.MethodGet, path, nil))
+		if rec.Code != http.StatusOK {
+			t.Errorf("GET %s = %d, want 200", path, rec.Code)
+			continue
+		}
+		windows := readWindows(t, rec)
+		if len(windows) != 1 || windows[0].PercentUsed != want {
+			t.Errorf("GET %s = %+v, want the account at %d%%", path, windows, want)
+		}
+	}
+}
+
+// An agent with no quota to report is a 404 — "this service does not do that" — and so is a name this
+// deployment has never heard of. Neither is a 503: nothing failed, and the panel shows the quota as
+// unavailable rather than as a figure belonging to somebody else.
+func TestUsageIsNotFoundForAnAgentWithNoAccountToReport(t *testing.T) {
+	svc := usageServiceFor(t, oneWindow(11), nil)
+
+	for _, path := range []string{"/hybridflow-runner/usage?agent=codex", "/hybridflow-runner/usage?agent=nobody"} {
+		if rec := do(svc, httptest.NewRequest(http.MethodGet, path, nil)); rec.Code != http.StatusNotFound {
+			t.Errorf("GET %s = %d, want 404", path, rec.Code)
+		}
+	}
+}
+
+// An agent that has a quota and could not be asked is a 503, which is the older half of this
+// endpoint's contract: the CLI is signed out, or the probe timed out.
+func TestUsageIsUnavailableWhenTheAccountCannotBeAsked(t *testing.T) {
+	convs, cfg := newTurnRegistry(t)
+	hub := assembly.NewEngine(cfg, convs)
+	hub.Agents.Set(agentapi.AgentCodex, &usageAgent{err: errors.New("signed out")})
+	svc := &Service{cfg: cfg, hub: hub, conversations: convs, liveness: hub.IsRunning}
+	svc.bindAgents(hub.Agents)
+
+	rec := do(svc, httptest.NewRequest(http.MethodGet, "/hybridflow-runner/usage?agent=codex", nil))
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("GET /hybridflow-runner/usage?agent=codex = %d, want 503", rec.Code)
+	}
+}
+
+// refreshUsageAgent is an agent answering both quota ports: the cheap one and the refreshed one.
+type refreshUsageAgent struct {
+	usageAgent
+	fresh agentapi.AgentUsageDto
+}
+
+func (a *refreshUsageAgent) RefreshUsage() (agentapi.AgentUsageDto, error) { return a.fresh, nil }
+
+// The endpoint reads through the refresh port where one is answered: a read here is a person
+// asking for fresh figures, worth what the refresh costs. The runner's own reads stay on the
+// cheap port.
+func TestUsagePrefersTheRefreshPort(t *testing.T) {
+	convs, cfg := newTurnRegistry(t)
+	hub := assembly.NewEngine(cfg, convs)
+	hub.Agents.Set(agentapi.AgentMuse, &refreshUsageAgent{
+		usageAgent: usageAgent{dto: *oneWindow(11)},
+		fresh:      *oneWindow(77),
+	})
+	svc := &Service{cfg: cfg, hub: hub, conversations: convs, liveness: hub.IsRunning}
+	svc.bindAgents(hub.Agents)
+
+	rec := do(svc, httptest.NewRequest(http.MethodGet, "/hybridflow-runner/usage?agent=muse", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /hybridflow-runner/usage?agent=muse = %d, want 200", rec.Code)
+	}
+	windows := readWindows(t, rec)
+	if len(windows) != 1 || windows[0].PercentUsed != 77 {
+		t.Errorf("usage = %+v, want the refreshed account at 77%%", windows)
+	}
+}
+
+// The route is mounted as long as *one* agent has an account to report. It answers per agent, and a
+// silent engine is no reason to take the endpoint off the air for the other one.
+func TestUsageStaysMountedWhileOneAgentHasAnAccount(t *testing.T) {
+	svc := usageServiceFor(t, nil, oneWindow(5))
+	if !svc.offersUsage() {
+		t.Fatal("an agent with a quota must keep the endpoint mounted")
+	}
+	if rec := do(svc, httptest.NewRequest(http.MethodGet, "/hybridflow-runner/usage?agent=codex", nil)); rec.Code != http.StatusOK {
+		t.Errorf("GET /hybridflow-runner/usage?agent=codex = %d, want 200", rec.Code)
+	}
+}

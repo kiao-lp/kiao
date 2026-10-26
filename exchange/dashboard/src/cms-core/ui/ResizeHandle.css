@@ -1,0 +1,43 @@
+/* Shared vertical divider. Use --muted so the handle is visible before interaction,
+   including on touch screens without cursor feedback. */
+:root {
+    --cms-resize-handle: 9px;
+    --cms-resize-handle-line: 2px;
+}
+
+@media (pointer: coarse) {
+    :root {
+        --cms-resize-handle: 20px;
+        --cms-resize-handle-line: 3px;
+    }
+}
+
+.cms-resize-handle {
+    flex: 0 0 var(--cms-resize-handle);
+    display: flex;
+    justify-content: center;
+    cursor: col-resize;
+    user-select: none;
+    /* Keep browser scrolling from consuming the divider drag. */
+    touch-action: none;
+}
+
+.cms-resize-handle::before {
+    content: '';
+    width: var(--cms-resize-handle-line);
+    background: var(--muted);
+    transition: width 0.15s, background 0.15s;
+}
+
+.cms-resize-handle:active::before {
+    width: 100%;
+    background: var(--accent);
+}
+
+/* Restrict hover feedback to hover-capable devices; touch can leave it stuck on. */
+@media (hover: hover) {
+    .cms-resize-handle:hover::before {
+        width: 100%;
+        background: var(--accent);
+    }
+}

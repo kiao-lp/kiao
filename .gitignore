@@ -1,0 +1,68 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+.idea
+
+# dependencies
+node_modules
+/.pnp
+.pnp.js
+
+# testing
+/coverage
+
+# production
+/build
+
+# misc
+.DS_Store
+
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+.vscode
+
+tmp
+
+# Build and staging output: the shared stage (bin/build-all.sh) and the end scripts
+# write here — the kiao-mcp bundle, the image context and tarball, the executable
+# staging. Rebuilt, never committed.
+/dist
+
+# Java
+.classpath
+.project
+.settings/
+target/
+*.class
+
+# Maven
+
+# IntelliJ
+*.iml
+.idea/
+
+# Logs
+*.log
+log/
+logs/
+
+.aider*
+
+# KIAO-installed format skills: worker writes the reference/kiao-skills bundle into the
+# store's .agents/skills and .claude/skills at every start. When this checkout is the store, those
+# are generated copies — only verify, hexarch, markdown-anchors, dashboard-plugin and file-actions
+# are this tree's own. All but verify have a discovery entry in both directories;
+# verify lives in .agents/skills alone, read by path from AGENTS.md.
+.agents/skills/*
+!.agents/skills/README.md
+!.agents/skills/verify/
+!.agents/skills/hexarch/
+!.agents/skills/markdown-anchors/
+!.agents/skills/dashboard-plugin/
+!.agents/skills/file-actions/
+.claude/skills/*
+!.claude/skills/dashboard-plugin/
+!.claude/skills/file-actions/
+!.claude/skills/hexarch/
+!.claude/skills/markdown-anchors/

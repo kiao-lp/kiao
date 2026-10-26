@@ -1,0 +1,300 @@
+.code-block-wrapper {
+    position: relative;
+    max-width: 100%;
+    overflow-x: auto;
+    box-sizing: border-box;
+}
+
+.code-copy-btn,
+.code-edit-btn,
+.code-extract-btn {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    padding: 2px 6px;
+    font-size: 12px;
+    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    border-radius: 3px;
+    color: #888;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s, background 0.15s;
+    z-index: 1;
+}
+
+.code-block-wrapper:hover .code-copy-btn,
+.code-block-wrapper:hover .code-edit-btn,
+.code-block-wrapper:hover .code-extract-btn {
+    opacity: 1;
+}
+
+.code-copy-btn:hover,
+.code-edit-btn:hover,
+.code-extract-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+    color: #fff;
+}
+
+.code-block-actions {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    display: flex;
+    flex-direction: row;
+    gap: 4px;
+    z-index: 1;
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+
+.code-block-wrapper:hover .code-block-actions {
+    opacity: 1;
+}
+
+.code-block-actions .code-copy-btn,
+.code-block-actions .code-edit-btn,
+.code-block-actions .code-extract-btn {
+    position: static;
+    opacity: 1;
+}
+
+.svg-copy-dropdown {
+    position: relative;
+}
+
+.svg-copy-menu {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 4px;
+    display: flex;
+    flex-direction: column;
+    min-width: 120px;
+    background: #2b2b2b;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+    overflow: hidden;
+    z-index: 2;
+}
+
+.svg-copy-menu-item {
+    padding: 6px 10px;
+    font-size: 12px;
+    text-align: left;
+    background: transparent;
+    border: none;
+    color: #ccc;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+}
+
+.svg-copy-menu-item:hover {
+    background: rgba(255, 255, 255, 0.15);
+    color: #fff;
+}
+
+.configured-markdown-container {
+    position: relative;
+}
+
+.copy-html-btn {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    padding: 4px;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    color: #88aaff;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s, background 0.15s, color 0.15s;
+    z-index: 10;
+}
+
+.configured-markdown-container:hover .copy-html-btn {
+    opacity: 1;
+}
+
+.copy-html-btn:hover {
+    background: rgba(100, 150, 255, 0.3);
+    color: #aaccff;
+}
+
+/* A diagram block: the page's own background inside a thin grey frame, so the
+   drawing reads as a figure and its limit stays visible. The fence still sits
+   in the <pre> react-markdown wraps it in, whose code background is lifted for
+   diagram blocks only — code blocks keep it. */
+pre:has(> .code-block-wrapper.diagram-block) {
+    background-color: transparent;
+}
+
+.code-block-wrapper.diagram-block {
+    background-color: var(--bg);
+    border: 1px solid var(--border);
+    padding: 12px;
+}
+
+/* Archdia and graph draw from their own two palettes; the page's variables win
+   here so a diagram follows the full application theme (sober included) and
+   the unified box look. Containers and separators keep the kits' own tones. */
+.code-block-wrapper .archdia-viewer-artboard .archdia-svg {
+    --archdia-bg: var(--bg);
+    --archdia-accent-bg: var(--diagram-box-fill);
+    --archdia-text: var(--text);
+    --archdia-box-border: var(--muted);
+    --archdia-muted: var(--muted);
+}
+
+.code-block-wrapper .graph-viewer-artboard .graph-svg {
+    --graph-bg: var(--bg);
+    --graph-accent-bg: var(--diagram-box-fill);
+    --graph-text: var(--text);
+    --graph-box-border: var(--muted);
+    --graph-muted: var(--muted);
+}
+
+/* Mermaid draws what the theme variables cannot say: every box carries the
+   shared 8px radius, and every text on a line the shared 14px (see
+   KIAO_DIAGRAM_GEOMETRY). The sequence renderer writes its own 16px inline,
+   hence the !important; it measured for 16, so 14 always fits its slot. */
+.mermaid svg rect {
+    rx: 8px;
+    ry: 8px;
+}
+
+.mermaid .edgeLabel {
+    font-size: 14px;
+}
+
+.mermaid svg .messageText,
+.mermaid svg .noteText,
+.mermaid svg .loopText,
+.mermaid svg .labelText {
+    font-size: 14px !important;
+}
+
+/* A diagram drawn into a document: the picture on the page, with none of the
+   editor's artboard around it — no canvas, no instruments. */
+.archdia-viewer-container {
+    display: flex;
+    justify-content: center;
+}
+
+.archdia-viewer-artboard {
+    position: relative;
+    max-width: 100%;
+}
+
+/* The SVG carries the authored canvas size; scale it down to the column it
+   lands in, the way an image in the same document would be. */
+.archdia-viewer-artboard .archdia-svg {
+    display: block;
+    max-width: 100%;
+    height: auto;
+}
+
+/* A diagram narrower than the column it lands in sits centered in it, whatever
+   language drew it — archdia in the rules above, the rest here. */
+.mermaid svg {
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+img[data-plantuml-source] {
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.graph-viewer-container {
+    display: flex;
+    justify-content: center;
+}
+
+.graph-viewer-artboard {
+    position: relative;
+    max-width: 100%;
+}
+
+.graph-viewer-artboard .graph-svg {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    /* The artboard also holds the toolbar, which may be wider than the
+       drawing — the drawing centers within the artboard, not just with it. */
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.svg-renderer-container {
+    display: flex;
+    justify-content: center;
+}
+
+/* A diagram that could not be drawn says so where it would have been, and nowhere else. */
+.mermaid-error {
+    padding: 10px 12px;
+    border: 1px solid var(--border, #ccc);
+    border-radius: 6px;
+    background: var(--accent-bg, #fafafa);
+    color: var(--text, #1a1a1a);
+    font-size: 0.9em;
+    /* The block sits in the <pre> a fenced block is wrapped in, whose white-space would hold a
+       sentence on one line and run it off the edge. */
+    white-space: normal;
+}
+
+.mermaid-error strong {
+    display: block;
+    margin-bottom: 0.4em;
+    color: #d4a017;
+}
+
+.mermaid-error pre,
+.mermaid-error p {
+    margin: 0;
+}
+
+.mermaid-error pre {
+    white-space: pre-wrap;
+}
+
+.katex-display {
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 8px 0;
+}
+
+.configured-markdown-error {
+    padding: 20px;
+    border: 1px solid var(--border, #ccc);
+    border-radius: 8px;
+    background: var(--accent-bg, #fafafa);
+    color: var(--text, #1a1a1a);
+}
+
+.configured-markdown-error h3 {
+    margin: 0 0 0.5em;
+    font-size: 1.2em;
+    color: #d4a017;
+}
+
+.configured-markdown-error button {
+    margin-top: 0.8em;
+    padding: 6px 14px;
+    border: 1px solid var(--border, #ccc);
+    border-radius: 4px;
+    background: var(--link, #1677ff);
+    color: white;
+    cursor: pointer;
+}

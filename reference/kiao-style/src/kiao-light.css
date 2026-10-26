@@ -1,0 +1,122 @@
+/* === KIAO Light Theme === */
+/* Light theme for the KIAO design system */
+
+[data-theme="light"] {
+    /* Primary Colors */
+    --bg: #F9FAFB;
+    --text: #111827;
+    --accent: #2563EB;
+    --accent-bg: #d8d8d8;
+
+    /* Diagrams — box fill, a light grey over the page (see kiao-diagram.ts) */
+    --diagram-box-fill: #e8eaf0;
+    /* Diagrams — fill of what holds other shapes: packages, clusters, groups */
+    --diagram-group-bg: #f0f1f5;
+
+    /* Secondary Colors */
+    --border: #E5E7EB;
+    --muted: #6B7280;
+    --text-disabled: #9CA3AF;
+
+    /* Links */
+    --link: #2563EB;
+    --link-visited: #4B5563;
+
+    /* Code & Tech */
+    --code: #BE123C;
+    --code-bg: #F3F4F6;
+
+    /* Forms */
+    --input-bg: #FFFFFF;
+    --input-bg-focus: #EFF6FF;
+
+    /* Tables — odd is the quiet base row, even carries the whole stripe */
+    --table-odd: #F9FAFB;
+    --table-even: #EDEFF3;
+
+    /* Messages & Alerts */
+    --notice-bg: #EFF6FF;
+
+    /* Internal Areas */
+    --inner-area-bg: #F3F4F6;
+
+    /* Spacing */
+    --padding: 11px;
+
+    /* Application Height */
+    --app-height: 100vh;
+
+    /* Additional Palette — the ten colours a note is filled with, one per name of the mindmap
+       ink below. Quiet, because a note's text is read over its fill. */
+    --color-red-bg: #fee2e2;
+    --color-orange-bg: #ffedd5;
+    --color-yellow-bg: #fef9c3;
+    --color-green-bg: #dcfce7;
+    --color-teal-bg: #ccfbf1;
+    --color-blue-bg: #dbeafe;
+    --color-violet-bg: #fae8ff;
+    --color-pink-bg: #fce7f3;
+    --color-brown-bg: #ede0d3;
+    --color-grey-bg: #e7e9ee;
+
+    --warning-bg: #ffedd5;
+
+    /* Interaction States */
+    --state-pointed-bg: #E5E7EB;
+    --state-selected-bg: #DBEAFE;
+
+    /* MLScript / Units */
+    --unit-vocab-text: #146b28;
+    --unit-question-text: #175f96;
+    --unit-title-text: #000058;
+
+    --unit-border-vocab: #146b28;
+    --unit-border-question: #175f96;
+    --unit-border-exercise: #DA70D6;
+    --unit-border-para: #686868;
+
+    /* Mindmap */
+    --mindmap-relation: #848c9c;
+
+    /* The ten colours a mindmap is inked in, when it is not to be inked in the one above: a
+       relation over its whole length, and a note's border. Ink rather than fill — it sits on
+       the canvas and not behind text — so these are the theme's own accent colours rather
+       than the quiet `--color-*-bg` a note of the same name is filled with. */
+    --mindmap-relation-red: #c0392b;
+    --mindmap-relation-orange: #d97706;
+    --mindmap-relation-yellow: #a16207;
+    --mindmap-relation-green: #146b28;
+    --mindmap-relation-teal: #0f766e;
+    --mindmap-relation-blue: #175f96;
+    --mindmap-relation-violet: #7c3aed;
+    --mindmap-relation-pink: #be185d;
+    --mindmap-relation-brown: #78350f;
+    --mindmap-relation-grey: #64748b;
+
+    /* Heading Hierarchy (Markdown / Editor) */
+    --heading-1: #2563EB;
+    --heading-2: #D97706;
+    --heading-3: #059669;
+    --heading-4: #0891B2;
+    --heading-5: #7C3AED;
+    --heading-6: #6B7280;
+}
+
+/* ============================================
+   VARIANTS
+   ============================================ */
+
+/* Compact Card */
+.kiao-card.kiao-compact {
+    padding: 20px;
+}
+
+.kiao-card.kiao-compact h1,
+.kiao-card.kiao-compact h2,
+.kiao-card.kiao-compact h3 {
+    margin-bottom: 10px;
+}
+
+.kiao-card.kiao-compact p {
+    margin-bottom: 8px;
+}

@@ -1,0 +1,196 @@
+.cms-tool-bar-side {
+    display: flex;
+    flex-direction: row;
+    overflow: hidden;
+    flex-shrink: 0;
+    background: var(--bg);
+}
+
+.cms-tool-bar-side-left {
+    border-right: 1px solid var(--border);
+}
+
+.cms-tool-bar-side-right {
+    border-left: 1px solid var(--border);
+}
+
+/* The centre takes the width the side columns leave. */
+.cms-tool-bar-side-center {
+    flex: 1;
+    min-width: 0;
+}
+
+/* The document scrolls inside its pane. */
+.cms-tool-bar-side-center .cms-document-area {
+    height: 100%;
+}
+
+/* The bars of one side, stacked. One today; a side split vertically shares the column's width. */
+.cms-tool-bar-stack {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.cms-tool-bar-centers {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: row;
+    overflow: hidden;
+}
+
+.cms-tool-bar-center-area {
+    min-width: 0;
+    display: flex;
+    overflow: hidden;
+}
+
+.cms-tool-bar-center-area.cms-split-part-collapsed {
+    display: none;
+}
+
+.cms-tool-bar-empty {
+    flex: 1;
+}
+
+.cms-tool-bar {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.cms-tool-bar .ant-tabs {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.cms-tool-bar .ant-tabs-nav {
+    margin: 0;
+    padding: 0 8px;
+    background: var(--accent-bg);
+    border-bottom: 1px solid var(--border);
+}
+
+/* A single tab without controls needs no strip. Child selectors preserve tabs inside a panel. */
+.cms-tool-bar-single > .ant-tabs > .ant-tabs-nav {
+    display: none;
+}
+
+.cms-tool-bar > .ant-tabs > .ant-tabs-nav > .ant-tabs-extra-content {
+    flex-shrink: 1;
+    min-width: 0;
+    max-width: calc(100% - 44px);
+}
+
+.cms-tool-bar-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0 4px 8px;
+    overflow-x: auto;
+}
+
+.cms-tool-bar-controls > * {
+    flex-shrink: 0;
+}
+
+.cms-tool-bar .ant-tabs-tab {
+    padding: 8px 10px;
+}
+
+/* Icon-only labels: antd's default inter-tab gap is sized for text */
+.cms-tool-bar .ant-tabs-tab + .ant-tabs-tab {
+    margin-left: 4px;
+}
+
+.cms-tool-bar .ant-tabs-tab .anticon {
+    margin: 0;
+    font-size: 16px;
+}
+
+.cms-tool-bar .ant-tabs-content-holder {
+    flex: 1;
+    overflow: hidden;
+}
+
+.cms-tool-bar .ant-tabs-content {
+    height: 100%;
+}
+
+.cms-tool-bar .ant-tabs-tabpane {
+    height: 100%;
+    overflow: auto;
+    padding: 4px;
+}
+
+.cms-tool-bar .ant-tabs-tabpane.cms-tool-bar-pane-flush {
+    padding: 0;
+}
+
+.cms-layout-grid {
+    display: flex;
+    flex-direction: row;
+    gap: 3px;
+    width: 132px;
+    height: 46px;
+    padding: 4px 0;
+}
+
+/* Reset the theme's button styles so only the selected area is filled. */
+.cms-layout-grid-cell {
+    flex: 1;
+    min-height: 8px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: var(--bg);
+    padding: 0;
+    margin: 0;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+}
+
+/* The house hover colour, said here rather than inherited, so what the rectangles do on the way
+   past does not depend on a rule written for form buttons. */
+.cms-layout-grid-cell:hover {
+    background: var(--accent) !important;
+    border-color: var(--accent) !important;
+}
+
+/* Where the tab is now: greyed, because it is not somewhere to move it to. Clicking it is what
+   takes the tab out of the layout. */
+.cms-layout-grid-cell[aria-pressed='true'] {
+    background: var(--border);
+    border-color: var(--muted);
+}
+
+/* Incompatible bars stay visible. Override the hover background applied to all cells. */
+.cms-layout-grid-cell-barred,
+.cms-layout-grid-cell-barred:hover {
+    background: transparent !important;
+    border-style: dashed;
+    border-color: var(--border) !important;
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.cms-layout-grid-column {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    width: 34px;
+}
+
+.cms-layout-grid-centers {
+    flex: 1;
+    display: flex;
+    flex-direction: row;
+    gap: 3px;
+    min-width: 0;
+}

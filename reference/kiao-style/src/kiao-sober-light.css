@@ -1,0 +1,150 @@
+/* === KIAO Sober Light Theme === */
+/* A deliberately unremarkable light theme: the neutral greys, single blue accent
+   and monochrome heading ladder a business application is expected to wear.
+   Meant for demonstrations, where the charter's own themes read as too personal.
+
+   Loads on top of kiao-dark.css, which carries the base rules; put it after. */
+
+[data-theme="sober-light"] {
+    /* Primary Colors */
+    --bg: #F8FAFC;
+    --text: #0F172A;
+    --accent: #1D4ED8;
+    --accent-bg: #FFFFFF;
+
+    /* Diagrams — box fill, a light grey over the page (see kiao-diagram.ts) */
+    --diagram-box-fill: #FFFFFF;
+    /* Diagrams — fill of what holds other shapes: packages, clusters, groups */
+    --diagram-group-bg: #F1F5F9;
+
+    /* Secondary Colors */
+    --border: #E2E8F0;
+    --muted: #64748B;
+    --text-disabled: #94A3B8;
+
+    /* Links */
+    --link: #2563EB;
+    --link-visited: #1E40AF;
+
+    /* Code & Tech */
+    --code: #B42318;
+    --code-bg: #F1F5F9;
+
+    /* Forms — the field keeps its colour on focus; the accent ring carries the state */
+    --input-bg: #FFFFFF;
+    --input-bg-focus: #FFFFFF;
+
+    /* Tables — odd is the quiet base row, even carries the whole stripe.
+       Keep --table-even clearly below --state-pointed-bg so a striped row
+       never reads as hovered. */
+    --table-odd: #FFFFFF;
+    --table-even: #F8FAFC;
+
+    /* Messages & Alerts */
+    --notice-bg: #F1F5F9;
+
+    /* Internal Areas */
+    --inner-area-bg: #F1F5F9;
+
+    /* Spacing */
+    --padding: 11px;
+
+    /* Application Height */
+    --app-height: 100vh;
+
+    /* Additional Palette — the ten colours a note is filled with, one per name of the mindmap
+       ink below; quiet, because a note's text is read over its fill. The blue sits a step off
+       --state-selected-bg, so a blue note is never mistaken for a selected one. */
+    --color-red-bg: #FEE2E2;
+    --color-orange-bg: #FFEDD5;
+    --color-yellow-bg: #FEF9C3;
+    --color-green-bg: #DCFCE7;
+    --color-teal-bg: #CCFBF1;
+    --color-blue-bg: #E0F2FE;
+    --color-violet-bg: #EDE9FE;
+    --color-pink-bg: #FCE7F3;
+    --color-brown-bg: #EDE0D3;
+    --color-grey-bg: #E7ECF2;
+
+    --warning-bg: #FEF3C7;
+
+    /* Interaction States */
+    --state-pointed-bg: #E2E8F0;
+    --state-selected-bg: #DBEAFE;
+
+    /* MLScript / Units */
+    --unit-vocab-text: #15803D;
+    --unit-question-text: #1D4ED8;
+    --unit-title-text: #0F172A;
+
+    --unit-border-vocab: #16A34A;
+    --unit-border-question: #2563EB;
+    --unit-border-exercise: #9333EA;
+    --unit-border-para: #94A3B8;
+
+    /* Mindmap */
+    --mindmap-relation: #94A3B8;
+
+    /* The ten colours a mindmap is inked in, when it is not to be inked in the one above: a
+       relation over its whole length, and a note's border. Ink rather than fill — it sits on
+       the canvas and not behind text — so these are the theme's own accent colours rather
+       than the quiet `--color-*-bg` a note of the same name is filled with. */
+    --mindmap-relation-red: #DC2626;
+    --mindmap-relation-orange: #EA580C;
+    --mindmap-relation-yellow: #CA8A04;
+    --mindmap-relation-green: #16A34A;
+    --mindmap-relation-teal: #0D9488;
+    --mindmap-relation-blue: #2563EB;
+    --mindmap-relation-violet: #7C3AED;
+    --mindmap-relation-pink: #DB2777;
+    --mindmap-relation-brown: #92400E;
+    --mindmap-relation-grey: #64748B;
+
+    /* Heading Hierarchy (Markdown / Editor) — one ink fading down the ranks,
+       rather than one colour per rank. */
+    --heading-1: #0F172A;
+    --heading-2: #0F172A;
+    --heading-3: #1E293B;
+    --heading-4: #334155;
+    --heading-5: #475569;
+    --heading-6: #64748B;
+}
+
+/* ============================================
+   SHAPE
+   Tokens cannot reach the radii, the shadow, the font and the centred h1 that
+   kiao-dark.css writes into its base rules, so the sober theme restates them.
+   Scoped to its own selector: the charter's own themes are left untouched.
+   ============================================ */
+
+[data-theme="sober-light"] body {
+    font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+[data-theme="sober-light"] h1 {
+    text-align: left;
+}
+
+[data-theme="sober-light"] button,
+[data-theme="sober-light"] input[type="submit"],
+[data-theme="sober-light"] input[type="button"],
+[data-theme="sober-light"] input,
+[data-theme="sober-light"] textarea,
+[data-theme="sober-light"] select {
+    border-radius: 6px;
+}
+
+[data-theme="sober-light"] input[type="checkbox"] {
+    border-radius: 4px;
+}
+
+[data-theme="sober-light"] .kiao-card,
+[data-theme="sober-light"] .inner-area,
+[data-theme="sober-light"] .kiao-upload-zone,
+[data-theme="sober-light"] .kiao-warning {
+    border-radius: 8px;
+}
+
+[data-theme="sober-light"] .kiao-card {
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+}

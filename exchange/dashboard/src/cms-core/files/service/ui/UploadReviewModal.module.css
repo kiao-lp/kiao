@@ -1,0 +1,99 @@
+/* The review dialog an upload opens: the tree of what arrived on the left, what it says on the right. */
+
+.body {
+    display: flex;
+    gap: 16px;
+    height: 100%;
+    min-height: 0;
+}
+
+.tree {
+    flex: 0 0 34%;
+    min-width: 0;
+    overflow: auto;
+    border-right: 1px solid var(--border, rgba(128, 128, 128, 0.3));
+    padding-right: 8px;
+}
+
+.reader {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    gap: 8px;
+}
+
+/* The choice sits above the text it is a choice about, so reading and deciding are one gesture. */
+.choice {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.selectedPath {
+    font-family: monospace;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+
+.index {
+    flex: 1 1 auto;
+    margin: 0;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    padding: 12px;
+    border: 1px solid var(--border, rgba(128, 128, 128, 0.3));
+    border-radius: 6px;
+}
+
+/* Nothing selected, or a file with no index: the pane says which, rather than sitting blank. */
+.empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    opacity: 0.7;
+}
+
+.node {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* The decision, reported where the file is. A colour alone would not survive a colour-blind
+   reader, so each carries its word. */
+.decision {
+    font-size: 11px;
+    line-height: 1.6;
+    padding: 0 6px;
+    border-radius: 4px;
+    border: 1px solid currentColor;
+}
+
+.import {
+    color: var(--success, #52c41a);
+}
+
+.delete {
+    color: var(--error, #ff4d4f);
+}
+
+/* Import as text: the document is kept and its file is not, so it is neither of the other two. */
+.asText {
+    color: var(--link, #1677ff);
+}
+
+/* A file that was converted: the ones a decision is actually required for. */
+.indexed {
+    opacity: 0.6;
+}

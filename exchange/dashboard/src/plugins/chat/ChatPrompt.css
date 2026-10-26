@@ -1,0 +1,1617 @@
+/* ── Layout ──────────────────────────────────────────────────────────────── */
+
+.chat-prompt {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    gap: 0;
+    overflow: hidden;
+}
+
+/* ── Columns ─────────────────────────────────────────────────────────────────
+   One per pinned conversation, then the list and whatever it has selected. With nothing pinned
+   there is a single column and the panel looks exactly as it always did. Each column is a chat in
+   its own right, so it needs enough width to be one: below that they scroll sideways rather than
+   squeeze, and widening the toolbar is what makes room for another. */
+
+.chat-columns {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: hidden;
+}
+
+.chat-column {
+    flex: 1 1 0;
+    min-width: 260px;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.chat-column + .chat-column {
+    border-left: 1px solid var(--border, #e8e8e8);
+}
+
+/* ── Conversation switcher ───────────────────────────────────────────────── */
+
+/* One bar: the select that picks a conversation, and the actions for the one it has picked. The
+   titles live in the dropdown, so the chat below keeps the height a list of them used to take. */
+.chat-conversation-list {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 6px 4px 10px;
+    border-bottom: 1px solid var(--border, #e8e8e8);
+}
+
+.chat-conversation-select {
+    flex: 1;
+    min-width: 0;
+}
+
+.chat-conversation-option {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+/* What the fold hides: the conversations working out of sight. Kept to a dot and a number, since
+   the room this bar saves is the whole point of it. */
+.chat-conversation-running-count {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 0.72em;
+    color: var(--muted, #888);
+}
+
+.chat-conversation-head {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    padding: 4px 6px 4px 10px;
+    border-bottom: 1px solid var(--border, #e8e8e8);
+}
+
+.chat-conversation-head-label {
+    font-size: 0.72em;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted, #888);
+}
+
+/* One starter per agent, kept together at the bar's right: they are variants of a single action —
+   start a conversation — and reading as one group is what says so. */
+.chat-conversation-head-starters {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.chat-conversation-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 6px 3px 10px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.chat-conversation-row:hover {
+    background: var(--state-pointed-bg, #f5f5f5);
+}
+
+.chat-conversation-row--active {
+    background: var(--state-selected-bg, #e6f4ff);
+}
+
+/* Grey while idle, so the running one is the only thing on this list that draws the eye. */
+.chat-conversation-dot {
+    flex: 0 0 auto;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--border, #d9d9d9);
+}
+
+.chat-conversation-dot--running {
+    background: #52c41a;
+    animation: claudeDot 1.4s infinite ease-in-out;
+}
+
+.chat-conversation-title {
+    flex: 1;
+    min-width: 0;
+    font-size: 0.82em;
+    line-height: 1.5;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.chat-conversation-rename {
+    flex: 1;
+    min-width: 0;
+}
+
+/* Out of the way until the row is pointed at or selected: four buttons on every row would leave a
+   narrow panel with more controls than titles. */
+.chat-conversation-actions {
+    display: flex;
+    gap: 0;
+    opacity: 0;
+    transition: opacity 0.12s;
+}
+
+.chat-conversation-row:hover .chat-conversation-actions,
+.chat-conversation-row--active .chat-conversation-actions,
+.chat-conversation-row--header .chat-conversation-actions,
+/* The bar shows one conversation at a time, so its actions are never a crowd and are always there. */
+.chat-conversation-list .chat-conversation-actions {
+    opacity: 1;
+}
+
+/* A pinned conversation's row is the title bar of its own column rather than one row among others:
+   it names what is underneath instead of offering a choice, so it is not selectable and does not
+   light up as though it were. */
+.chat-conversation-row--header {
+    flex: 0 0 auto;
+    background: var(--accent-bg, #fafafa);
+    border-bottom: 1px solid var(--border, #e8e8e8);
+    cursor: default;
+}
+
+.chat-conversation-row--header:hover {
+    background: var(--accent-bg, #fafafa);
+}
+
+.chat-conversation-row--header .chat-conversation-title {
+    font-weight: 600;
+}
+
+/* ── One chat ────────────────────────────────────────────────────────────── */
+
+.chat-pane {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* Where the conversation is kept, as the transcript's first line: read once, for reference,
+   then scrolled past like any other line — it costs no room afterwards. Centred and quiet, the way
+   a chat marks what is meta rather than said; plain text so the path selects and copies whole. */
+.chat-conversation-storage {
+    flex: 0 0 auto;
+    text-align: center;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 0.72em;
+    line-height: 1.5;
+    color: var(--muted, #888);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    user-select: text;
+    cursor: text;
+}
+
+/* ── Message history ─────────────────────────────────────────────────────── */
+
+.chat-messages-loading {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.chat-messages-area {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 12px 10px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    /* No scroll-behavior: smooth. The transcript scrolls itself to follow the newest message, and it
+       decides whether to by asking where the reader is — an animated scroll reports the middle of its
+       own jump as the reader's position. See useStickToBottom. */
+}
+
+/* ── Empty state ─────────────────────────────────────────────────────────── */
+
+.chat-empty-state {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    color: var(--muted, #888);
+    text-align: center;
+    padding: 32px 16px;
+    user-select: none;
+}
+
+.chat-empty-icon {
+    font-size: 2.2em;
+    opacity: 0.4;
+}
+
+.chat-empty-state p {
+    margin: 0;
+    font-size: 0.82em;
+    line-height: 1.6;
+    opacity: 0.7;
+}
+
+/* ── Message bubbles ─────────────────────────────────────────────────────── */
+
+/* `backwards` and not `both`: a filled-forwards transform stays on the element for good, and an
+   element carrying any transform becomes the containing block of everything positioned `fixed`
+   below it — which would trap a magnified bubble inside the scrolling transcript instead of
+   letting it float over the page. The end of this animation is the element's own resting state
+   anyway, so there is nothing to hold. See cms-core/zoom/magnify.ts. */
+.chat-message {
+    display: flex;
+    animation: claudeMessageIn 0.18s ease-out backwards;
+}
+
+@keyframes claudeMessageIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.chat-message--user {
+    justify-content: flex-end;
+}
+
+.chat-message--assistant {
+    justify-content: flex-start;
+}
+
+.chat-message-bubble {
+    max-width: 88%;
+    padding: 7px 11px;
+    border-radius: 12px;
+    font-size: 0.83em;
+    line-height: 1.55;
+    word-break: break-word;
+}
+
+.chat-message--user .chat-message-bubble {
+    background: #1677ff;
+    color: #fff;
+    border-bottom-right-radius: 4px;
+}
+
+.chat-message--assistant .chat-message-bubble {
+    background: var(--accent-bg, #f5f5f5);
+    color: var(--text, inherit);
+    border: 1px solid var(--border, #e8e8e8);
+    border-bottom-left-radius: 4px;
+}
+
+/* A message the service has not taken: refused, or waiting for a socket that is down. It is drawn
+   as an outline of the bubble it would be, so it does not read as one that was sent. */
+.chat-message--pending .chat-message-bubble {
+    background: transparent;
+    color: var(--text, inherit);
+    border: 1px dashed #1677ff;
+}
+
+.chat-message--pending .chat-message-marker {
+    border-color: #1677ff;
+    color: #1677ff;
+}
+
+/* A message said *into* a running turn rather than one that started it. It is the user's bubble and
+   stays on the user's side, drawn a shade lighter and inset from the edge: what the caption says in
+   words, the position says at a glance — this one happened inside the reply beside it. */
+.chat-message--between {
+    padding-inline-end: 14px;
+}
+
+.chat-message--between .chat-message-bubble {
+    background: #4096ff;
+    border-bottom-right-radius: 12px;
+    border-top-right-radius: 4px;
+}
+
+.chat-message--between .chat-message-marker {
+    border-color: rgba(255, 255, 255, 0.55);
+    color: rgba(255, 255, 255, 0.9);
+}
+
+/* Where the conversation can be branched, offered on the prompt it would branch at.
+   `order: -1` puts it left of a bubble that hugs the right edge, and it keeps its space whether or
+   not it is showing: a control that appears by reflowing the message beside it moves the thing the
+   reader was about to click. Faded rather than removed, so it is still in the tab order — and
+   `:focus-within` is what makes it visible to whoever gets there by keyboard. */
+.chat-message-fork {
+    order: -1;
+    align-self: flex-end;
+    opacity: 0;
+    transition: opacity 0.12s ease-out;
+}
+
+.chat-message:hover .chat-message-fork,
+.chat-message-fork:focus-within {
+    opacity: 1;
+}
+
+/* Plain text for user messages */
+.chat-message-text {
+    white-space: pre-wrap;
+}
+
+/* A notice is the service speaking, not either side of the conversation — so it is centred and
+   unbubbled, where neither a user nor an assistant line ever appears. */
+.chat-message--notice {
+    justify-content: center;
+}
+
+.chat-notice {
+    max-width: 92%;
+    padding: 4px 10px;
+    border: 1px dashed var(--border, #e8e8e8);
+    border-radius: 10px;
+    background: var(--notice-bg, #fafafa);
+    color: var(--muted, #888);
+    font-size: 0.78em;
+    line-height: 1.5;
+    text-align: center;
+}
+
+/* ── How a reply ended, when it did not end on its own ───────────────────── */
+
+.chat-message-markers {
+    display: flex;
+    gap: 4px;
+    margin-top: 5px;
+}
+
+/* A caption that says what a message *is* belongs above it; the ones below say how it ended. */
+.chat-message-markers--above {
+    margin-top: 0;
+    margin-bottom: 4px;
+}
+
+.chat-message-marker {
+    font-size: 0.72em;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 1px 6px;
+    border-radius: 8px;
+    border: 1px solid var(--border, #e8e8e8);
+    color: var(--muted, #888);
+    cursor: help;
+}
+
+/* ── Markdown rendering (assistant) ──────────────────────────────────────── */
+
+.chat-message-markdown {
+    min-width: 0;
+}
+
+/* The CMS renderer nests the rendered markdown one <div> below the class it is given, so the
+   catch-all margin reset has to reach through that wrapper: `> *` alone only ever hits it. Both
+   selectors stay below the element rules further down, which keep their own margins. */
+.chat-message-markdown > *,
+.chat-message-markdown > div > * {
+    margin-block-start: 0;
+    margin-block-end: 0;
+}
+
+.chat-message-markdown p {
+    margin: 0 0 0.5em;
+}
+
+.chat-message-markdown p:last-child {
+    margin-bottom: 0;
+}
+
+.chat-message-markdown h1,
+.chat-message-markdown h2,
+.chat-message-markdown h3,
+.chat-message-markdown h4 {
+    font-weight: 600;
+    margin: 0.7em 0 0.3em;
+    line-height: 1.3;
+}
+
+.chat-message-markdown h1 { font-size: 1.2em; }
+.chat-message-markdown h2 { font-size: 1.1em; }
+.chat-message-markdown h3 { font-size: 1em; }
+
+.chat-message-markdown ul,
+.chat-message-markdown ol {
+    margin: 0.3em 0;
+    padding-left: 1.4em;
+}
+
+.chat-message-markdown li {
+    margin: 0.15em 0;
+}
+
+.chat-message-markdown code {
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 0.9em;
+    background: rgba(0, 0, 0, 0.07);
+    border-radius: 3px;
+    padding: 0.1em 0.35em;
+}
+
+.chat-message-markdown pre {
+    background: var(--bg, #fff);
+    border: 1px solid var(--border, #e8e8e8);
+    border-radius: 6px;
+    padding: 8px 10px;
+    margin: 0.5em 0;
+    overflow-x: auto;
+}
+
+.chat-message-markdown pre code {
+    background: none;
+    padding: 0;
+    border-radius: 0;
+    font-size: 0.88em;
+    white-space: pre;
+}
+
+.chat-message-markdown blockquote {
+    border-left: 3px solid var(--border, #e8e8e8);
+    margin: 0.4em 0;
+    padding: 0.2em 0.8em;
+    opacity: 0.8;
+}
+
+.chat-message-markdown table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 0.9em;
+    margin: 0.4em 0;
+}
+
+.chat-message-markdown th,
+.chat-message-markdown td {
+    border: 1px solid var(--border, #e8e8e8);
+    padding: 4px 8px;
+    text-align: left;
+}
+
+.chat-message-markdown th {
+    background: rgba(0, 0, 0, 0.04);
+    font-weight: 600;
+}
+
+.chat-message-markdown a {
+    color: #1677ff;
+    text-decoration: none;
+}
+
+.chat-message-markdown a:hover {
+    text-decoration: underline;
+}
+
+.chat-message-markdown hr {
+    border: none;
+    border-top: 1px solid var(--border, #e8e8e8);
+    margin: 0.5em 0;
+}
+
+/* ── Tool use badges ─────────────────────────────────────────────────────── */
+
+.chat-tool-uses {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-bottom: 6px;
+}
+
+.chat-tool-use-badge {
+    display: inline-block;
+    font-size: 0.75em;
+    padding: 2px 7px;
+    border-radius: 10px;
+    background: rgba(0, 0, 0, 0.06);
+    border: 1px solid var(--border, #e8e8e8);
+    color: var(--muted, #888);
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    white-space: normal;
+}
+
+/* A chip that opens onto the whole tool input. Same chip, plus the affordance. */
+.chat-tool-use-badge--openable {
+    cursor: pointer;
+    text-align: left;
+}
+
+.chat-tool-use-badge--openable:hover {
+    color: var(--text, #333);
+}
+
+.chat-tool-detail {
+    flex-basis: 100%;
+    margin: 2px 0 0;
+    padding: 6px 8px;
+    max-height: 240px;
+    overflow: auto;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 0.75em;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    word-break: break-word;
+    background: var(--bg, #fff);
+    border: 1px solid var(--border, #e8e8e8);
+    border-radius: 6px;
+    color: var(--muted, #888);
+}
+
+/* ── Thinking ────────────────────────────────────────────────────────────────
+   In the transcript because a turn cannot be audited without it, collapsed because a reply cannot
+   be read through it. It sits where it happened, between the paragraphs it came between. */
+
+.chat-thinking {
+    margin: 4px 0;
+}
+
+.chat-thinking-toggle {
+    display: inline-block;
+    padding: 0;
+    border: none;
+    background: none;
+    font-size: 0.78em;
+    font-style: italic;
+    color: var(--muted, #888);
+    cursor: pointer;
+}
+
+.chat-thinking-toggle:hover:not(:disabled) {
+    color: var(--text, #333);
+}
+
+.chat-thinking-toggle:disabled {
+    cursor: default;
+}
+
+.chat-thinking-text {
+    margin-top: 4px;
+    padding: 6px 10px;
+    border-left: 2px solid var(--border, #e8e8e8);
+    font-size: 0.85em;
+    font-style: italic;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: var(--muted, #888);
+}
+
+/* ── Subagent ────────────────────────────────────────────────────────────────
+   One delegation where it happened: who was asked and to do what on the toggle line, collapsed
+   like a stretch of reasoning, and what the child thought and did underneath once opened. */
+
+.chat-subagent {
+    margin: 4px 0;
+}
+
+.chat-subagent-toggle {
+    display: inline-block;
+    padding: 0;
+    border: none;
+    background: none;
+    font-size: 0.78em;
+    color: var(--muted, #888);
+    cursor: pointer;
+}
+
+.chat-subagent-toggle:hover:not(:disabled) {
+    color: var(--text, #333);
+}
+
+.chat-subagent-toggle:disabled {
+    cursor: default;
+}
+
+.chat-subagent-objective {
+    font-size: 0.78em;
+    color: var(--muted, #888);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.chat-subagent-body {
+    margin-top: 4px;
+    padding-left: 10px;
+    border-left: 2px solid var(--border, #e8e8e8);
+}
+
+.chat-subagent-truncated {
+    margin-top: 4px;
+    font-size: 0.78em;
+    font-style: italic;
+    color: var(--muted, #888);
+}
+
+/* ── Streaming indicator ─────────────────────────────────────────────────── */
+
+.chat-streaming-dots {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding-left: 2px;
+    vertical-align: middle;
+}
+
+.chat-streaming-dots span {
+    display: inline-block;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: currentColor;
+    opacity: 0.5;
+    animation: claudeDot 1.2s infinite ease-in-out;
+}
+
+.chat-streaming-dots span:nth-child(2) { animation-delay: 0.2s; }
+.chat-streaming-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes claudeDot {
+    0%, 80%, 100% { transform: scale(0.8); opacity: 0.3; }
+    40%            { transform: scale(1.1); opacity: 1; }
+}
+
+/* ── Permission requests ─────────────────────────────────────────────────── */
+
+.chat-permission-requests {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 45%;
+    overflow-y: auto;
+    padding: 8px 10px 0;
+}
+
+.chat-permission-card {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px 10px;
+    border: 1px solid var(--warning-border, #ffe58f);
+    border-radius: 6px;
+    background: var(--warning-bg, #fffbe6);
+}
+
+.chat-permission-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+}
+
+.chat-permission-icon {
+    margin-top: 3px;
+    color: #d48806;
+    flex-shrink: 0;
+}
+
+.chat-permission-title {
+    min-width: 0;
+    font-size: 0.82em;
+    line-height: 1.4;
+    color: var(--text, inherit);
+}
+
+/* Inside the title, on the same line as the tool it is the subject of. Its own size would compound
+   with the title's, so it keeps that one and is told apart by the colour alone. */
+.chat-permission-subject {
+    color: var(--muted, #888);
+    overflow-wrap: anywhere;
+}
+
+.chat-permission-input {
+    margin: 0;
+    max-height: 160px;
+    overflow: auto;
+    padding: 6px 8px;
+    border: 1px solid var(--border, #e8e8e8);
+    border-radius: 4px;
+    background: var(--bg, #fff);
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 0.72em;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.chat-permission-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    justify-content: flex-end;
+}
+
+/* Manual Live's count, sat next to the buttons it is about to press. Tabular figures so the row
+   does not shift as it walks down from 10 to 9. */
+.chat-permission-countdown {
+    margin-right: auto;
+    font-size: 0.75em;
+    font-variant-numeric: tabular-nums;
+    color: #d48806;
+}
+
+/* ── Questions ───────────────────────────────────────────────────────────── */
+
+/* A question is not a permission and does not wear its amber: amber says "something is about to
+   happen that you may not want", and nothing is about to happen here — the turn is waiting to be
+   told what the user wants. The blue is the panel's own accent, the one the send button already
+   wears, which is what the card is asking to be reached for.
+
+   The card carries its colours as its own custom properties rather than reading the palette's:
+   --bg is what antd's controls are themed against, so a card that departs from it far enough to
+   read as blue takes every border and every muted grey inside it down with it. These are a tint
+   away from --bg and the controls are given back an edge against it, in both themes, from the one
+   block. */
+
+.chat-questions {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 60%;
+    overflow-y: auto;
+    padding: 8px 10px 0;
+}
+
+.chat-question-card {
+    /* Surface and edge of the card itself. */
+    --chat-q-surface: #eff6ff;
+    --chat-q-edge: #93c5fd;
+    /* The edge of everything inside it — boxes, inputs, the preview — which the palette's --border
+       cannot supply here: it is a grey chosen against --bg and vanishes on a blue wash. */
+    --chat-q-line: #3b82f6;
+    /* Icon and chip. */
+    --chat-q-accent: #1d4ed8;
+    --chat-q-chip: rgba(29, 78, 216, 0.12);
+    /* --muted lands just under the readable ratio on the tint, and an option's reason is the
+       smallest text on the card. */
+    --chat-q-muted: #4b5563;
+
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 8px 10px;
+    border: 1px solid var(--chat-q-edge);
+    border-radius: 6px;
+    background: var(--chat-q-surface);
+}
+
+.chat-question-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.chat-question-icon {
+    color: var(--chat-q-accent);
+    flex-shrink: 0;
+}
+
+.chat-question-title {
+    font-size: 0.82em;
+    line-height: 1.4;
+    color: var(--text, inherit);
+}
+
+.chat-question {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+/* The model's two-word label for the question, as a chip above it — the same shorthand the CLI's
+   own dialog puts in its tab. */
+.chat-question-header {
+    align-self: flex-start;
+    padding: 1px 6px;
+    border-radius: 10px;
+    background: var(--chat-q-chip);
+    font-size: 0.68em;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: var(--chat-q-accent);
+}
+
+.chat-question-text {
+    font-size: 0.82em;
+    line-height: 1.45;
+    color: var(--text, inherit);
+}
+
+/* One option per line: the labels carry a sentence of description each, and antd's default inline
+   row folds them into an unreadable ribbon in a sidebar this narrow. */
+.chat-question-options {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    /* antd zeroes a Radio.Group's font-size to kill the whitespace between inline options, and the
+       relative size below then multiplies out to nothing: without this the labels are in the page,
+       laid out, and 0px tall. Checkbox.Group carries no such rule, so restoring the inherited size
+       here is also what makes the two kinds of question read alike. */
+    font-size: 1em;
+}
+
+.chat-question-options .ant-radio-wrapper,
+.chat-question-options .ant-checkbox-wrapper {
+    align-items: flex-start;
+    margin-inline-end: 0;
+    /* The size of the question it answers — an option is not an aside. */
+    font-size: 0.82em;
+    white-space: normal;
+}
+
+/* antd centres the box against the whole of what it labels, which on an option carrying a sentence
+   of description leaves it beside the reason rather than beside the choice. The offset is what
+   centres it on the first line instead. */
+.chat-question-options .ant-radio,
+.chat-question-options .ant-checkbox {
+    align-self: flex-start;
+    margin-top: 2px;
+}
+
+/* An unticked box is drawn in the palette's --border against --bg, and neither is what is behind it
+   here. Only the unticked state: the ticked one is filled with the primary colour and needs no
+   help. */
+.chat-question-options .ant-radio:not(.ant-radio-checked) .ant-radio-inner,
+.chat-question-options .ant-checkbox:not(.ant-checkbox-checked) .ant-checkbox-inner {
+    border-color: var(--chat-q-line);
+    background-color: var(--input-bg, #fff);
+}
+
+.chat-question-label {
+    color: var(--text, inherit);
+}
+
+/* Under the label rather than beside it, so the option reads as a choice with a reason and not as
+   two competing labels. */
+.chat-question-description {
+    display: block;
+    font-size: 0.92em;
+    line-height: 1.4;
+    color: var(--chat-q-muted);
+}
+
+/* The mock-up an option is compared by. Monospaced and scrolling in its own box: it is the one
+   field here the model writes to be looked at rather than read. */
+.chat-question-preview {
+    margin: 0;
+    max-height: 200px;
+    overflow: auto;
+    padding: 6px 8px;
+    border: 1px solid var(--chat-q-line);
+    border-radius: 4px;
+    background: var(--input-bg, #fff);
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 0.72em;
+    line-height: 1.45;
+    white-space: pre;
+}
+
+.chat-question-other.ant-input {
+    font-size: 0.82em;
+    border-color: var(--chat-q-line);
+}
+
+.chat-question-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    justify-content: flex-end;
+}
+
+/* ── Input area ──────────────────────────────────────────────────────────── */
+
+.chat-input-area {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px 10px 10px;
+    border-top: 1px solid var(--border, #e8e8e8);
+    background: var(--bg, #fff);
+}
+
+/* The bar the box is resized from, sat on its top edge. A thin line rather than a handle: it is
+   found by the cursor turning, and a heavier bar in a sidebar would read as a divider. */
+.chat-prompt-grip {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 8px;
+    margin-bottom: -6px;
+    cursor: ns-resize;
+    /* The browser's own gesture would scroll the panel instead of dragging the bar. */
+    touch-action: none;
+}
+
+.chat-prompt-grip::before {
+    content: '';
+    width: 44px;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--border, #e8e8e8);
+    transition: background 0.15s, width 0.15s;
+}
+
+.chat-prompt-grip:hover::before,
+.chat-prompt-grip:focus-visible::before {
+    width: 100%;
+    background: #1677ff;
+}
+
+.chat-prompt-grip:focus-visible {
+    outline: none;
+}
+
+.chat-textarea {
+    width: 100%;
+    /* The grip above resizes it — the corner one only ever grew it off the bottom of the panel. */
+    resize: none;
+    min-height: 58px;
+    max-height: 70vh;
+    padding: 7px 9px;
+    border: 1px solid var(--border, #e8e8e8);
+    border-radius: 6px;
+    background: var(--accent-bg, #fafafa);
+    color: inherit;
+    font-family: inherit;
+    font-size: 0.84em;
+    line-height: 1.45;
+    box-sizing: border-box;
+    transition: border-color 0.15s;
+}
+
+.chat-textarea:focus {
+    outline: none;
+    border-color: #1677ff;
+    background: var(--bg, #fff);
+}
+
+.chat-textarea:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+/* ── Server-side sign-in ─────────────────────────────────────────────────── */
+
+.chat-login-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex: 0 0 auto;
+    margin: 8px 10px 0;
+    padding: 8px 10px;
+    border: 1px solid var(--warning-border, #ffe58f);
+    border-radius: 6px;
+    background: var(--warning-bg, #fffbe6);
+}
+
+.chat-login-text {
+    font-size: 0.82em;
+    line-height: 1.4;
+    color: var(--text, inherit);
+}
+
+.chat-login-hint {
+    font-size: 0.78em;
+    color: var(--muted, #888);
+}
+
+/* A bundle too old to route the service's frames: nothing on this panel will update again, so the
+   banner is as loud as the sign-out one. */
+.chat-socket-banner {
+    flex: 0 0 auto;
+    margin: 8px 10px 0;
+    padding: 8px 10px;
+    border: 1px solid var(--error-border, #ffccc7);
+    border-radius: 6px;
+    background: var(--color-red-bg, #fff2f0);
+    font-size: 0.82em;
+    line-height: 1.4;
+    color: var(--text, inherit);
+}
+
+/* A socket that dropped is being retried, which is a wait rather than a failure — so it is the
+   warning colours and not the red ones. */
+.chat-socket-banner--retrying {
+    border-color: var(--warning-border, #ffe58f);
+    background: var(--warning-bg, #fffbe6);
+}
+
+/* Every refusal the service returns. It sits directly above the input, because what it is about is
+   the message that was just typed there. */
+.chat-error-notice {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    flex: 0 0 auto;
+    margin: 8px 10px 0;
+    padding: 6px 6px 6px 10px;
+    border: 1px solid var(--error-border, #ffccc7);
+    border-radius: 6px;
+    background: var(--color-red-bg, #fff2f0);
+    font-size: 0.82em;
+    line-height: 1.4;
+    color: var(--text, inherit);
+}
+
+.chat-error-notice-icon {
+    margin-top: 2px;
+    color: var(--color-red, #cf1322);
+}
+
+.chat-error-notice-text {
+    flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+/* The driver's own remark about the live turn — a silence naming itself. It sits with the
+   error notice above the input, but reads as status rather than as a refusal: muted, with a
+   spinner, since the turn it is about is still running. */
+.chat-driver-notice {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 0 0 auto;
+    margin: 8px 10px 0;
+    padding: 6px 10px;
+    font-size: 0.82em;
+    line-height: 1.4;
+    color: var(--text, inherit);
+    opacity: 0.75;
+}
+
+.chat-driver-notice-text {
+    flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.chat-login-hint code {
+    font-size: 0.95em;
+}
+
+.chat-login-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.chat-login-steps ol {
+    margin: 0;
+    padding-left: 20px;
+    font-size: 0.9em;
+    line-height: 1.7;
+}
+
+.chat-login-link-row {
+    display: flex;
+    gap: 8px;
+}
+
+.chat-login-waiting {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.9em;
+    color: var(--muted, #888);
+}
+
+/* ── Usage tab ─────────────────────────────────────────────────────────────────
+   One section per agent, one after the other: the quota of an engine is nothing to its neighbours,
+   so the sections are separated rather than sharing one frame. */
+
+.chat-usage-tab {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow-y: auto;
+    padding: 10px 12px 16px;
+    gap: 4px;
+}
+
+.chat-usage-tab--empty {
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    color: var(--muted, #888);
+    font-size: 0.85em;
+    line-height: 1.6;
+}
+
+.chat-usage-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 0 14px;
+}
+
+.chat-usage-section + .chat-usage-section {
+    border-top: 1px solid var(--border, #e8e8e8);
+}
+
+.chat-usage-section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.chat-usage-section-title {
+    font-size: 0.85em;
+    font-weight: 600;
+    color: var(--text, inherit);
+}
+
+/* The refresh, with the sign-in beside it where the agent has one. The pair stays one flex child
+   of the head row, so the title keeps the left and the buttons the right whatever is offered. */
+.chat-usage-section-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* ── Quota gauges ──────────────────────────────────────────────────────────── */
+
+.chat-usage-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid var(--border, #e8e8e8);
+    border-radius: 6px;
+    background: var(--accent-bg, #fafafa);
+}
+
+.chat-usage-panel--muted {
+    color: var(--muted, #888);
+    font-size: 0.85em;
+    text-align: center;
+    padding: 12px;
+}
+
+.chat-usage-row {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.chat-usage-row-main {
+    display: grid;
+    grid-template-columns: 120px 1fr;
+    align-items: center;
+    gap: 12px;
+}
+
+.chat-usage-label {
+    font-size: 0.85em;
+    font-weight: 500;
+    color: var(--text, inherit);
+}
+
+.chat-usage-progress {
+    margin: 0;
+}
+
+.chat-usage-time-rail::after {
+    content: '';
+    position: absolute;
+    left: var(--chat-usage-time-position);
+    top: 50%;
+    width: 2px;
+    height: 14px;
+    background: var(--error, #cf1322);
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+}
+
+.chat-usage-reset {
+    margin-left: 132px;
+    font-size: 0.75em;
+    color: var(--muted, #888);
+}
+
+.chat-textarea-expanded {
+    width: 100%;
+    min-height: 50vh;
+    max-height: 75vh;
+    padding: 12px 14px;
+    border: 1px solid var(--border, #e8e8e8);
+    border-radius: 6px;
+    background: var(--accent-bg, #fafafa);
+    color: inherit;
+    font-family: inherit;
+    font-size: 0.95em;
+    line-height: 1.55;
+    box-sizing: border-box;
+    resize: vertical;
+    transition: border-color 0.15s;
+}
+
+.chat-textarea-expanded:focus {
+    outline: none;
+    border-color: #1677ff;
+    background: var(--bg, #fff);
+}
+
+.chat-textarea-expanded:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+    resize: none;
+}
+
+/* ── Controls row ────────────────────────────────────────────────────────── */
+
+.chat-controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+/* The two selects say what the next turn will run with — something to glance at rather than to
+   read, and at the panel's own size they were taking a whole wrapped row of a sidebar. antd v6
+   drives its metrics off these custom properties, so one block moves the text, the box and the
+   padding together; the three classes are what it takes to outweigh the variant's own. */
+.chat-controls .ant-select.chat-model-effort-select,
+.chat-controls .ant-select.chat-permission-select {
+    --select-font-size: 11px;
+    --select-line-height: 1.45;
+    --select-font-height: 16px;
+    --select-height: 22px;
+    --select-padding-horizontal: 6px;
+}
+
+.chat-controls .chat-model-effort-select .ant-select-suffix,
+.chat-controls .chat-permission-select .ant-select-suffix {
+    font-size: 9px;
+}
+
+.chat-model-effort-select {
+    min-width: 104px;
+}
+
+.chat-permission-select {
+    min-width: 88px;
+}
+
+/* Bypass is the mode where nothing is asked — flag the select rather than let it read as neutral.
+   The colours are the root's own variables in antd v6; there is no inner selector element to paint. */
+.chat-controls .ant-select.chat-permission-select--bypass {
+    --select-border-color: var(--warning-border, #ffe58f);
+    --select-background: var(--warning-bg, #fffbe6);
+}
+
+/* The list is the same few words as the box it drops out of, so it is the same size — a popup at
+   the app's own font read as a different control from the one that opened it. */
+.chat-select-popup .ant-select-item {
+    min-height: 22px;
+    padding: 2px 8px;
+    font-size: 11px;
+    line-height: 1.45;
+}
+
+.chat-select-popup .ant-select-item-group {
+    min-height: 18px;
+    font-size: 10px;
+}
+
+.chat-buttons {
+    display: flex;
+    gap: 4px;
+    margin-left: auto;
+}
+
+/* ── Dark mode overrides ─────────────────────────────────────────────────── */
+
+/* ── Attachments ─────────────────────────────────────────────────────────────
+   A screenshot pasted into the box, a document dropped on the column. Two places show them: the
+   strip above the box, for what is going with the next message, and the user bubble, for what went
+   with one that was sent. They look alike on purpose — the second is what the first becomes. */
+
+.chat-attachment-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    max-height: 132px;
+    overflow-y: auto;
+}
+
+.chat-attachment-chip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 100%;
+    padding: 3px 4px 3px 6px;
+    font-size: 0.75em;
+    border: 1px solid var(--border, #e8e8e8);
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.03);
+    color: var(--text, #333);
+}
+
+/* Still uploading: the chip is there, and visibly not finished. Dimming it rather than replacing it
+   with a spinner keeps the name readable, which is the thing a user checks. */
+.chat-attachment-chip--uploading {
+    opacity: 0.65;
+}
+
+.chat-attachment-chip--error {
+    border-color: var(--error-border, #ffa39e);
+    background: var(--error-bg, #fff2f0);
+    color: var(--error, #cf1322);
+}
+
+.chat-attachment-thumb {
+    width: 26px;
+    height: 26px;
+    object-fit: cover;
+    border-radius: 4px;
+    background: var(--bg, #fff);
+}
+
+.chat-attachment-icon {
+    display: flex;
+    width: 26px;
+    height: 26px;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.05);
+    color: var(--muted, #888);
+}
+
+.chat-attachment-name {
+    max-width: 130px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.chat-attachment-size {
+    color: var(--muted, #888);
+    font-variant-numeric: tabular-nums;
+}
+
+.chat-attachment-remove {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--muted, #888);
+    font-size: 10px;
+    cursor: pointer;
+}
+
+.chat-attachment-remove:hover:not(:disabled) {
+    background: rgba(0, 0, 0, 0.08);
+    color: var(--text, #333);
+}
+
+.chat-attachment-remove:disabled {
+    cursor: not-allowed;
+    opacity: 0.4;
+}
+
+/* The picker's input. Hidden rather than absent: it is what the paperclip clicks. */
+.chat-attachment-input {
+    display: none;
+}
+
+.chat-attach-icon {
+    font-size: 12px;
+    line-height: 1;
+}
+
+/* ── What a sent message carried ── */
+
+.chat-attachments-sent {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 6px;
+    margin-top: 6px;
+}
+
+.chat-attachment-sent {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    max-width: 100%;
+    padding: 2px 7px;
+    font-size: 0.75em;
+    border: 1px solid var(--border, #e8e8e8);
+    border-radius: 10px;
+    background: rgba(0, 0, 0, 0.05);
+    color: var(--muted, #888);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* An attachment that has been swept. Struck through rather than hidden: the message did carry it,
+   and a transcript that quietly dropped the line would be saying something untrue. */
+.chat-attachment-sent--gone {
+    text-decoration: line-through;
+    opacity: 0.65;
+}
+
+/* An image shows itself. Bounded, because a full-resolution screenshot would be the whole column;
+   clicking opens it at its own size. */
+.chat-attachment-sent--image {
+    display: block;
+    padding: 0;
+    border-radius: 8px;
+    line-height: 0;
+}
+
+.chat-attachment-sent--image img {
+    display: block;
+    max-width: 220px;
+    max-height: 180px;
+    border-radius: 7px;
+}
+
+/* ── Dropping a file on the column ── */
+
+.chat-pane {
+    position: relative;
+}
+
+.chat-pane--drag-over {
+    outline: 2px dashed var(--primary, #1677ff);
+    outline-offset: -2px;
+}
+
+.chat-drop-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* The drop has to land on the pane, not on this: a child that took the event would fire
+       dragleave the moment it appeared, and the overlay would flicker the drop away. */
+    pointer-events: none;
+    background: rgba(22, 119, 255, 0.08);
+    color: var(--primary, #1677ff);
+    font-size: 0.8em;
+    font-weight: 500;
+}
+
+[data-theme="dark"] .chat-message--user .chat-message-bubble {
+    background: #1a6ae0;
+}
+
+[data-theme="dark"] .chat-message-markdown code {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme="dark"] .chat-message-markdown pre {
+    background: rgba(255, 255, 255, 0.04);
+}
+
+[data-theme="dark"] .chat-tool-use-badge {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+[data-theme="dark"] .chat-tool-detail {
+    background: rgba(255, 255, 255, 0.04);
+}
+
+/* The card sits on the dark amber --warning-bg, where the light-theme icon reads as muddy. */
+[data-theme="dark"] .chat-permission-icon,
+[data-theme="dark"] .chat-permission-countdown {
+    color: #ffc53d;
+}
+
+/* The same card a tint above the dark --bg, where the light theme's blues go muddy. */
+[data-theme="dark"] .chat-question-card {
+    --chat-q-surface: #101a30;
+    --chat-q-edge: #2b4a7d;
+    --chat-q-line: #4b7bd0;
+    --chat-q-accent: #7cc0ff;
+    --chat-q-chip: rgba(124, 192, 255, 0.16);
+    --chat-q-muted: var(--muted, #d5deef);
+}
+
+[data-theme="dark"] .chat-attachment-chip,
+[data-theme="dark"] .chat-attachment-sent {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+[data-theme="dark"] .chat-attachment-icon,
+[data-theme="dark"] .chat-attachment-remove:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+/* ── Background work ─────────────────────────────────────────────────────────
+   The turn's roster below the transcript: one line of counts, opening onto one row per task
+   with a workflow's children beneath it. Muted like a delegation's toggle line — it is read at
+   a glance while the turn runs, and as a one-line account once it settled. */
+
+.chat-background {
+    flex: 0 0 auto;
+    margin: 8px 10px 0;
+    font-size: 0.82em;
+    line-height: 1.4;
+    color: var(--muted, #888);
+}
+
+.chat-background-toggle {
+    padding: 0;
+    border: none;
+    background: none;
+    font-size: 1em;
+    color: inherit;
+    cursor: pointer;
+}
+
+.chat-background-toggle:hover {
+    color: var(--text, #333);
+}
+
+.chat-background-rows {
+    margin-top: 2px;
+    padding-left: 10px;
+    border-left: 2px solid var(--border, #e8e8e8);
+}
+
+.chat-background-row {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.chat-background-row--child {
+    padding-left: 14px;
+}
+
+.chat-background-glyph {
+    flex: 0 0 auto;
+}
+
+.chat-background-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.chat-background-status {
+    flex: 0 0 auto;
+    opacity: 0.8;
+}

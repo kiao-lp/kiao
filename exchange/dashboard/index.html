@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<!-- Default theme for loading/login screens, before ViewStateProvider loads the stored theme. -->
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="/BrainK.jpg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#000000" />
+    <meta
+      name="description"
+      content="Dashboard: Web-based file management and editing platform."
+    />
+    <!-- iOS reads this one when the app is added to the home screen, and no manifest icon. -->
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <!-- Keep one manifest link: browsers ignore subsequent ones. Vite PWA uses manifest: false. -->
+    <link rel="manifest" href="/manifest.json" />
+    <title>Dashboard</title>
+  </head>
+  <body>
+    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <div id="root"></div>
+    <script type="module" src="/src/index.tsx"></script>
+  </body>
+</html>

@@ -1,0 +1,23 @@
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    .node-a { fill: #818CF8; }
+    .node-b { fill: #34D399; }
+    .node-c { fill: #FCD34D; }
+    .edge { stroke: #6B7280; stroke-width: 1.5; }
+    @media (prefers-color-scheme: light) {
+      .node-a { fill: #4F46E5; }
+      .node-b { fill: #059669; }
+      .node-c { fill: #D97706; }
+      .edge { stroke: #9CA3AF; }
+    }
+  </style>
+  <!-- top node -->
+  <rect class="node-a" x="8" y="1" width="8" height="5" rx="1.5"/>
+  <!-- bottom-left node -->
+  <rect class="node-b" x="1" y="18" width="8" height="5" rx="1.5"/>
+  <!-- bottom-right node -->
+  <rect class="node-c" x="15" y="18" width="8" height="5" rx="1.5"/>
+  <!-- edges -->
+  <line class="edge" x1="10" y1="6" x2="5" y2="18"/>
+  <line class="edge" x1="14" y1="6" x2="19" y2="18"/>
+</svg>

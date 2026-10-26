@@ -1,0 +1,21 @@
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    .img-frame { stroke: #A78BFA; }
+    .img-sun { fill: #FBBF24; }
+    .img-mountain { stroke: #34D399; }
+    @media (prefers-color-scheme: light) {
+      .img-frame { stroke: #7C3AED; }
+      .img-sun { fill: #F59E0B; }
+      .img-mountain { stroke: #059669; }
+    }
+  </style>
+  
+  <!-- Frame -->
+  <rect class="img-frame" x="3" y="3" width="18" height="18" rx="2" stroke-width="2"/>
+  
+  <!-- Sun circle -->
+  <circle class="img-sun" cx="8.5" cy="8.5" r="2.5"/>
+  
+  <!-- Mountains -->
+  <path class="img-mountain" d="M3 17L8 12L11 15L15 10L21 17" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

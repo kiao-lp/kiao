@@ -1,0 +1,66 @@
+:root {
+  /* Mappings for legacy usage if strictly needed, otherwise reliant on kiao-style globals */
+  --element-background-color: var(--accent-bg);
+  --element-pointed-background-color: var(--state-pointed-bg);
+  --element-selected-background-color: var(--state-selected-bg);
+  --stroke-color: var(--border);
+}
+
+/*
+  Dashboard is a border layout: the window is the frame, and everything that has more to show than
+  it fits scrolls *inside* one of the panes. The page itself therefore never scrolls, and saying so
+  here is what makes that a property of the app rather than a happy accident of what is on screen.
+  Two things would otherwise raise scrollbars around the whole layout, and both stop at this rule:
+  a popup laid out past the edge of the window — a tooltip, a dropdown, drawn in the body rather
+  than in the pane it was opened from — and the width of a scrollbar itself, which `100vw` counts
+  in, so that an element sized by it overflows the moment one appears and asks for the other.
+  Below this line the frame is measured in per cent of a body that is already the window; a length
+  in viewport units under it is a bug waiting for a scrollbar.
+*/
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  margin: 0;
+  background-color: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-family: "Atkinson Hyperlegible", "Inter", -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+}
+
+#root,
+#ui-root {
+  width: 100%;
+  height: 100%;
+}
+
+#ui-root {
+  display: flex;
+  justify-content: stretch;
+  flex-direction: column;
+  overflow: hidden;
+  background-color: var(--bg);
+  color: var(--text);
+}
+
+#ui-root>.menu {
+  max-height: 50%;
+  overflow-y: auto;
+}
+
+.top-right-area {
+  background-color: var(--element-background-color);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  padding-right: 5px;
+}
+
+.main-area {
+  overflow: hidden;
+}

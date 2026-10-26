@@ -1,0 +1,31 @@
+{
+  "content": {
+    "elements": {
+      "notes": [
+        {
+          "id": "NOTE-LinkRnm",
+          "userBounds": [
+            120,
+            90,
+            null,
+            null
+          ],
+          "bounds": [
+            120,
+            90,
+            160,
+            60
+          ],
+          "content": "[Orientation](/smoke/%F0%9F%92%BC/Orientation.md)",
+          "zIndex": 3
+        }
+      ],
+      "relations": []
+    }
+  },
+  "docType": "QuickMindmap",
+  "docId": "6f0c1a7e-3d52-4c9b-9a2e-1b7d4c8e5a03",
+  "docTypeVersion": 1,
+  "createdAt": "2026-09-06T08:00:00.000Z",
+  "updatedAt": "2026-09-06T08:00:00.000Z"
+}
