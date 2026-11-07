@@ -1,0 +1,99 @@
+# Generated at container startup by docker-entrypoint.sh; __WORKER_PORT__,
+# __HYBRIDFLOW_PORT__ and __PLANTUML_PORT__ are replaced with the configured internal ports.
+server {
+    listen 80;
+    server_name _;
+    root /usr/share/dashboard;
+    index index.html;
+    client_max_body_size 100M;
+
+    location = /dashboard {
+        return 301 /dashboard/;
+    }
+
+    # nginx's default mime.types has no .mjs/.ttf/.webmanifest, so they'd be served
+    # as application/octet-stream and the browser would refuse the .mjs modules.
+    location ~* ^/dashboard/.+\.(mjs|ttf|webmanifest)$ {
+        root /usr/share;
+        types {
+            application/javascript     mjs;
+            font/ttf                   ttf;
+            application/manifest+json  webmanifest;
+        }
+        add_header Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0";
+    }
+
+    location /dashboard/ {
+        alias /usr/share/dashboard/;
+        try_files $uri $uri/ /dashboard/index.html;
+        add_header Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0";
+    }
+
+    # PlantUML: the SPA is built with VITE_PLANTUML_SERVER_URL=/plantuml, so a
+    # ```plantuml block requests /plantuml/svg/<encoded> through nginx.
+    location /plantuml/ {
+        proxy_pass http://127.0.0.1:__PLANTUML_PORT__/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # The SPA calls the worker through origin-relative /api/files/...
+    location /api/files/ {
+        client_max_body_size 100M;
+        proxy_pass http://127.0.0.1:__WORKER_PORT__/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        # Several endpoints here walk or read the whole store — a delete or a move runs the
+        # link-fixer over it, a search indexes documents, a folder download streams a zip of it.
+        # The default 60s is short for that on a bind-mounted store, where every read crosses the
+        # host filesystem boundary; a 504 there leaves the client with nothing while the service
+        # carries on working.
+        # 660s, not 600: the longest bound the service itself applies to a /api/files/ request is
+        # the 10-minute action timeout, and the proxy giving up first turns a reportable failure
+        # into a 504 with nothing behind it.
+        proxy_read_timeout 660s;
+        proxy_send_timeout 660s;
+    }
+
+    # The boards and the flow nodes — the hybridflow-store in this container,
+    # on the same origin as the SPA, so the one bundle is right here, in a server
+    # deployment and behind a kiao launcher alike.
+    #
+    # The change feed is a **held request**: GET /changes?wait=1 returns when something on the
+    # board changes, and until then the service holds the connection open with nothing written
+    # on it — hence proxy_buffering off, or the answer a board was held open for arrives late,
+    # and a read timeout past the service's own 25s bound on that wait, or nginx kills a healthy
+    # one and the browser sees a 504 every few seconds. A server deployment keeps the same
+    # two lines, for the same request.
+    location /api/hybridflow/ {
+        proxy_pass http://127.0.0.1:__HYBRIDFLOW_PORT__/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_buffering off;
+        proxy_read_timeout 75s;
+        proxy_send_timeout 75s;
+    }
+
+    # Every socket the worker answers on, by prefix rather than by name — which is what
+    # the vite dev server and bin/kiao-launcher have always done. Naming one path meant that when
+    # the turn socket moved from /ws/claude to /ws/agent, this template kept proxying the name
+    # nothing asks for any more: the SPA's connection fell through to the static root, 404'd, and
+    # the agent tab sat under a "Reconnecting to the agent service…" banner for good.
+    location /api/ws/ {
+        proxy_pass http://127.0.0.1:__WORKER_PORT__/ws/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 3600s;
+    }
+}

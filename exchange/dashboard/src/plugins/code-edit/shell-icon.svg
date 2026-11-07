@@ -1,0 +1,19 @@
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    .sh-frame { stroke: #34D399; }
+    .sh-glyph { stroke: #34D399; }
+    @media (prefers-color-scheme: light) {
+      .sh-frame { stroke: #047857; }
+      .sh-glyph { stroke: #047857; }
+    }
+  </style>
+
+  <!-- Terminal window -->
+  <rect class="sh-frame" x="2.5" y="4" width="19" height="16" rx="2.5" stroke-width="2"/>
+
+  <!-- Prompt chevron -->
+  <path class="sh-glyph" d="M6.5 10L10 13L6.5 16" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Prompt underscore -->
+  <path class="sh-glyph" d="M13 15.5H17" stroke-width="2" stroke-linecap="round"/>
+</svg>

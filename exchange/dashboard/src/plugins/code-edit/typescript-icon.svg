@@ -1,0 +1,12 @@
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    .ts-glyph { fill: #60A5FA; }
+    @media (prefers-color-scheme: light) {
+      .ts-glyph { fill: #1D4ED8; }
+    }
+  </style>
+
+  <!-- The language's own two letters: at 16px a mark reads where a pictogram does not -->
+  <text class="ts-glyph" x="12" y="17" text-anchor="middle"
+        font-family="ui-monospace, Menlo, Consolas, monospace" font-size="14" font-weight="bold">TS</text>
+</svg>

@@ -1,0 +1,10 @@
+{
+  "features": [
+    { "id": "f1", "label": "Feature One", "description": "First capability" },
+    { "id": "f2", "label": "Feature Two", "description": "Second capability" }
+  ],
+  "options": [
+    { "id": "o1", "label": "Option A", "support": { "f1": "ootb", "f2": "not-supported" } },
+    { "id": "o2", "label": "Option B", "support": { "f1": "customization", "f2": "ootb" } }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "name": "smoke fixture",
+  "kind": "generic-json",
+  "opened_by": "code-edit plugin",
+  "nested": {
+    "count": 2,
+    "items": ["a", "b"]
+  }
+}

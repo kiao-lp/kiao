@@ -1,0 +1,21 @@
+.field {
+    display: grid;
+    align-content: start;
+    gap: 6px;
+    min-width: 0;
+}
+
+.fieldLabel {
+    font-weight: 500;
+}
+
+.hint {
+    color: var(--muted);
+    font-size: 0.9em;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+}
+
+.field :global(.ant-select) {
+    width: 100%;
+}

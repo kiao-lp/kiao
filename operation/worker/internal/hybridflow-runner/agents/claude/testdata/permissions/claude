@@ -1,0 +1,104 @@
+#!/usr/bin/env node
+const { createInterface } = require('node:readline');
+const { access, appendFile, writeFile } = require('node:fs/promises');
+
+if (process.argv.includes('--version')) {
+    console.log('claude-permission-fixture');
+} else if (process.argv.includes('--help')) {
+    console.log('--effort <level> (low, medium, high)');
+} else if (process.argv[2] === 'auth') {
+    console.log(JSON.stringify({ loggedIn: true, authMethod: 'api_key' }));
+} else if (process.argv.includes('--print')) {
+    const emit = frame => console.log(JSON.stringify(frame));
+    const pending = new Map();
+    let started = false;
+    let inputClosed = false;
+    const deadline = setTimeout(() => process.exit(3), 60000);
+    const lines = createInterface({ input: process.stdin });
+    lines.on('close', () => { inputClosed = true; clearTimeout(deadline); });
+    lines.on('line', line => {
+        const frame = JSON.parse(line);
+        if (frame.type === 'user' && !started) {
+            started = true;
+            run(frame.message.content).catch(error => {
+                console.error(error);
+                process.exit(2);
+            });
+        } else if (frame.type === 'control_response') {
+            const response = frame.response;
+            const resolve = pending.get(response.request_id);
+            if (!resolve) throw new Error('Unexpected approval response');
+            pending.delete(response.request_id);
+            resolve(response.response);
+        }
+    });
+
+    function tool(id, path) {
+        const input = { file_path: path, content: `Written after approval: ${path}\n` };
+        emit({ type: 'assistant', message: { content: [{ type: 'tool_use', id, name: 'Write', input }] } });
+        return input;
+    }
+
+    async function write(id, path) {
+        const input = tool(id, path);
+        if (inputClosed) {
+            emit({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id,
+                content: 'Tool permission request failed: AbortError: Stream closed', is_error: true }] } });
+            return;
+        }
+        const decision = new Promise(resolve => pending.set(id, resolve));
+        emit({ type: 'control_request', request_id: id,
+            request: { subtype: 'can_use_tool', tool_name: 'Write', tool_use_id: id, input } });
+        const answer = await decision;
+        if (answer.behavior === 'allow') {
+            await writeFile(answer.updatedInput.file_path, answer.updatedInput.content);
+        }
+        emit({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id,
+            content: answer.behavior === 'allow' ? 'File written' : answer.message,
+            is_error: answer.behavior !== 'allow' }] } });
+    }
+
+    async function waitForGate() {
+        for (;;) {
+            try { await access('permission-fixture-continue'); break; } catch {}
+            await new Promise(resolve => setTimeout(resolve, 20));
+        }
+    }
+
+    async function run(prompt) {
+        const resumeIndex = process.argv.indexOf('--resume');
+        await appendFile('permission-fixture-runs.jsonl', JSON.stringify({
+            pid: process.pid, resume: resumeIndex === -1 ? '' : process.argv[resumeIndex + 1],
+            emitState: process.env.CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS,
+            reportBackground: process.env.CLAUDE_CODE_BG_TASKS_REPORT_RUNNING,
+        }) + '\n');
+        emit({ type: 'system', subtype: 'session_state_changed', state: 'running' });
+        emit({ type: 'system', subtype: 'init', session_id: 'permission-fixture-session' });
+        if (prompt.includes('fixture:continuation')) {
+            emit({ type: 'system', subtype: 'task_started', task_id: 'background', task_type: 'local_agent' });
+            emit({ type: 'system', subtype: 'task_notification', task_id: 'background', status: 'completed' });
+            emit({ type: 'result', is_error: false });
+            emit({ type: 'assistant', message: { content: [{ type: 'text', text: 'Waiting before the continuation.' }] } });
+            await waitForGate();
+            await write('first', 'permission-fixture-first.txt');
+        } else {
+            await write('first', 'permission-fixture-first.txt');
+            emit({ type: 'assistant', message: { content: [{ type: 'text', text: 'Waiting for the next tool.' }] } });
+            // The test releases this gate only after the observer has disconnected.
+            await waitForGate();
+        }
+        if (prompt.includes('fixture:approval-stream-closed')) {
+            tool('second', 'permission-fixture-second.txt');
+            emit({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'second',
+                content: 'Tool permission request failed: AbortError: Stream closed', is_error: true }] } });
+            emit({ type: 'assistant', message: { content: [{ type: 'text', text: 'Incorrectly continuing after the approval failure.' }] } });
+        } else {
+            await write('second', 'permission-fixture-second.txt');
+        }
+        emit({ type: 'result', is_error: false });
+        emit({ type: 'system', subtype: 'session_state_changed', state: 'idle' });
+    }
+} else {
+    console.error('Unsupported fixture invocation');
+    process.exitCode = 2;
+}

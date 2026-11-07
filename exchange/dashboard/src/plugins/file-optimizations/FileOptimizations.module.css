@@ -1,0 +1,159 @@
+/* The file-optimizations view: an application mode over the central area, like the Git diff. */
+.view {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    gap: 8px;
+    padding: 8px 12px;
+    overflow: hidden;
+}
+
+.header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 0 0 auto;
+    /* Padded past the stack's floating cross, which sits over the row's end. */
+    padding-right: 48px;
+}
+
+.title {
+    font-weight: 600;
+    font-size: 1.05em;
+}
+
+.spacer {
+    flex: 1;
+}
+
+.center {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 48px;
+}
+
+.scanning {
+    opacity: 0.75;
+}
+
+/* The tabs own the rest of the height; each tab body scrolls on its own so the strip stays put. */
+.tabs {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.tabs :global(.ant-tabs-content-holder) {
+    overflow: auto;
+}
+
+.tabs :global(.ant-tabs-content),
+.tabs :global(.ant-tabs-tabpane) {
+    height: 100%;
+}
+
+.tab {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding-bottom: 16px;
+}
+
+/* The tab's one action bar. It is sticky because the button acts on every group answered and the
+   groups scroll: an action over a hundred rows must not be a hundred rows up. Its own opacity is
+   left at 1 — a translucent bar shows the table sliding under it. */
+.tabHead {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 4px 0 6px;
+    background: var(--bg);
+    font-size: 0.9em;
+}
+
+.tabHead > span {
+    opacity: 0.85;
+}
+
+/* One tuple of identical files: its own card, because the choice inside it is its own. */
+.group {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.groupHead {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    background: var(--surface-sunken, rgba(127, 127, 127, 0.08));
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+}
+
+.groupTitle {
+    font-weight: 500;
+}
+
+/* The path that would remain, shown beside the button that would make it so. */
+.target {
+    font-family: var(--font-mono, monospace);
+    font-size: 0.85em;
+    opacity: 0.85;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 40ch;
+}
+
+.path {
+    font-family: var(--font-mono, monospace);
+    font-size: 0.85em;
+    opacity: 0.8;
+    word-break: break-all;
+}
+
+.dim {
+    opacity: 0.65;
+    font-size: 0.85em;
+}
+
+.confirm ul {
+    margin: 4px 0 8px;
+    padding-left: 20px;
+    font-family: var(--font-mono, monospace);
+    font-size: 0.85em;
+    word-break: break-all;
+}
+
+/* A plan can be twenty groups long. It is all shown — a confirmation that hid half of what it was
+   about would be worthless — so it scrolls, and the sentence about links stays under it. */
+.planList {
+    max-height: 46vh;
+    overflow: auto;
+}
+
+.planItem + .planItem {
+    border-top: 1px solid var(--border);
+    padding-top: 6px;
+}
+
+.planItem p {
+    margin-bottom: 2px;
+    word-break: break-all;
+}
+
+.refusals {
+    margin: 4px 0 0;
+    padding-left: 18px;
+    word-break: break-all;
+}

@@ -1,0 +1,2 @@
+Plain text smoke fixture.
+Second line, opened by the text-edit plugin.

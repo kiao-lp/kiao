@@ -1,0 +1,156 @@
+/* The stage the player sits on: black, as a screen is, whatever the theme. */
+.stage {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100%;
+    width: 100%;
+    background-color: #000;
+}
+
+.video {
+    width: 100%;
+    height: 100%;
+    max-width: 100%;
+    max-height: 100vh;
+}
+
+.audio {
+    width: 80%;
+    max-width: 40rem;
+}
+
+/* The transport in the banner. */
+.controls {
+    margin-left: 10px;
+}
+
+/* A time lines up with the one above and below it, digit for digit. */
+.time {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.readout {
+    min-width: 64px;
+    text-align: center;
+}
+
+.separator {
+    width: 1px;
+    height: 20px;
+    background: var(--border);
+}
+
+/* The current segment's name: shortened, rather than pushing the banner apart. */
+.current {
+    max-width: 160px;
+}
+
+.current > span:last-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* The segments panel, in whichever tool bar the document keeps it. */
+.panel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    gap: 8px;
+}
+
+.header {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.list {
+    flex: 1 1 auto;
+    min-height: 40px;
+    overflow-y: auto;
+}
+
+.center {
+    display: flex;
+    justify-content: center;
+    padding: 16px;
+}
+
+.hint {
+    padding: 8px 4px;
+    color: var(--muted);
+    font-size: 0.85rem;
+}
+
+.row {
+    padding: 4px 2px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+}
+
+/* Hover and the current segment beat the zebra stripe by specificity, never by source order —
+   the stripe is one class and an nth-child (cms-core.css). */
+.list .row:hover {
+    background-color: var(--state-pointed-bg);
+}
+
+.list .row.selected,
+.list .row.selected:hover {
+    background-color: var(--state-selected-bg);
+}
+
+.rowHead {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.rowName {
+    flex: 1;
+    min-width: 0;
+}
+
+.rowTimes {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.dash {
+    color: var(--muted);
+}
+
+/* A save under way, or the install before it: between the header and the list. */
+.saving {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 4px 6px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+}
+
+.savingHead {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.savingWhat {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.savingDetail {
+    color: var(--muted);
+    font-size: 0.8rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}

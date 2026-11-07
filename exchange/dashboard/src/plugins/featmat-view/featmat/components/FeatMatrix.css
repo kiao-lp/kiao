@@ -1,0 +1,327 @@
+.fm-container {
+    font-family: system-ui, -apple-system, sans-serif;
+    margin: 1.5em 0;
+}
+
+.fm-table-wrap {
+    overflow-x: auto;
+    overflow-y: clip; /* prevent forced overflow-y:auto from creating a duplicate vertical scrollbar */
+}
+
+/* ── Toolbar ────────────────────────────────────────────────────── */
+
+.fm-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    justify-content: flex-end;
+    padding: 4px 0;
+}
+
+.fm-req-selector {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+}
+
+.fm-req-label {
+    font-size: 13px;
+    color: inherit;
+    white-space: nowrap;
+    opacity: 0.7;
+}
+
+.fm-req-select {
+    padding: 3px 6px;
+    border: 1px solid var(--fm-border, var(--border, #e0e0e0));
+    border-radius: 4px;
+    background: var(--fm-input-bg, var(--input-bg, #fff));
+    color: inherit;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.fm-req-desc {
+    font-size: 12px;
+    opacity: 0.6;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.fm-export-btn {
+    padding: 4px 12px;
+    border: 1px solid var(--fm-border, var(--border, #e0e0e0));
+    border-radius: 4px;
+    background: var(--fm-input-bg, var(--input-bg, #fff));
+    color: inherit;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.fm-export-btn:hover {
+    background: var(--fm-header-bg, var(--accent-bg, #f5f5f5));
+}
+
+/* ── Help button ────────────────────────────────────────────────── */
+
+.fm-help {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    border: 1px solid var(--fm-border, var(--border, #e0e0e0));
+    background: var(--fm-input-bg, var(--input-bg, #fff));
+    color: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1;
+    cursor: help;
+    user-select: none;
+    opacity: 0.7;
+}
+
+.fm-help:hover,
+.fm-help:focus {
+    opacity: 1;
+    outline: none;
+}
+
+.fm-help .fm-help-tooltip {
+    display: none;
+}
+
+.fm-help:hover .fm-help-tooltip,
+.fm-help:focus .fm-help-tooltip {
+    display: block;
+}
+
+/* ── Table ──────────────────────────────────────────────────────── */
+
+.fm-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+}
+
+.fm-table th,
+.fm-table td {
+    padding: 8px 12px;
+    border: 1px solid var(--fm-border, var(--border, #e0e0e0));
+    text-align: left;
+    vertical-align: top;
+}
+
+.fm-table thead th {
+    background: var(--fm-header-bg, var(--accent-bg, #f5f5f5));
+    font-weight: 600;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+/* ── Feature column ─────────────────────────────────────────────── */
+
+.fm-th-feature {
+    min-width: 180px;
+}
+
+.fm-td-feature {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.fm-feature-label {
+    font-weight: 500;
+}
+
+.fm-feature-desc {
+    font-size: 12px;
+    opacity: 0.7;
+}
+
+/* ── MoSCoW column ──────────────────────────────────────────────── */
+
+.fm-th-moscow {
+    min-width: 120px;
+}
+
+.fm-moscow-select {
+    width: 100%;
+    padding: 4px 6px;
+    border: 1px solid var(--fm-border, var(--border, #e0e0e0));
+    border-radius: 4px;
+    background: var(--fm-input-bg, var(--input-bg, #fff));
+    color: inherit;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+/* ── MoSCoW row tinting ─────────────────────────────────────────── */
+/* Must/should stay translucent tints: they read over any page background. Wont
+   takes the theme's quiet grey fill — a darkening tint would vanish on dark. */
+
+.fm-moscow-must   .fm-td-feature,
+.fm-moscow-must   .fm-td-moscow   { background: var(--fm-must-bg, rgba(255, 0, 0, 0.06)); }
+.fm-moscow-should .fm-td-feature,
+.fm-moscow-should .fm-td-moscow   { background: var(--fm-should-bg, rgba(255, 140, 0, 0.06)); }
+.fm-moscow-could  .fm-td-feature,
+.fm-moscow-could  .fm-td-moscow   { background: var(--fm-could-bg, transparent); }
+.fm-moscow-wont   .fm-td-feature,
+.fm-moscow-wont   .fm-td-moscow   { background: var(--fm-wont-bg, var(--color-grey-bg, rgba(0, 0, 0, 0.03))); }
+.fm-moscow-wont .fm-feature-label,
+.fm-moscow-wont .fm-feature-desc {
+    opacity: 0.5;
+}
+
+/* ── Option header ──────────────────────────────────────────────── */
+
+.fm-th-option {
+    min-width: 100px;
+    text-align: center;
+    height: 1px; /* allows height:100% on children inside table-cell */
+}
+
+.fm-option-header {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    height: 100%;
+}
+
+.fm-option-label {
+    font-weight: 600;
+}
+
+.fm-option-score {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--fm-score-color, var(--link, #1677ff));
+    margin-top: auto;
+}
+
+.fm-score-bar {
+    width: 100%;
+    height: 4px;
+    background: var(--fm-bar-bg, var(--border, #e8e8e8));
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.fm-score-fill {
+    height: 100%;
+    background: var(--fm-bar-fill, var(--link, #1677ff));
+    border-radius: 2px;
+    transition: width 0.3s ease;
+}
+
+/* ── Support cells ──────────────────────────────────────────────── */
+
+.fm-td-support {
+    text-align: center;
+    font-size: 15px;
+    position: relative;
+}
+
+/* Corner indicator for cells with a comment */
+.fm-has-comment::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    border-style: solid;
+    border-width: 0 8px 8px 0;
+    border-color: transparent var(--fm-comment-indicator, rgba(0, 120, 215, 0.6)) transparent transparent;
+    pointer-events: none;
+}
+
+/* ── Comment tooltip ───────────────────────────────────────────── */
+
+.fm-tooltip {
+    display: none;
+    position: absolute;
+    z-index: 20;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: max-content;
+    max-width: 300px;
+    padding: 8px 12px;
+    margin-top: 4px;
+    background: var(--fm-tooltip-bg, var(--bg, #fff));
+    border: 1px solid var(--fm-tooltip-border, var(--border, #ccc));
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    font-size: 13px;
+    line-height: 1.5;
+    text-align: left;
+    color: var(--fm-tooltip-color, var(--text, #333));
+    white-space: normal;
+    pointer-events: none;
+}
+
+.fm-has-comment:hover .fm-tooltip {
+    display: block;
+}
+
+.fm-tooltip p { margin: 0 0 6px 0; }
+.fm-tooltip p:last-child { margin-bottom: 0; }
+.fm-tooltip h1, .fm-tooltip h2, .fm-tooltip h3,
+.fm-tooltip h4, .fm-tooltip h5, .fm-tooltip h6 { margin: 0 0 4px 0; font-size: 14px; font-weight: 600; }
+.fm-tooltip ul, .fm-tooltip ol { margin: 0 0 6px 0; padding-left: 18px; }
+.fm-tooltip code { background: var(--fm-tooltip-code-bg, var(--code-bg, rgba(0, 0, 0, 0.06))); padding: 1px 4px; border-radius: 3px; font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 12px; }
+.fm-tooltip a { color: var(--fm-score-color, var(--link, #1677ff)); text-decoration: none; }
+
+/* ── Help tooltip overrides ────────────────────────────────────── */
+/* Defined after .fm-tooltip so source-order overrides win.
+   Anchored to the help button's right edge and extending leftward,
+   so it stays inside the visible area when the icon sits near the
+   right boundary of the toolbar. */
+.fm-tooltip.fm-help-tooltip {
+    top: 100%;
+    left: auto;
+    right: 0;
+    transform: none;
+    margin-top: 6px;
+    max-width: 420px;
+    width: max-content;
+}
+
+.fm-tooltip.fm-help-tooltip table {
+    border-collapse: collapse;
+    margin: 4px 0;
+    font-size: 12px;
+}
+
+.fm-tooltip.fm-help-tooltip th,
+.fm-tooltip.fm-help-tooltip td {
+    border: 1px solid var(--fm-border, var(--border, #e0e0e0));
+    padding: 3px 8px;
+    text-align: left;
+}
+
+.fm-tooltip.fm-help-tooltip th {
+    background: var(--fm-header-bg, var(--accent-bg, #f5f5f5));
+    font-weight: 600;
+}
+
+/* ── Legend ──────────────────────────────────────────────────────── */
+
+.fm-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    padding: 12px 0;
+    font-size: 13px;
+    opacity: 0.8;
+}
+
+.fm-legend-item {
+    white-space: nowrap;
+}

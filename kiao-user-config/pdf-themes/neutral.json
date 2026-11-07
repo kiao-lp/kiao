@@ -1,0 +1,21 @@
+{
+  "label": "Default",
+  "variables": {
+    "--bg": "white",
+    "--text": "#1a1a1a",
+    "--border": "#999",
+    "--muted": "#666",
+    "--link": "#1a1a1a",
+    "--accent-bg": "#f0f0f0",
+    "--diagram-box-fill": "#e8eaf0",
+    "--input-bg": "#f5f5f5",
+    "--heading-1": "#1a1a1a",
+    "--heading-2": "#2a2a2a",
+    "--heading-3": "#3a3a3a",
+    "--heading-4": "#4a4a4a",
+    "--heading-5": "#555",
+    "--heading-6": "#666",
+    "--hr-color": "#ccc",
+    "--quote-bar": "#999"
+  }
+}

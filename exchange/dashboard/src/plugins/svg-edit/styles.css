@@ -1,0 +1,74 @@
+/* The SVG canvas: the drawing as a white page on the app's own ground. */
+.svg-edit {
+    position: relative;
+    padding: 24px;
+    min-height: 100%;
+    box-sizing: border-box;
+}
+
+.svg-canvas {
+    background: #ffffff;
+    border: 1px solid var(--border);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+    display: block;
+}
+
+/* What is selected is ringed, never repainted: the drawing stays exactly the file. */
+.svg-selection {
+    fill: none;
+    stroke: var(--link);
+    stroke-width: 1.5;
+    stroke-dasharray: 5 3;
+}
+
+.svg-handle {
+    fill: #ffffff;
+    stroke: var(--link);
+    stroke-width: 1.5;
+}
+
+.svg-box-select {
+    fill: var(--accent-bg);
+    fill-opacity: 0.35;
+    stroke: var(--link);
+    stroke-width: 1;
+    stroke-dasharray: 4 2;
+}
+
+/* The right-click menu floats over the canvas, at the click. */
+.svg-context-menu {
+    position: fixed;
+    z-index: 1050;
+    min-width: 220px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+    overflow: hidden;
+}
+
+.svg-context-menu .ant-menu {
+    border: none;
+}
+
+/* The inline text editor sits over the text being typed. */
+.svg-text-editor {
+    position: absolute;
+    z-index: 10;
+    font: inherit;
+    padding: 2px 4px;
+    border: 1px solid var(--link);
+    background: var(--bg-surface);
+    color: var(--fg);
+    resize: none;
+    overflow: hidden;
+}
+
+/* The banner controls hug what they show, like their mindmap neighbours. */
+.svg-new-shape-style .ant-input-number {
+    width: 64px;
+}
+
+.svg-view-control .ant-input-number {
+    width: 72px;
+}

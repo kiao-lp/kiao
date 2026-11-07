@@ -1,0 +1,40 @@
+
+.unicode-keyboard {
+    font-size: 150%;
+    position: absolute;
+    background-color: black;
+    color: white;
+    display: flex;
+    z-index: 99;
+}
+
+.unicode-keyboard .key {
+    border: solid 1px white;
+    text-align: center;
+    padding: 2px;
+    cursor: pointer;
+}
+
+.visibility-0 {
+    display: none;
+}
+
+.visibility-1 {
+    left: 2px;
+    top: 2px;
+}
+
+.visibility-2 {
+    right: 2px;
+    top: 2px;
+}
+
+.visibility-3 {
+    right: 2px;
+    bottom: 2px;
+}
+
+.visibility-4 {
+    left: 2px;
+    bottom: 2px;
+}

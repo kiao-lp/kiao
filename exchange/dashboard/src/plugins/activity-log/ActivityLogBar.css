@@ -1,0 +1,203 @@
+/* The categorical palette a daily proportion bar paints its projects with. A
+   project stores the slot *name*, so the two themes can carry genuinely
+   different steps of the same hue instead of reusing one hex on both surfaces.
+   The ink of each slot is the one of white or near-black that contrasts better
+   against that fill, so a label written inside a segment always stays legible.
+   Validated against the folder table's own row colours — see projectColors.ts. */
+:root,
+[data-theme="dark"] {
+    --activity-color-blue: #3987e5;
+    --activity-color-orange: #d95926;
+    --activity-color-aqua: #199e70;
+    --activity-color-yellow: #c98500;
+    --activity-color-magenta: #d55181;
+    --activity-color-green: #008300;
+    --activity-color-violet: #9085e9;
+    --activity-color-red: #e66767;
+    --activity-color-other: #6b7280;
+
+    --activity-ink-blue: #111827;
+    --activity-ink-orange: #111827;
+    --activity-ink-aqua: #111827;
+    --activity-ink-yellow: #111827;
+    --activity-ink-magenta: #111827;
+    --activity-ink-green: #ffffff;
+    --activity-ink-violet: #111827;
+    --activity-ink-red: #111827;
+    --activity-ink-other: #ffffff;
+}
+
+[data-theme="light"] {
+    --activity-color-blue: #2a78d6;
+    --activity-color-orange: #eb6834;
+    --activity-color-aqua: #1baf7a;
+    --activity-color-yellow: #eda100;
+    --activity-color-magenta: #e87ba4;
+    --activity-color-green: #008300;
+    --activity-color-violet: #4a3aa7;
+    --activity-color-red: #e34948;
+    --activity-color-other: #848a93;
+
+    --activity-ink-blue: #ffffff;
+    --activity-ink-orange: #111827;
+    --activity-ink-aqua: #111827;
+    --activity-ink-yellow: #111827;
+    --activity-ink-magenta: #111827;
+    --activity-ink-green: #ffffff;
+    --activity-ink-violet: #ffffff;
+    --activity-ink-red: #111827;
+    --activity-ink-other: #111827;
+}
+
+/* The 2px gap is the only thing separating two segments: it shows the row's own
+   background, so it stays right while the row is hovered, selected or cut —
+   which a gap painted in a fixed colour would not. */
+.activity-log-bar {
+    display: flex;
+    gap: 2px;
+    flex: 1;
+    min-width: 0;
+    height: 14px;
+    cursor: default;
+}
+
+.activity-log-bar__segment {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-basis: 0;
+    min-width: 0;
+    /* Only ever crops a label already hidden for not fitting — a visible one is
+       measured first and rendered whole or not at all. */
+    overflow: hidden;
+}
+
+.activity-log-bar__segment:first-child {
+    border-radius: 4px 0 0 4px;
+}
+
+.activity-log-bar__segment:last-child {
+    border-radius: 0 4px 4px 0;
+}
+
+.activity-log-bar__segment:only-child {
+    border-radius: 4px;
+}
+
+.activity-log-bar__label {
+    flex: 0 0 auto;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Detail tooltip: the whole day, with the segment under the pointer emphasized
+   and what was done on that project listed under it.
+
+   Ant Design caps a tooltip at 250px, which the descriptions would spend on two
+   or three lines apiece; the root is widened here rather than on the content,
+   since only the root carries the background the content would otherwise spill
+   out of. */
+.activity-log-bar__tip-root {
+    max-width: 460px;
+}
+
+.activity-log-bar__tip {
+    /* The three measurements the rows are built from, named because the lines
+       written under a project have to reach back past the share column to put
+       their times in the same column as the project times. */
+    --tip-row-padding: 4px;
+    --tip-row-gap: 8px;
+    --tip-share-width: 42px;
+
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 300px;
+    font-variant-numeric: tabular-nums;
+}
+
+.activity-log-bar__tip-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    padding-bottom: 4px;
+    margin-bottom: 2px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+    font-weight: 600;
+}
+
+.activity-log-bar__tip-row {
+    display: flex;
+    align-items: center;
+    gap: var(--tip-row-gap);
+    padding: 1px var(--tip-row-padding);
+    border-radius: 3px;
+    opacity: 0.75;
+}
+
+.activity-log-bar__tip-row--hovered {
+    background: rgba(255, 255, 255, 0.16);
+    opacity: 1;
+    font-weight: 600;
+}
+
+.activity-log-bar__swatch {
+    flex: none;
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+}
+
+.activity-log-bar__tip-project {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.activity-log-bar__tip-time,
+.activity-log-bar__tip-share {
+    flex: none;
+}
+
+/* Wide enough for a bold "100%" — the emphasized row sets the column, or the
+   share of a day spent on one project wraps onto a second line as it is hovered. */
+.activity-log-bar__tip-share {
+    width: var(--tip-share-width);
+    text-align: right;
+    opacity: 0.7;
+}
+
+/* What was done, indented under its project so the day still reads as a list of
+   projects. The block stops short of the share column, which puts these times in
+   the very column the project times form — so a project reads as the sum of the
+   lines under it rather than as a second, unrelated tally. */
+.activity-log-bar__tip-done {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: 2px 0 4px;
+    padding-left: 22px;
+    padding-right: calc(var(--tip-row-padding) + var(--tip-row-gap) + var(--tip-share-width));
+    font-size: 0.92em;
+    opacity: 0.85;
+}
+
+.activity-log-bar__tip-done-row {
+    display: flex;
+    align-items: baseline;
+    gap: var(--tip-row-gap);
+}
+
+.activity-log-bar__tip-done-what {
+    flex: 1;
+    min-width: 0;
+}
+
+.activity-log-bar__tip-done-time {
+    flex: none;
+    white-space: nowrap;
+}
