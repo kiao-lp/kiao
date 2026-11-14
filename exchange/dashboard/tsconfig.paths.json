@@ -1,0 +1,73 @@
+{
+    "compilerOptions": {
+        "baseUrl": "./",
+        "paths": {
+            "@/*": [
+                "src/*"
+            ],
+            "react-advanced-interactions/*": [
+                "src/core/ui-foundation/interactions/*"
+            ],
+            "react-advanced-interactions": [
+                "src/core/ui-foundation/interactions/pointing.ts"
+            ],
+            "react-concise/*": [
+                "src/core/ui-foundation/react/contexts.tsx"
+            ],
+            "react-concise": [
+                "src/core/ui-foundation/react/contexts.tsx"
+            ],
+            "@kiao-dashboard-core": [
+                "src/core/public-api.ts"
+            ],
+            "@kiao-dashboard-kit/markdown-editor": [
+                "src/kit/MarkdownEditor/index.ts"
+            ],
+            "@kiao-dashboard-kit/reorder": [
+                "src/core/ui-foundation/reorder/index.ts"
+            ],
+            "@kiao-dashboard-kit/tts": [
+                "src/kit/tts/index.ts"
+            ],
+            "@kiao-dashboard-kit/markdown": [
+                "src/kit/markdown/index.ts"
+            ],
+            "@kiao-dashboard-kit/template-lang": [
+                "src/kit/template-lang/index.ts"
+            ],
+            "@kiao-dashboard-kit/color": [
+                "src/kit/color/index.ts"
+            ],
+            "@kiao-dashboard-kit/zoom-control": [
+                "src/core/ui-foundation/zoom/controls.ts"
+            ],
+            "@kiao-dashboard-kit/doc-id": [
+                "src/kit/doc-id/index.ts"
+            ],
+            "@kiao-dashboard-kit/date-time": [
+                "src/kit/date-time/index.ts"
+            ],
+            "@kiao-dashboard-kit/components": [
+                "src/core/ui-foundation/forms/index.ts"
+            ],
+            "@kiao-dashboard-kit/template-fields": [
+                "src/kit/template-fields/index.ts"
+            ],
+            "@kiao-dashboard-kit/code-editor": [
+                "src/core/ui-foundation/code-editor/index.ts"
+            ],
+            "@kiao-dashboard-kit/capabilities": [
+                "src/kit/capabilities/index.ts"
+            ],
+            "@kiao-dashboard-kit/archdia": [
+                "src/kit/archdia/index.ts"
+            ],
+            "@kiao-dashboard-kit/graph": [
+                "src/kit/graph/index.ts"
+            ],
+            "@kiao-dashboard-kit/diagram-shared": [
+                "src/kit/diagram-shared/index.ts"
+            ]
+        }
+    }
+}

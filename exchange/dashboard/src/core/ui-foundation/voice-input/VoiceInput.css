@@ -1,0 +1,47 @@
+.voice-input-wrapper {
+    position: relative;
+    display: inline-block;
+    width: 100%;
+}
+
+.voice-input-suffix {
+    display: flex;
+    align-items: center;
+}
+
+.voice-input-mic-icon {
+    cursor: pointer;
+    margin-left: 4px;
+    display: flex;
+    align-items: center;
+}
+
+.voice-input-mic-active {
+    color: var(--link);
+}
+
+.voice-input-mic-inactive {
+    color: var(--text);
+}
+
+.voice-textarea-inner {
+    height: 100%;
+    width: 100%;
+}
+
+/* Kept on the left so it never covers the textarea resize grip (bottom right),
+   and below the box so it never overlaps the text. */
+.voice-textarea-controls {
+    position: absolute;
+    bottom: -16px;
+    left: 0px;
+    z-index: 10;
+    background: var(--input-bg);
+    border-radius: 20px;
+    padding: 4px 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    border: 1px solid var(--border);
+}

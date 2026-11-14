@@ -1,0 +1,5 @@
+{
+  "_comment": "A Google OAuth client that is not one. It exists so the suite can drive the browser half of the authorization — the gate offering it, the panel saying an authorization is open, cancelling it — without a real client, a real account or a network. KIAO_WORKER_MOUNTS_GOOGLE_ENDPOINTS in bin/start-env.sh points the three Google endpoints somewhere harmless on the app's own origin, so the tab that opens lands nowhere in particular instead of at accounts.google.com.",
+  "clientId": "e2e-not-a-real-client.apps.googleusercontent.com",
+  "clientSecret": "e2e-not-a-real-secret"
+}

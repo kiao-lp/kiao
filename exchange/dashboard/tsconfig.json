@@ -1,0 +1,32 @@
+{
+  "extends": "./tsconfig.paths.json",
+  "compilerOptions": {
+    "target": "es2020",
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
+    "forceConsistentCasingInFileNames": true,
+    "noFallthroughCasesInSwitch": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "types": [
+      "vite/client",
+      "react-syntax-highlighter"
+    ]
+  },
+  "//": "react-syntax-highlighter ships no types and is only ever imported by a deep `dist/esm/…` path, which resolves to no .d.ts of its own. Its @types package is one file of `declare module` blocks covering those paths, and `types` is what pulls a purely ambient package in — naming it here is what gets it to every project extending this one, plugins included.",
+  "include": [
+    "src"
+  ]
+}

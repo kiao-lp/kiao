@@ -1,0 +1,33 @@
+.file-search-results-view {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+}
+
+.file-search-results-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    /* Padded past the stack's floating cross, which sits over the row's end. */
+    padding: 6px 48px 6px 12px;
+    border-bottom: 1px solid var(--border);
+    background: var(--accent-bg);
+    flex-shrink: 0;
+}
+
+.file-search-results-title {
+    font-weight: 600;
+}
+
+.file-search-results-count {
+    font-size: 0.85em;
+    color: var(--muted);
+}
+
+.file-search-results-table {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+}

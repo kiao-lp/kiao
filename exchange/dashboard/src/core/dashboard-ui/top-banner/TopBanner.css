@@ -1,0 +1,8 @@
+.cms-top-banner {
+    order: -1;
+    padding: 4px 16px;
+    border-bottom: 1px solid var(--border);
+    height: auto;
+    line-height: normal;
+    background: var(--accent-bg);
+}

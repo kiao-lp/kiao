@@ -1,0 +1,18 @@
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    .yaml-glyph { stroke: #E879F9; }
+    @media (prefers-color-scheme: light) {
+      .yaml-glyph { stroke: #A21CAF; }
+    }
+  </style>
+
+  <!-- An indented list: a dash and its value, three rows deep -->
+  <g class="yaml-glyph" stroke-width="2" stroke-linecap="round">
+    <path d="M4 7H6.5"/>
+    <path d="M9 7H20"/>
+    <path d="M6.5 12H9"/>
+    <path d="M11.5 12H20"/>
+    <path d="M6.5 17H9"/>
+    <path d="M11.5 17H20"/>
+  </g>
+</svg>

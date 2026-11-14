@@ -1,0 +1,24 @@
+.activity-log-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 12px;
+}
+
+.activity-log-panel label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.activity-log-panel label span,
+.activity-log-panel small {
+    font-weight: 400;
+    opacity: 0.72;
+}
+
+.activity-log-panel small {
+    line-height: 1.45;
+}

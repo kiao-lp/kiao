@@ -1,0 +1,61 @@
+/* An activity log row spends its whole width on the day's proportion bar: the
+   date on the left, the bar taking whatever is left, and the total pinned to the
+   right in a fixed slot so the totals line up into a readable column.
+
+   The folder table's visible area decides whether the bar has room at all. It
+   stays hidden in the grid view — which lives outside this container, so the
+   query below never matches there — and on narrow layouts, where the label falls
+   back to the date and its total in parentheses. The total is never hidden. */
+.cms-folder-browser-area {
+    container-type: inline-size;
+    container-name: activity-log-folder;
+}
+
+.activity-log-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    white-space: nowrap;
+}
+
+.activity-log-label__date {
+    flex: none;
+    font-variant-numeric: tabular-nums;
+}
+
+.activity-log-label__bar {
+    display: none;
+}
+
+.activity-log-label__total {
+    flex: none;
+    font-variant-numeric: tabular-nums;
+}
+
+.activity-log-label__total::before {
+    content: '(';
+}
+
+.activity-log-label__total::after {
+    content: ')';
+}
+
+@container activity-log-folder (min-width: 760px) {
+    .activity-log-label__bar {
+        display: flex;
+        flex: 1;
+        min-width: 0;
+    }
+
+    .activity-log-label__total {
+        min-width: 3.2em;
+        text-align: right;
+        font-weight: 600;
+    }
+
+    .activity-log-label__total::before,
+    .activity-log-label__total::after {
+        content: none;
+    }
+}

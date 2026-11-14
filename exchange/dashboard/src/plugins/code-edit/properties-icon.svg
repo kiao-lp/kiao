@@ -1,0 +1,16 @@
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    .properties-glyph { stroke: #94A3B8; }
+    .properties-key { fill: #94A3B8; }
+    @media (prefers-color-scheme: light) {
+      .properties-glyph { stroke: #475569; }
+      .properties-key { fill: #475569; }
+    }
+  </style>
+
+  <!-- Two settings: a key, then its value -->
+  <circle class="properties-key" cx="5" cy="9.5" r="1.6"/>
+  <path class="properties-glyph" d="M9 9.5H20" stroke-width="2" stroke-linecap="round"/>
+  <circle class="properties-key" cx="5" cy="14.5" r="1.6"/>
+  <path class="properties-glyph" d="M9 14.5H20" stroke-width="2" stroke-linecap="round"/>
+</svg>

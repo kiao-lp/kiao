@@ -1,0 +1,14 @@
+[
+  {
+    "path": "docs/solution-design/decisions",
+    "name": "main"
+  },
+  {
+    "path": "exchange/dashboard/docs/solution-design/decisions",
+    "name": "dashboard"
+  },
+  {
+    "path": "operation/worker/docs/solution-design/decisions",
+    "name": "worker"
+  }
+]

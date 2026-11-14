@@ -1,0 +1,58 @@
+.text-comparison {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    height: 100%;
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.text-comparison-labels {
+    display: flex;
+    flex-shrink: 0;
+    color: var(--muted);
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    font-size: 0.75em;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.text-comparison-labels > div {
+    flex: 1;
+    min-width: 0;
+    padding: 4px 12px;
+}
+
+.text-comparison-labels > div + div,
+.text-comparison .cm-mergeViewEditor + .cm-mergeViewEditor {
+    border-left: 1px solid var(--border);
+}
+
+.text-comparison-editors {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.text-comparison .cm-mergeView {
+    height: 100%;
+    overflow: auto;
+}
+
+.text-comparison .cm-merge-a .cm-changedLine {
+    background-color: rgba(229, 83, 75, 0.18);
+}
+
+.text-comparison .cm-merge-b .cm-changedLine {
+    background-color: rgba(70, 149, 74, 0.20);
+}
+
+.text-comparison .cm-merge-a .cm-changedText {
+    background: rgba(229, 83, 75, 0.35);
+}
+
+.text-comparison .cm-merge-b .cm-changedText {
+    background: rgba(70, 149, 74, 0.40);
+}

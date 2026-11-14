@@ -1,0 +1,203 @@
+{
+  "about": [
+    "The `.kiao-files` grammar, as a table both implementations must agree on.",
+    "",
+    "One syntax is read by two languages: Go, in worker, bounds the link fixer with it, and",
+    "Node, in the migration helpers, bounds what a migration may rewrite. Two readers of one grammar",
+    "drift unless something pins them together, and the cost of drift is asymmetric — a rule that",
+    "quietly matches less than it says lets an automatic rewrite reach a file the operator fenced",
+    "off. So the cases live here, once, and both test suites read them:",
+    "",
+    "  operation/worker/internal/files/kiaofiles_test.go  (go test ./...)",
+    "  migrations/test/kiao-files.test.js       (node --test migrations/test/)",
+    "",
+    "`declaration` is the whole file's text, `path` is relative to the folder that declared it, and",
+    "the two booleans are what each pass must decide about it.",
+    "",
+    "`defaults` is what the root declaration says when a store has none of its own. worker",
+    "seeds it into a new store; the migration helpers fall back to it for a store that has never",
+    "been served. Both must mean the same thing, or a by-hand run would be bounded differently."
+  ],
+  "defaults": [
+    "node_modules",
+    "bower_components",
+    "vendor",
+    "build",
+    "dist",
+    "out",
+    "target",
+    "coverage",
+    "__pycache__",
+    ".*"
+  ],
+  "cases": [
+    {
+      "name": "a pattern without a slash matches at any depth",
+      "declaration": "node_modules",
+      "path": "node_modules",
+      "migration": true,
+      "refactor": true
+    },
+    {
+      "name": "…including deep under the root",
+      "declaration": "node_modules",
+      "path": "a/b/node_modules",
+      "migration": true,
+      "refactor": true
+    },
+    {
+      "name": "a directory match covers its contents",
+      "declaration": "node_modules",
+      "path": "a/node_modules/pkg/index.js",
+      "migration": true,
+      "refactor": true
+    },
+    {
+      "name": "a name is matched whole, not as a prefix",
+      "declaration": "node_modules",
+      "path": "node_modules_of_mine",
+      "migration": false,
+      "refactor": false
+    },
+    {
+      "name": "a pattern containing a slash is anchored at the declaring folder",
+      "declaration": "build/generated",
+      "path": "build/generated",
+      "migration": true,
+      "refactor": true
+    },
+    {
+      "name": "…and covers everything under it",
+      "declaration": "build/generated",
+      "path": "build/generated/deep/x.mmap.json",
+      "migration": true,
+      "refactor": true
+    },
+    {
+      "name": "…but not the same shape deeper down",
+      "declaration": "build/generated",
+      "path": "app/build/generated",
+      "migration": false,
+      "refactor": false
+    },
+    {
+      "name": "a trailing slash is decoration, so the rule still matches at any depth",
+      "declaration": "vendor/",
+      "path": "app/vendor/lib.md",
+      "migration": true,
+      "refactor": true
+    },
+    {
+      "name": "a leading slash anchors",
+      "declaration": "/vendor",
+      "path": "app/vendor",
+      "migration": false,
+      "refactor": false
+    },
+    {
+      "name": "…at the declaring folder",
+      "declaration": "/vendor",
+      "path": "vendor/lib.md",
+      "migration": true,
+      "refactor": true
+    },
+    {
+      "name": "* matches within one segment",
+      "declaration": "*.generated.json",
+      "path": "a/b/model.generated.json",
+      "migration": true,
+      "refactor": true
+    },
+    {
+      "name": "* does not cross a separator",
+      "declaration": "docs/*/draft",
+      "path": "docs/fr/nested/draft",
+      "migration": false,
+      "refactor": false
+    },
+    {
+      "name": "a dot is a literal, not a wildcard",
+      "declaration": "a.md",
+      "path": "axmd",
+      "migration": false,
+      "refactor": false
+    },
+    {
+      "name": ".* is how a declaration excludes dot-directories",
+      "declaration": ".*",
+      "path": "a/.venv/lib/x.md",
+      "migration": true,
+      "refactor": true
+    },
+    {
+      "name": "…and leaves ordinary names alone",
+      "declaration": ".*",
+      "path": "a/normal/x.md",
+      "migration": false,
+      "refactor": false
+    },
+    {
+      "name": "a line of just / covers the whole folder",
+      "declaration": "/",
+      "path": "units/x.mmap.json",
+      "migration": true,
+      "refactor": true
+    },
+    {
+      "name": "comments and blank lines are not patterns",
+      "declaration": "# a comment\n\n   \n  vendor  ",
+      "path": "a comment",
+      "migration": false,
+      "refactor": false
+    },
+    {
+      "name": "…and the pattern beside them still applies, trimmed",
+      "declaration": "# a comment\n\n   \n  vendor  ",
+      "path": "vendor/x.md",
+      "migration": true,
+      "refactor": true
+    },
+    {
+      "name": "a pattern before any section bounds both passes",
+      "declaration": "node_modules\n[migration]\ndocs\n[refactor]\nfixtures",
+      "path": "node_modules/x.md",
+      "migration": true,
+      "refactor": true
+    },
+    {
+      "name": "[migration] bounds migrations alone",
+      "declaration": "node_modules\n[migration]\ndocs\n[refactor]\nfixtures",
+      "path": "docs/x.md",
+      "migration": true,
+      "refactor": false
+    },
+    {
+      "name": "[refactor] bounds link updates alone",
+      "declaration": "node_modules\n[migration]\ndocs\n[refactor]\nfixtures",
+      "path": "fixtures/x.md",
+      "migration": false,
+      "refactor": true
+    },
+    {
+      "name": "an unknown section is parsed and never consulted",
+      "declaration": "[future]\nwhatever",
+      "path": "whatever/x.md",
+      "migration": false,
+      "refactor": false
+    },
+    {
+      "name": "a section name is read case-insensitively",
+      "declaration": "[Refactor]\nfixtures",
+      "path": "fixtures/x.md",
+      "migration": false,
+      "refactor": true
+    },
+    {
+      "name": "an empty declaration excludes nothing",
+      "declaration": "",
+      "path": "node_modules/x.md",
+      "migration": false,
+      "refactor": false
+    }
+  ]
+}
