@@ -1,0 +1,88 @@
+/* Drag-to-reorder: the grip, the dimmed row, the insertion line. See `useReorderable`. */
+
+.kiao-reorder-handle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    flex: none;
+    padding: 0;
+    border: none;
+    border-radius: 4px;
+    background: none;
+    color: var(--muted);
+    font-size: 1rem;
+    line-height: 1;
+    cursor: grab;
+    /* The pointer stream from press to release is ours: a finger on the grip reorders,
+       it does not scroll the list away from under itself. */
+    touch-action: none;
+}
+
+.kiao-reorder-handle:hover:not(:disabled) {
+    background: var(--state-pointed-bg);
+    color: var(--text);
+}
+
+.kiao-reorder-handle:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+
+.kiao-reorder-handle:disabled {
+    cursor: default;
+    opacity: 0.3;
+}
+
+.kiao-reorder-handle.is-dragging {
+    color: var(--accent);
+}
+
+/* A drag owns the whole document until it is released. */
+body.kiao-reordering,
+body.kiao-reordering .kiao-reorder-handle {
+    cursor: grabbing;
+}
+
+body.kiao-reordering {
+    user-select: none;
+}
+
+/* The row stays where it is and only dims, so nothing slides out from under the pointer
+   while it travels. On a table the dimming goes on the cells: `<tr>` opacity is unreliable,
+   and stacking it on both would dim twice. */
+.kiao-reorder-row-dragging {
+    opacity: 0.45;
+}
+
+tr.kiao-reorder-row-dragging {
+    opacity: 1;
+}
+
+tr.kiao-reorder-row-dragging > td {
+    opacity: 0.45;
+}
+
+/* The insertion line is drawn *inside* the row it marks — an inset shadow rather than a border,
+   so showing it never moves by one pixel the very rows the drop is aimed between. */
+.kiao-reorder-drop-before {
+    box-shadow: inset 0 2px 0 0 var(--accent);
+}
+
+.kiao-reorder-drop-after {
+    box-shadow: inset 0 -2px 0 0 var(--accent);
+}
+
+tr.kiao-reorder-drop-before,
+tr.kiao-reorder-drop-after {
+    box-shadow: none;
+}
+
+tr.kiao-reorder-drop-before > td {
+    box-shadow: inset 0 2px 0 0 var(--accent);
+}
+
+tr.kiao-reorder-drop-after > td {
+    box-shadow: inset 0 -2px 0 0 var(--accent);
+}

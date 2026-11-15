@@ -1,0 +1,35 @@
+.markdown-codemirror-editor .cm-editor {
+    background-color: var(--input-bg) !important;
+}
+
+.markdown-codemirror-editor .cm-gutters {
+    background-color: var(--input-bg) !important;
+}
+
+.markdown-codemirror-editor .cm-activeLineGutter {
+    background-color: var(--bg-hover) !important;
+}
+
+.markdown-codemirror-editor .cm-activeLine {
+    background-color: var(--bg-hover) !important;
+}
+
+/* Text color for better contrast */
+.markdown-codemirror-editor .cm-content {
+    color: var(--text) !important;
+    caret-color: var(--link) !important;
+}
+
+.markdown-codemirror-editor .cm-line {
+    color: var(--text) !important;
+}
+
+/* Line numbers in secondary color */
+.markdown-codemirror-editor .cm-gutterElement {
+    color: #838383 !important;
+}
+
+/* Code blocks */
+.markdown-codemirror-editor .cm-monospace {
+    color: #a9dc76 !important;
+}

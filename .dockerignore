@@ -1,0 +1,25 @@
+# Ignore node_modules in applications
+exchange/**/node_modules
+operation/**/node_modules
+
+# Ignore build artifacts in applications  
+exchange/**/dist
+operation/**/dist
+
+# Ignore git and system files
+**/.git
+**/.env
+**/.env.dev
+**/.env.web
+**/.env.local
+**/*.log
+**/.DS_Store
+**/Thumbs.db
+**/.gitignore
+
+# Ignore lock files (will be regenerated)
+exchange/**/package-lock.json
+exchange/**/bun.lock
+
+# Ignore local data
+data/

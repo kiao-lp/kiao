@@ -1,0 +1,19 @@
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    .md-bg { fill: #374151; }
+    .md-text { fill: #22D3EE; }
+    @media (prefers-color-scheme: light) {
+      .md-bg { fill: #E5E7EB; }
+      .md-text { fill: #4F46E5; }
+    }
+  </style>
+  
+  <!-- Background rounded rectangle -->
+  <rect class="md-bg" x="2" y="4" width="20" height="16" rx="2"/>
+  
+  <!-- M letter -->
+  <path class="md-text" d="M6 16V8L8.5 12L11 8V16" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none" stroke="currentColor" style="stroke: var(--md-text-color, #22D3EE)"/>
+  
+  <!-- Down arrow (markdown symbol) -->
+  <path class="md-text" d="M15 9V15M15 15L13 13M15 15L17 13" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none" stroke="currentColor" style="stroke: var(--md-text-color, #22D3EE)"/>
+</svg>

@@ -1,0 +1,18 @@
+{
+    "name": "kiao-e2e",
+    "version": "1.0.0",
+    "description": "End-to-end tests for Kiao",
+    "scripts": {
+        "postinstall": "playwright install chromium",
+        "test": "bin/run-tests.sh",
+        "test:playwright": "playwright test",
+        "codegen": "playwright codegen"
+    },
+    "devDependencies": {
+        "@playwright/test": "^1.40.1",
+        "@types/node": "^20.10.4",
+        "@xmldom/xmldom": "^0.8.15",
+        "jszip": "^3.10.2",
+        "typescript": "^5.3.3"
+    }
+}

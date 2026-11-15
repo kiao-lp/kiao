@@ -1,0 +1,13 @@
+.kiao-flag {
+    width: 1em;
+    height: auto;
+    vertical-align: middle;
+    display: inline-block;
+    border-radius: 1px;
+    box-shadow: 0 0 1px rgba(0, 0, 0, 0.2);
+}
+
+.kiao-flag-text {
+    font-size: 0.85em;
+    padding: 0 2px;
+}

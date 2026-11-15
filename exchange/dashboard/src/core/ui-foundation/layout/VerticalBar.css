@@ -1,0 +1,14 @@
+
+.vertical-bar {
+    width: 18px;
+    background-color: black;
+    margin-right: 6px;
+
+    color: white;
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    text-align: center;
+    white-space: nowrap;
+    padding-bottom: 3px;
+    font-size: 80%;
+}

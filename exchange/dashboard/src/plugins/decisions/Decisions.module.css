@@ -1,0 +1,127 @@
+.panel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    color: var(--fg);
+}
+
+.toolbar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px;
+    border-bottom: 1px solid var(--border);
+}
+
+.search {
+    flex: 1;
+    min-width: 0;
+}
+
+.body {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+}
+
+.table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+
+.table th,
+.table td {
+    padding: 4px 8px;
+    text-align: left;
+    vertical-align: top;
+    border-bottom: 1px solid var(--border);
+}
+
+.table th {
+    position: sticky;
+    top: 0;
+    background: var(--accent-bg);
+    font-weight: 600;
+    white-space: nowrap;
+    z-index: 1;
+}
+
+.sortable {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+    user-select: none;
+}
+
+.table tbody tr:hover {
+    background: var(--bg-hover, var(--bg-surface));
+}
+
+.title {
+    color: var(--fg);
+    text-decoration: none;
+}
+
+.title:hover {
+    text-decoration: underline;
+}
+
+.nowrap {
+    white-space: nowrap;
+}
+
+.tags {
+    color: var(--fg-muted, var(--fg));
+}
+
+.hint {
+    padding: 12px;
+    color: var(--fg-muted, var(--fg));
+    font-size: 12px;
+}
+
+.center {
+    display: flex;
+    justify-content: center;
+    padding: 24px;
+}
+
+.sources {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px;
+}
+
+.dropActive {
+    outline: 1px dashed var(--border);
+    outline-offset: -4px;
+}
+
+.sourceRow {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+}
+
+.sourceFields {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.fieldName {
+    font-size: 11px;
+    color: var(--fg-muted, var(--fg));
+}

@@ -1,0 +1,45 @@
+# .kiao-files excludes paths from automatic DCMS passes in this folder and below.
+# Nested files add exclusions; nothing can re-include an ancestor's exclusions.
+#
+# Syntax (subset of .gitignore):
+# - One pattern per line; blank lines and lines starting with # are ignored.
+# - A pattern containing / is anchored at this file's folder (build/generated);
+#   one without / matches at any depth (node_modules).
+# - A trailing / is ignored; a line containing only / excludes this whole folder.
+# - * matches within one path segment; ** and negation (!) are unsupported.
+# - Matching a directory excludes all its descendants.
+#
+# Patterns before a section apply to all passes. A section limits subsequent patterns:
+# [migration] startup file-store migrations
+# [refactor]  link updates after a rename or delete
+# [search]    search and the scope reported before delete confirmation
+#
+# An excluded folder is still searched when directly targeted; deleting it still
+# reports its contents. .git and the service's state directory are always excluded.
+
+# Dependencies and build output.
+node_modules
+bower_components
+vendor
+build
+dist
+out
+target
+coverage
+__pycache__
+
+# Tool, editor and VCS state.
+.*
+
+[migration]
+# Disable all migrations, including for new directories: this is a source tree.
+# Migrating e2e fixtures could change assertions while leaving tests green;
+# architecture documents are authored here and must not be converted automatically.
+/
+
+[refactor]
+# Update document links except in e2e fixtures, where paths illustrate test cases.
+# Rewriting these paths would change what the suite asserts.
+e2e/data
+
+# No [search] section: fixtures remain searchable; shared exclusions above still apply.

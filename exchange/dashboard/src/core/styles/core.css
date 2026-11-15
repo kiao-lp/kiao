@@ -1,0 +1,291 @@
+@import "../ui-foundation/layout/row-lists.css";
+
+.file-label .file-label-icon {
+    width: 16px;
+    height: 16px;
+    margin-right: 6px;
+}
+
+.candidate-list {
+    padding: 5px;
+    display: flex;
+    justify-content: space-around;
+    background-color: var(--accent-bg);
+}
+
+.candidate-list .candidate {
+    text-align: center;
+}
+
+.candidate-list .sentence {
+    width: 50px;
+    margin-right: 8px;
+    border: solid 1px var(--border);
+}
+
+.cms-nav-tree {
+    flex: 1;
+    padding: 4px 0 8px 0;
+    user-select: none;
+}
+
+.cms-nav-tree-row {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding-right: 4px;
+    line-height: 1.6;
+    white-space: nowrap;
+}
+
+.cms-nav-tree-row:hover {
+    background-color: var(--state-pointed-bg);
+}
+
+.cms-nav-tree-row.cms-nav-tree-row-current,
+.cms-nav-tree-row.cms-nav-tree-row-current:hover {
+    background-color: var(--state-selected-bg);
+}
+
+/* Reveal flashes fade so they cannot be mistaken for the open-document highlight. */
+@keyframes cms-nav-tree-row-flash {
+    from {
+        background-color: var(--state-selected-bg);
+    }
+
+    to {
+        background-color: transparent;
+    }
+}
+
+.cms-nav-tree-row.cms-nav-tree-row-flash,
+.cms-nav-tree-row.cms-nav-tree-row-flash:hover {
+    animation: cms-nav-tree-row-flash 1.6s ease-out;
+}
+
+/* Reserve the caret width even for childless entries to align sibling labels. */
+.cms-nav-tree-switcher {
+    flex: 0 0 auto;
+    width: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    color: var(--muted);
+    cursor: pointer;
+}
+
+.cms-nav-tree-label {
+    flex: 1;
+    min-width: 0;
+    color: inherit;
+    overflow: hidden;
+}
+
+/* Ellipsis requires inline icon/text layout rather than the flex layout used elsewhere. */
+.cms-nav-tree-label .file-label {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cms-nav-tree-label .file-label .file-label-icon {
+    vertical-align: -3px;
+}
+
+.cms-nav-tree-root-label {
+    font-weight: 600;
+}
+
+.cms-new-button {
+    margin: 0 4px;
+    flex-shrink: 0;
+}
+
+.cms-nav-pane {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+    background: var(--accent-bg);
+}
+
+.cms-nav-pane-scroller {
+    flex: 1;
+    overflow: auto;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Keep floating actions clear of the classic scrollbar gutter, also on overlay-scrollbar systems. */
+.cms-nav-pane-actions {
+    position: absolute;
+    top: 4px;
+    right: 20px;
+    z-index: 2;
+    display: flex;
+    gap: 4px;
+}
+
+.cms-nav-locate-button,
+.cms-nav-refresh-button {
+    background: var(--accent-bg);
+    border-radius: 999px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+}
+
+/* Selection beats hover. */
+.cms-folder-browser-area .ant-table-tbody > tr.cms-folder-row > td {
+    transition: background-color 0.15s;
+}
+.cms-folder-browser-area .ant-table-tbody > tr.cms-folder-row.cms-row-current > td {
+    background-color: var(--state-pointed-bg);
+}
+.cms-folder-browser-area .ant-table-tbody > tr.cms-folder-row.cms-row-selected > td,
+.cms-folder-browser-area .ant-table-tbody > tr.cms-folder-row.cms-row-selected:hover > td {
+    background-color: var(--state-selected-bg);
+}
+.cms-folder-browser-area .ant-table-tbody > tr.cms-folder-row.cms-row-cut > td {
+    opacity: 0.5;
+}
+
+/* Selection beats hover. */
+.cms-file-tile.cms-row-current {
+    background-color: var(--state-pointed-bg);
+}
+.cms-file-tile.cms-row-selected,
+.cms-file-tile.cms-row-selected:hover {
+    background-color: var(--state-selected-bg);
+}
+.cms-file-tile.cms-row-cut {
+    opacity: 0.5;
+}
+
+.cms-folder-browser-area {
+    flex: 1;
+    overflow: hidden;
+}
+
+.cms-file-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+    gap: 8px;
+    padding: 12px;
+    min-height: 100%;
+}
+
+.cms-file-tile {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 8px 4px;
+    border-radius: 6px;
+    cursor: pointer;
+    user-select: none;
+    text-align: center;
+    word-break: break-word;
+    min-height: 96px;
+}
+
+.cms-file-tile:hover {
+    background: var(--state-pointed-bg, rgba(0, 0, 0, 0.04));
+}
+
+.cms-file-tile .file-label {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+}
+
+.cms-file-tile .file-label .file-label-icon {
+    width: 48px;
+    height: 48px;
+    margin-right: 0;
+}
+
+@media (max-width: 768px) {
+    .cms-file-grid {
+        grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
+    }
+    .cms-file-tile {
+        min-height: 80px;
+        padding: 6px 2px;
+    }
+    .cms-file-tile .file-label .file-label-icon {
+        width: 36px;
+        height: 36px;
+    }
+}
+
+@media (pointer: coarse) {
+    .cms-file-tile,
+    .cms-folder-browser-area tr {
+        touch-action: manipulation;
+    }
+}
+
+/* Highlight ranges without mutating React-owned DOM. Without the API, passage links only scroll. */
+::highlight(dashboard-passage) {
+    background-color: var(--warning-bg);
+    color: var(--text);
+}
+
+/* paintFindings.ts registers ranges to avoid mutating React-owned Markdown DOM.
+   Match source-view <mark> colours; underline styles also distinguish severity without colour. */
+::highlight(gate-critical) {
+    background-color: var(--color-red-bg);
+    color: var(--text);
+    text-decoration: underline double;
+}
+
+::highlight(gate-high) {
+    background-color: var(--color-orange-bg);
+    color: var(--text);
+    text-decoration: underline wavy;
+}
+
+::highlight(gate-medium) {
+    background-color: var(--color-yellow-bg);
+    color: var(--text);
+    text-decoration: underline solid;
+}
+
+::highlight(gate-low) {
+    background-color: var(--color-blue-bg);
+    color: var(--text);
+    text-decoration: underline dotted;
+}
+
+/* Registered last to override severity. Highlights cannot draw outlines, so use accent ink. */
+::highlight(gate-current) {
+    color: var(--accent);
+    text-decoration: underline;
+    text-decoration-thickness: 2px;
+}
+
+.cms-reveal-in-tree {
+    appearance: none;
+    border: none;
+    background: none;
+    padding: 0;
+    margin-inline-start: 0.3em;
+    font-size: 0.85em;
+    line-height: 1;
+    color: var(--muted);
+    cursor: pointer;
+}
+
+.cms-reveal-in-tree:hover,
+.cms-reveal-in-tree:focus-visible {
+    color: var(--accent);
+}
+
+/* Keep the disabled control in place to avoid layout changes when a path is entered. */
+.cms-reveal-in-tree:disabled {
+    color: var(--text-disabled);
+    cursor: default;
+}

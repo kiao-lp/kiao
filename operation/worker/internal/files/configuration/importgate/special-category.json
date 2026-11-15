@@ -1,0 +1,64 @@
+{
+  "category": "special-category",
+  "label": "Health, beliefs and other special-category data",
+  "description": "The data GDPR article 9 forbids processing outright, absent one of its narrow exceptions: health, sex life, biometrics, ethnicity, politics, religion, union membership — and, under article 10, criminal convictions. Consent to hold ordinary personal data is never consent to hold this, which is why it outranks the identity category rather than sitting inside it.",
+  "criticality": "critical",
+  "matchers": [
+    {
+      "label": "Medical record or certificate",
+      "pattern": "\\b(?:dossier\\s+m[ée]dical|certificat\\s+m[ée]dical|compte[\\s-]rendu\\s+(?:d['’]hospitalisation|op[ée]ratoire|d['’]examen)|arr[êe]t\\s+(?:de\\s+)?travail|ordonnance\\s+m[ée]dicale|bilan\\s+sanguin|r[ée]sultats?\\s+d['’]analyses?|medical\\s+record|health\\s+record|patient\\s+file|discharge\\s+summary|lab\\s+results?)\\b"
+    },
+    {
+      "label": "Diagnosis or condition",
+      "pattern": "\\b(?:cancer|tumeur|VIH|HIV|s[ée]ropositi\\w+|h[ée]patite|diab[èe]te|diabetes|[ée]pilepsie|scl[ée]rose\\s+en\\s+plaques|d[ée]pression|troubles?\\s+bipolaires?|schizophr[ée]nie|burn[\\s-]?out|addiction|toxicomanie|alcoolisme)\\b"
+    },
+    {
+      "label": "Diagnosis mentioned",
+      "pattern": "\\b(?:diagnostic|diagnosis|pathologie|comorbidit[ée]s?|ant[ée]c[ée]dents\\s+m[ée]dicaux|[ée]tat\\s+de\\s+sant[ée])\\b",
+      "criticality": "medium",
+      "hint": "The word alone. It is as often a machine being diagnosed as a person."
+    },
+    {
+      "label": "Disability or long-term condition",
+      "pattern": "\\b(?:RQTH|handicap(?:[ée]e?s?)?|invalidit[ée]|taux\\s+d['’]incapacit[ée]|ALD\\b|affection\\s+de\\s+longue\\s+dur[ée]e|MDPH|inaptitude|am[ée]nagement\\s+de\\s+poste|disability|reasonable\\s+accommodation)\\b",
+      "criticality": "high"
+    },
+    {
+      "label": "Treatment or prescription",
+      "pattern": "\\b(?:traitement\\s+(?:en\\s+cours|m[ée]dicamenteux)|posologie|chimioth[ée]rapie|antid[ée]presseur|anxiolytique|insuline|prescription\\s+for|mg/jour|allergies?\\s*:)\\b",
+      "criticality": "high"
+    },
+    {
+      "label": "Diagnosis code",
+      "pattern": "\\b(?:CIM|ICD)[\\s-]?(?:9|10|11)\\b[ \\t]*:?[ \\t]*[A-Z]?\\d{2}(?:\\.\\d{1,2})?"
+    },
+    {
+      "label": "Union membership",
+      "pattern": "\\b(?:syndicat|syndiqu[ée]e?s?|affiliation\\s+syndicale|d[ée]l[ée]gu[ée]e?\\s+syndicale?|section\\s+syndicale|CGT|CFDT|FO\\b|CFE[\\s-]CGC|CFTC|SUD\\b|trade\\s+union|union\\s+member(?:ship)?|shop\\s+steward)\\b"
+    },
+    {
+      "label": "Religion or philosophical belief",
+      "pattern": "\\b(?:appartenance\\s+religieuse|conviction(?:s)?\\s+(?:religieuse|philosophique)s?|pratique\\s+religieuse|religious\\s+(?:belief|affiliation)|confession\\s*:|croyance\\s+religieuse)\\b"
+    },
+    {
+      "label": "Political opinion",
+      "pattern": "\\b(?:opinion(?:s)?\\s+politiques?|appartenance\\s+politique|parti\\s+politique|political\\s+(?:opinion|affiliation|party)|encart[ée]e?\\s+(?:au|chez)|vote\\s+(?:exprim[ée]|pour))\\b"
+    },
+    {
+      "label": "Sex life or orientation",
+      "pattern": "\\b(?:orientation\\s+sexuelle|sexual\\s+orientation|vie\\s+sexuelle|identit[ée]\\s+de\\s+genre|gender\\s+identity|transgenre|transgender|LGBTQ?I?A?\\+?)\\b"
+    },
+    {
+      "label": "Racial or ethnic origin",
+      "pattern": "\\b(?:origine\\s+(?:ethnique|raciale)|ethnic(?:ity|\\s+origin)|racial\\s+origin|appartenance\\s+ethnique|nationalit[ée]\\s+d['’]origine|minorit[ée]\\s+visible)\\b"
+    },
+    {
+      "label": "Biometric or genetic data",
+      "pattern": "\\b(?:donn[ée]es?\\s+(?:biom[ée]triques?|g[ée]n[ée]tiques?)|empreintes?\\s+(?:digitales?|g[ée]n[ée]tiques?)|reconnaissance\\s+faciale|facial\\s+recognition|biometric\\s+(?:data|template)|iris\\s+scan|\\bADN\\b|DNA\\s+(?:profile|sequence|sample)|g[ée]notype)\\b"
+    },
+    {
+      "label": "Criminal record or proceedings",
+      "pattern": "\\b(?:casier\\s+judiciaire|bulletin\\s+n[°o]\\s*[23]|condamnation\\s+p[ée]nale|mise\\s+en\\s+examen|garde\\s+[àa]\\s+vue|criminal\\s+(?:record|conviction|background\\s+check)|indictment|convicted\\s+of|sursis|r[ée]cidive)\\b"
+    }
+  ]
+}

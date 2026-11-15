@@ -1,0 +1,35 @@
+.svg-copy-dropdown {
+    position: relative;
+}
+
+.svg-copy-menu {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 4px;
+    display: flex;
+    flex-direction: column;
+    min-width: 120px;
+    background: #2b2b2b;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+    overflow: hidden;
+    z-index: 2;
+}
+
+.svg-copy-menu-item {
+    padding: 6px 10px;
+    font-size: 12px;
+    text-align: left;
+    background: transparent;
+    border: none;
+    color: #ccc;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+}
+
+.svg-copy-menu-item:hover {
+    background: rgba(255, 255, 255, 0.15);
+    color: #fff;
+}
