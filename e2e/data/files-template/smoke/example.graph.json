@@ -1,0 +1,38 @@
+{
+  "size": {
+    "width": 400,
+    "height": 300
+  },
+  "nodes": [
+    {
+      "id": "alpha",
+      "title": "Alpha",
+      "values": { "cost": 10, "computedBenefit": 40, "profitability": 30 },
+      "x": 40,
+      "y": 60,
+      "tooltip": "First node"
+    },
+    {
+      "id": "beta",
+      "title": "Beta",
+      "values": { "cost": 20, "computedBenefit": 55, "profitability": 35 },
+      "x": 220,
+      "y": 140,
+      "tooltip": "Second node"
+    }
+  ],
+  "edges": [
+    {
+      "from": "alpha",
+      "to": "beta",
+      "values": { "contribution": 3 }
+    }
+  ],
+  "legend": {
+    "cost": "#e05555",
+    "computedBenefit": "#5599dd",
+    "profitability": "#dd9933",
+    "contribution": "#888888"
+  },
+  "algorithms": []
+}

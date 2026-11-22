@@ -1,0 +1,4 @@
+name: review-checklist
+version: '1.0.0'
+description: Review a change against its requirements.
+targets: [codex, claude]

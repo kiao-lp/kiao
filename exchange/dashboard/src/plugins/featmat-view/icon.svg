@@ -1,0 +1,26 @@
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    .header { fill: #818CF8; }
+    .cell-good { fill: #34D399; }
+    .cell-mid { fill: #FCD34D; }
+    .cell-bad { fill: #F87171; }
+    .border { stroke: #6B7280; }
+    @media (prefers-color-scheme: light) {
+      .header { fill: #4F46E5; }
+      .cell-good { fill: #059669; }
+      .cell-mid { fill: #D97706; }
+      .cell-bad { fill: #DC2626; }
+      .border { stroke: #9CA3AF; }
+    }
+  </style>
+  <!-- header row -->
+  <rect class="header" x="2" y="2" width="20" height="5" rx="1"/>
+  <!-- row 1 -->
+  <rect class="cell-good" x="2" y="9"  width="6" height="4" rx="0.5"/>
+  <rect class="cell-mid"  x="10" y="9" width="6" height="4" rx="0.5"/>
+  <rect class="cell-bad"  x="18" y="9" width="4" height="4" rx="0.5"/>
+  <!-- row 2 -->
+  <rect class="cell-mid"  x="2"  y="15" width="6" height="4" rx="0.5"/>
+  <rect class="cell-good" x="10" y="15" width="6" height="4" rx="0.5"/>
+  <rect class="cell-good" x="18" y="15" width="4" height="4" rx="0.5"/>
+</svg>

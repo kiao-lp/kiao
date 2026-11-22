@@ -1,0 +1,12 @@
+.ui-copy-button {
+    padding: 2px 6px;
+    border: 1px solid var(--border, #ccc);
+    border-radius: 3px;
+    background: var(--bg, #fff);
+    color: var(--text, #1a1a1a);
+    cursor: pointer;
+}
+
+.ui-copy-button:hover {
+    background: var(--accent-bg, #f0f0f0);
+}

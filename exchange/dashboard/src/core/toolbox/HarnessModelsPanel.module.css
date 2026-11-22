@@ -1,0 +1,32 @@
+.panel {
+    width: 100%;
+    max-width: 720px;
+    box-sizing: border-box;
+    margin-inline: auto;
+    padding: 8px;
+    display: grid;
+    gap: 12px;
+}
+
+.models {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.models th, .models td {
+    border-bottom: 1px solid var(--border);
+    padding: 8px;
+    text-align: center;
+}
+
+.models th:first-child {
+    width: 100%;
+    text-align: start;
+    overflow-wrap: anywhere;
+}
+
+.models code {
+    display: block;
+    font-weight: normal;
+    color: var(--muted);
+}

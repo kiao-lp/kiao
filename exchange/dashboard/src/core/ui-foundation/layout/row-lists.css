@@ -1,0 +1,11 @@
+/* Native tables use kiao-style's stripes. Keep specificity below row states so states win
+   regardless of source order; odd rows retain the container surface. */
+.kiao-zebra-rows > *:nth-child(even) {
+    background-color: var(--table-even);
+}
+
+/* Override --row-list-max-width per list when more width is needed. */
+.kiao-row-list {
+    width: 100%;
+    max-width: var(--row-list-max-width, 920px);
+}

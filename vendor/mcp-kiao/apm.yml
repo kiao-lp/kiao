@@ -1,0 +1,9 @@
+{
+  "name": "mcp-kiao",
+  "version": "1.0.4",
+  "description": "KIAO MCP implementation",
+  "targets": [
+    "codex",
+    "claude"
+  ]
+}

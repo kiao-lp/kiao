@@ -1,0 +1,50 @@
+{
+  "category": "legal",
+  "label": "Contracts, litigation and intellectual property",
+  "description": "What is confidential because somebody signed for it, or because disclosing it forfeits a right: terms under NDA, live disputes, deal work, unfiled inventions and trade secrets. The damage is contractual and irreversible rather than technical.",
+  "criticality": "medium",
+  "matchers": [
+    {
+      "label": "Confidentiality undertaking",
+      "pattern": "\\b(?:\\bNDA\\b|non[\\s-]disclosure\\s+agreement|accord\\s+de\\s+confidentialit[ée]|clause\\s+de\\s+confidentialit[ée]|engagement\\s+de\\s+confidentialit[ée]|sous\\s+NDA|confidentiality\\s+undertaking)\\b",
+      "criticality": "high",
+      "hint": "Somebody signed for this. Importing it may itself be the breach."
+    },
+    {
+      "label": "Litigation or legal hold",
+      "pattern": "\\b(?:contentieux|litige\\s+en\\s+cours|assignation\\s+(?:en\\s+justice|devant|[àa]\\s+compara[îi]tre)|mise\\s+en\\s+demeure|prud['’]hommes|conseil\\s+de\\s+prud['’]hommes|tribunal\\s+de\\s+commerce|litigation|lawsuit|legal\\s+hold|subpoena|discovery\\s+request|arbitrage\\s+CCI)\\b",
+      "criticality": "high"
+    },
+    {
+      "label": "Legal privilege",
+      "pattern": "\\b(?:attorney[\\s-]client\\s+privilege(?:d)?|privileged\\s+and\\s+confidential|secret\\s+professionnel|correspondance\\s+avocat|consultation\\s+juridique|legal\\s+advice\\s+\\(privileged\\))\\b",
+      "criticality": "critical"
+    },
+    {
+      "label": "Deal or corporate transaction",
+      "pattern": "\\b(?:due\\s+diligence|data\\s+room|lettre\\s+d['’]intention|letter\\s+of\\s+intent|term\\s+sheet|protocole\\s+d['’]accord|fusion[\\s-]acquisition|\\bM&A\\b|valorisation\\s+pr[ée][\\s-]?money|table\\s+de\\s+capitalisation|projet\\s+confidentiel)\\b",
+      "criticality": "high",
+      "hint": "Deal information is usually inside information as well."
+    },
+    {
+      "label": "Unfiled invention or trade secret",
+      "pattern": "\\b(?:brevet\\s+(?:en\\s+cours|non\\s+d[ée]pos[ée])|patent\\s+(?:pending|application)|invention\\s+disclosure|secret\\s+de\\s+fabrication|trade\\s+secret|savoir[\\s-]faire\\s+propri[ée]taire|formule\\s+propri[ée]taire|proprietary\\s+algorithm|code\\s+source\\s+propri[ée]taire)\\b",
+      "criticality": "high",
+      "hint": "Disclosure before filing can destroy the novelty a patent needs."
+    },
+    {
+      "label": "Licence restriction",
+      "pattern": "\\b(?:licence\\s+(?:restreinte|nominative)|licen[cs]e\\s+key|EULA|GPL\\s*v?[23]|AGPL|copyleft|redistribution\\s+interdite|all\\s+rights\\s+reserved|droits\\s+d['’]auteur\\s+r[ée]serv[ée]s)\\b",
+      "criticality": "low"
+    },
+    {
+      "label": "Commercial terms",
+      "pattern": "\\b(?:grille\\s+tarifaire|conditions\\s+particuli[èe]res|remise\\s+(?:commerciale|exceptionnelle)|prix\\s+de\\s+revient|marge\\s+(?:commerciale|nette)|price\\s+list\\b|discount\\s+schedule|p[ée]nalit[ée]s?\\s+de\\s+retard|clause\\s+de\\s+r[ée]siliation)\\b"
+    },
+    {
+      "label": "Named third party under contract",
+      "pattern": "\\b(?:sous[\\s-]traitant|subcontractor|prestataire\\s+externe|fournisseur\\s+strat[ée]gique|partenaire\\s+exclusif|exclusive\\s+partner|accord[\\s-]cadre|master\\s+services\\s+agreement)\\b",
+      "criticality": "low"
+    }
+  ]
+}

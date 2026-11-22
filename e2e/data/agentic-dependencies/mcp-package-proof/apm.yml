@@ -1,0 +1,11 @@
+name: mcp-package-proof
+version: '1.0.0'
+description: MCP configuration for agent package tests.
+targets: [codex, claude]
+dependencies:
+  mcp:
+    - name: package-proof
+      registry: false
+      transport: stdio
+      command: node
+      args: [--version]

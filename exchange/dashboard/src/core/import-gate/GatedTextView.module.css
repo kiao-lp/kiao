@@ -1,0 +1,197 @@
+/* The gate's reading pane: the counts and the walk over the text, then the text itself. */
+
+.view {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    flex: 1 1 auto;
+    gap: 6px;
+}
+
+.navigator {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.counts {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.steps {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.position {
+    font-size: 12px;
+    opacity: 0.8;
+    font-variant-numeric: tabular-nums;
+}
+
+/* A count is a filter: pressing it narrows the walk to that level, pressing it again widens it. */
+.count {
+    font-size: 11px;
+    line-height: 1.7;
+    padding: 0 8px;
+    border-radius: 10px;
+    border: 1px solid currentColor;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    font-family: inherit;
+}
+
+/* Not a background: the fill is the level, and the level is what the chip is for. */
+.count:hover {
+    outline: 1px solid currentColor;
+}
+
+.picked {
+    font-weight: 600;
+}
+
+.clean {
+    font-size: 12px;
+    opacity: 0.6;
+}
+
+/* What the navigator is standing on, named in words: the level, the rule, and what to do. */
+.current {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    font-size: 12px;
+    flex-wrap: wrap;
+}
+
+.badge {
+    font-size: 11px;
+    line-height: 1.7;
+    padding: 0 6px;
+    border-radius: 4px;
+    border: 1px solid currentColor;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.currentLabel {
+    font-weight: 600;
+}
+
+.hint {
+    opacity: 0.75;
+}
+
+/* The reading pane, whichever of the two is in it.
+
+   `color` and `background` are set, and have to be: the app's stylesheet paints every `code` and
+   `pre` in the code colour on the code surface — which is right for a fenced block and wrong for a
+   document, where it made the whole preview red. This is a document, so it reads in the page's own
+   ink on the page's own surface. */
+.pane {
+    position: relative; /* the marks are scrolled to by their offsetTop against this pane */
+    flex: 1 1 auto;
+    margin: 0;
+    overflow: auto;
+    min-height: 0;
+    line-height: 1.5;
+    padding: 12px;
+    color: var(--text, inherit);
+    background: transparent;
+    border: 1px solid var(--border, rgba(128, 128, 128, 0.3));
+    border-radius: 6px;
+}
+
+/* Source: shown as it is written, wrapped rather than scrolled sideways. */
+.source {
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: monospace;
+    font-size: 12px;
+}
+
+/* A rendered document. Its own headings, lists and tables carry the sizes; what is set here is
+   only that the first and last block do not push the pane's padding around. */
+.rich > :first-child {
+    margin-top: 0;
+}
+
+.rich > :last-child {
+    margin-bottom: 0;
+}
+
+/* A finding wears its level twice over — a fill and an underline shape — so the four stay apart
+   for a reader who cannot separate the colours. The ink is the pane's own: these fills are the
+   theme's soft backgrounds, and they are the same four in light and in dark. */
+.finding {
+    color: inherit;
+    background: var(--color-grey-bg, rgba(128, 128, 128, 0.25));
+    border-radius: 2px;
+    text-decoration-line: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 2px;
+}
+
+.critical {
+    background: var(--color-red-bg, #fee2e2);
+    text-decoration-style: double;
+}
+
+.high {
+    background: var(--color-orange-bg, #ffedd5);
+    text-decoration-style: wavy;
+}
+
+.medium {
+    background: var(--color-yellow-bg, #fef9c3);
+    text-decoration-style: solid;
+}
+
+.low {
+    background: var(--color-blue-bg, #dbeafe);
+    text-decoration-style: dotted;
+}
+
+/* The one the navigator is on. An outline rather than another fill: the level must stay readable
+   while the finding is being looked at. */
+.here {
+    outline: 2px solid var(--accent, #c98500);
+    outline-offset: 1px;
+}
+
+/* A count and a badge wear the fill their level is painted with in the text, on the pane's own ink.
+   The chip is then literally the colour to look for, and — because these are the theme's four soft
+   backgrounds and not colours of this stylesheet's own — it is legible in all four themes. There is
+   no --error or --warning token to reach for here, and a hard-coded one would be right in one
+   theme and wrong in the other. */
+.count.critical,
+.badge.critical {
+    background: var(--color-red-bg, #fee2e2);
+}
+
+.count.high,
+.badge.high {
+    background: var(--color-orange-bg, #ffedd5);
+}
+
+.count.medium,
+.badge.medium {
+    background: var(--color-yellow-bg, #fef9c3);
+}
+
+.count.low,
+.badge.low {
+    background: var(--color-blue-bg, #dbeafe);
+}
+
+/* Picked, and therefore not distinguished by its fill — that one is spoken for. */
+.count.picked {
+    box-shadow: 0 0 0 2px var(--accent, #2563eb);
+}

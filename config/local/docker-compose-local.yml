@@ -1,0 +1,19 @@
+networks:
+  kiao-local-network:
+    driver: bridge
+
+services:
+  db:
+    # PostgreSQL 16.16 + pgvector; the digest fixes the security patch level.
+    image: pgvector/pgvector:pg16@sha256:484e838076e04939d27d3e176e91c86eea96236126023be8d3059761122e579f
+    restart: always
+    ports:
+      - ${LOCAL_DB_PORT:-48233}:5432
+    environment:
+      POSTGRES_PASSWORD: glg203
+      POSTGRES_USER: postgres
+    volumes:
+      - ./init-postgresql-local.sql:/docker-entrypoint-initdb.d/init-postgresql.sql
+      - /var/lib/postgresql/data:/var/lib/postgresql/data
+    networks:
+      - kiao-local-network

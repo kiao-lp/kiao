@@ -1,0 +1,48 @@
+{
+  "content": {
+    "elements": {
+      "notes": [
+        {
+          "id": "NOTE-Q7xrI2Iz",
+          "userBounds": [
+            177,
+            82,
+            null,
+            null
+          ],
+          "bounds": [
+            177,
+            82,
+            113,
+            95
+          ],
+          "content": "# Note A\n\n---\n\nText",
+          "zIndex": 3
+        },
+        {
+          "id": "NOTE-M1DgxKiL",
+          "userBounds": [
+            275,
+            291,
+            null,
+            null
+          ],
+          "bounds": [
+            275,
+            291,
+            114,
+            95
+          ],
+          "content": "# Note B\n\n---\n\nOther text",
+          "zIndex": 3
+        }
+      ],
+      "relations": []
+    }
+  },
+  "docType": "QuickMindmap",
+  "docId": "d57ea35b-6d0b-4f05-9cc8-bd20417d88ee",
+  "docTypeVersion": 1,
+  "createdAt": "2026-01-21T06:40:44.241Z",
+  "updatedAt": "2026-01-21T06:41:34.181Z"
+}

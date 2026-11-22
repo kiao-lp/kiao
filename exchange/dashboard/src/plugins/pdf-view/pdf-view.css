@@ -1,0 +1,44 @@
+/* The continuous column of pages — see PdfColumn.tsx. */
+
+.pdf-column-scroller {
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    overflow: auto;
+    background-color: var(--bg);
+    /* The scrollbar is there from the first page onwards; reserving its gutter keeps a relayout
+       from changing the column width, which would relayout it again. */
+    scrollbar-gutter: stable;
+}
+
+/* Every page is placed absolutely within the column, so the pages not mounted cost nothing while
+   the ones that are keep their place in the whole document. */
+.pdf-column {
+    position: relative;
+    margin: 0 auto;
+}
+
+.pdf-page-slot {
+    position: absolute;
+    left: 0;
+    right: 0;
+    margin: 0 auto;
+    /* Page-shaped and page-coloured before its canvas arrives: a page still rendering reads as
+       blank paper rather than as a hole in the document. */
+    background-color: #fff;
+    box-shadow: 0 1px 4px rgb(0 0 0 / 35%);
+}
+
+/* The slot is sized from the page's proportion, so the canvas lands on it within a rounded pixel.
+   It is left to size itself rather than being stretched to fit: a page whose proportion is not
+   known yet then renders true and overhangs its gap by a hair, instead of rendering distorted. */
+.pdf-page-slot .react-pdf__Page__canvas {
+    display: block;
+}
+
+.pdf-column-message,
+.pdf-page-message {
+    padding: 2em 1em;
+    text-align: center;
+    color: var(--muted);
+}

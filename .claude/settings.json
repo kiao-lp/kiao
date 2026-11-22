@@ -1,0 +1,49 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(*)",
+      "mcp__kiao-files__*",
+      "mcp__kiao-units__unit_set_metadata",
+      "mcp__kiao-units__unit_index_referrers",
+      "mcp__kiao-units__unit_get_meta"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "d=\"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null)}\"; [ -x \"$d/e2e/bin/run-tests.sh\" ] && \"$d/e2e/bin/run-tests.sh\" --announce-hook; exit 0",
+            "timeout": 15,
+            "statusMessage": "Checking for a finished e2e run"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "d=\"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null)}\"; [ -x \"$d/e2e/bin/run-tests.sh\" ] && \"$d/e2e/bin/run-tests.sh\" --announce-hook; exit 0",
+            "timeout": 15,
+            "statusMessage": "Checking for a finished e2e run"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "d=\"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null)}\"; [ -x \"$d/e2e/bin/run-tests.sh\" ] && \"$d/e2e/bin/run-tests.sh\" --announce-hook; exit 0",
+            "timeout": 15,
+            "statusMessage": "Checking for an unreported e2e run"
+          }
+        ]
+      }
+    ]
+  }
+}

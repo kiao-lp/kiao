@@ -1,0 +1,23 @@
+.ui-error-boundary {
+    padding: 20px;
+    border: 1px solid var(--border, #ccc);
+    border-radius: 8px;
+    background: var(--accent-bg, #fafafa);
+    color: var(--text, #1a1a1a);
+}
+
+.ui-error-boundary h3 {
+    margin: 0 0 0.5em;
+    font-size: 1.2em;
+    color: #d4a017;
+}
+
+.ui-error-boundary button {
+    margin-top: 0.8em;
+    padding: 6px 14px;
+    border: 1px solid var(--border, #ccc);
+    border-radius: 4px;
+    background: var(--link, #1677ff);
+    color: white;
+    cursor: pointer;
+}

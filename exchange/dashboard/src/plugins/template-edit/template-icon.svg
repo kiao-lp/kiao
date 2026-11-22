@@ -1,0 +1,22 @@
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    .doc-stroke { stroke: #22D3EE; }
+    .brace-stroke { stroke: #A3E635; }
+    @media (prefers-color-scheme: light) {
+      .doc-stroke { stroke: #4F46E5; }
+      .brace-stroke { stroke: #EC4899; }
+    }
+  </style>
+  
+  <!-- Document outline -->
+  <path class="doc-stroke" d="M15 2H6C4.89543 2 4 2.89543 4 4V20C4 21.1046 4.89543 22 6 22H18C19.1046 22 20 21.1046 20 20V7L15 2Z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <path class="doc-stroke" d="M15 2V7H20" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  
+  <!-- Text lines -->
+  <line class="doc-stroke" x1="8" y1="16" x2="16" y2="16" stroke-width="2" stroke-linecap="round"/>
+  <line class="doc-stroke" x1="8" y1="12" x2="9" y2="12" stroke-width="2" stroke-linecap="round"/>
+  
+  <!-- Curly braces -->
+  <path class="brace-stroke" d="M12 10C11.5 10 11 10.5 11 11V11.5C11 12 10.5 12.5 10 12.5C10.5 12.5 11 13 11 13.5V14C11 14.5 11.5 15 12 15" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <path class="brace-stroke" d="M15 10C15.5 10 16 10.5 16 11V11.5C16 12 16.5 12.5 17 12.5C16.5 12.5 16 13 16 13.5V14C16 14.5 15.5 15 15 15" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

@@ -1,0 +1,30 @@
+.code-codemirror-editor .cm-editor {
+    background-color: var(--input-bg) !important;
+}
+
+.code-codemirror-editor .cm-gutters {
+    background-color: var(--input-bg) !important;
+}
+
+.code-codemirror-editor .cm-activeLineGutter {
+    background-color: var(--bg-hover) !important;
+}
+
+.code-codemirror-editor .cm-activeLine {
+    background-color: var(--bg-hover) !important;
+}
+
+/* Text color for better contrast */
+.code-codemirror-editor .cm-content {
+    color: var(--text) !important;
+    caret-color: var(--link) !important;
+}
+
+.code-codemirror-editor .cm-line {
+    color: var(--text) !important;
+}
+
+/* Line numbers in secondary color */
+.code-codemirror-editor .cm-gutterElement {
+    color: #838383 !important;
+}

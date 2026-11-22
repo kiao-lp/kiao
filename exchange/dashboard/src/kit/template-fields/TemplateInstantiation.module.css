@@ -1,0 +1,64 @@
+/* The panel a template is instantiated in: what it asks on the left, what it makes on the
+   right, and the buttons validating it under them. See TemplateInstantiation.tsx. */
+.instantiateBody {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    gap: 8px;
+    /* The panes keep their 240px minimum, so on a short tab the body is what scrolls — the
+       footer stays reachable instead of being cut off below the fold. */
+    overflow-y: auto;
+}
+
+.instantiatePanes {
+    display: flex;
+    flex: 1;
+    min-height: 240px;
+    gap: 8px;
+}
+
+/* Instantiate first on its row, then Copy: validating is the gesture the panel is for. */
+.instantiateFooter {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    flex: 0 0 auto;
+    gap: 8px;
+    padding-top: 4px;
+}
+
+/* The questions and the answer share the panel, and each scrolls on its own. */
+.templateFields {
+    flex: 1 1 40%;
+    min-width: 0;
+    overflow: auto;
+    padding-right: 4px;
+}
+
+/* An optional section is a checkbox, one that is always in is a title — both open a branch of
+   questions of their own, and the rule says which is which. */
+.templateGroup {
+    border-left: 2px solid var(--border);
+    padding-left: 10px;
+    margin: 0 0 8px 4px;
+}
+
+.templateSection {
+    font-weight: bold;
+    margin-bottom: 5px;
+}
+
+/* What the instantiation is about to become, read as the markdown it is: templates are always
+   markdown, so there is no source view to switch to. */
+.templatePreview {
+    flex: 1 1 60%;
+    min-width: 0;
+    overflow: auto;
+    margin: 0;
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg);
+    color: var(--text);
+}
