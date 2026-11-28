@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { Button, message } from 'antd';
+import { message } from 'antd';
 import { NodeIndexOutlined } from '@ant-design/icons';
 import { WorkerError } from 'kiao-worker';
 import {
+    IconButton,
     extractFileNameFn,
     MainViewCmp,
     LayoutContent,
@@ -65,14 +66,12 @@ const MindmapToggle: React.FC = () => {
     };
 
     return (
-        <Button
-            type="text"
-            size="small"
+        <IconButton
+            label={`${open ? 'Hide' : 'Show'} Mindmap`}
             icon={<NodeIndexOutlined />}
             loading={creating}
             style={{ color: open ? 'var(--link)' : undefined, opacity: open ? 1 : 0.5 }}
             onClick={toggle}
-            aria-label={`${open ? 'Hide' : 'Show'} Mindmap`}
         />
     );
 };

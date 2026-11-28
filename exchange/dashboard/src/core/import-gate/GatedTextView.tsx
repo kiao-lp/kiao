@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Button } from 'antd';
+import { IconButton } from '../ui-foundation/toolbar/IconButton';
 import { DownOutlined, EyeInvisibleOutlined, UpOutlined } from '@ant-design/icons';
 import { Tooltip } from '../ui-foundation/feedback/Tooltip';
 import { revealPassage } from '../text-fragment/passageHighlight';
@@ -114,21 +114,28 @@ export const GatedTextView: React.FC<GatedTextViewProps> = ({
                             <span className={styles.position} data-testid="gate-position">
                                 {position < 0 ? `${walk.length} found` : `${position + 1} / ${walk.length}`}
                             </span>
-                            <Button size="small" icon={<UpOutlined />} onClick={() => step(-1)}
-                                aria-label="Previous finding" data-testid="gate-previous" />
-                            <Button size="small" icon={<DownOutlined />} onClick={() => step(1)}
-                                aria-label="Next finding" data-testid="gate-next" />
+                            <IconButton
+                                label="Previous finding"
+                                type="default"
+                                icon={<UpOutlined />} onClick={() => step(-1)}
+                                data-testid="gate-previous"
+                            />
+                            <IconButton
+                                label="Next finding"
+                                type="default"
+                                icon={<DownOutlined />} onClick={() => step(1)}
+                                data-testid="gate-next"
+                            />
                             {onTextChange && (
-                                <Tooltip title="Obfuscate this finding — it becomes [...] in the file that is imported">
-                                    <Button
-                                        size="small"
-                                        icon={<EyeInvisibleOutlined />}
-                                        disabled={!at}
-                                        onClick={obfuscate}
-                                        aria-label="Obfuscate this finding"
-                                        data-testid="gate-obfuscate"
-                                    />
-                                </Tooltip>
+                                <IconButton
+                                    label="Obfuscate this finding"
+                                    tooltip="Obfuscate this finding — it becomes [...] in the file that is imported"
+                                    type="default"
+                                    icon={<EyeInvisibleOutlined />}
+                                    disabled={!at}
+                                    onClick={obfuscate}
+                                    data-testid="gate-obfuscate"
+                                />
                             )}
                         </div>
                     )}

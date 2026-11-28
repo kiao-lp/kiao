@@ -1,6 +1,6 @@
 /** An absent spot means never placed; the view assigns an initial position. */
 
-/** Canvas pixels right and down from the top left, persisted on the card. */
+/** Canvas pixels right and down from the top left, persisted on the node. */
 export interface FlowNodeSpot {
     x: number;
     y: number;

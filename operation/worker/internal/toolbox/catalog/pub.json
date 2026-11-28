@@ -202,7 +202,7 @@
       "id": "kiao-hybridflow",
       "kind": "mcp",
       "title": "kiao-hybridflow",
-      "role": "the boards: create one, read one whole, add cards, patch a card",
+      "role": "the boards: create one, read one whole, add flow nodes, patch a flow node",
       "server": "kiao-hybridflow",
       "recipes": {
         "generic": { "channel": "bundled", "package": "hybridflow" }

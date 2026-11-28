@@ -1,4 +1,4 @@
-/** CSV of archived cards across all boards. */
+/** CSV of archived nodes across all boards. */
 
 import { isAgentId } from './flowNodeSettings';
 import type {
@@ -18,7 +18,7 @@ const HEADER = [
     'board', 'title', 'agent', 'model', 'effort',
     'reports', 'input_tokens', 'output_tokens',
     'cache_read_tokens', 'cache_write_tokens', 'reasoning_tokens', 'cost_usd',
-    'node_class', 'complexity',
+    'complexity',
 ];
 
 export const archivedFlowNodesCsv = (rows: ArchivedFlowNodeCsvRow[]): string =>
@@ -64,7 +64,6 @@ const csvRow = (row: ArchivedFlowNodeCsvRow): string => {
         count(usage?.cacheWriteTokens),
         count(usage?.reasoningTokens),
         costOf(usage),
-        flowNode.classVersion?.classTitle ?? '',
         flowNode.complexity ?? '',
     ].map(cell).join(',');
 };

@@ -19,14 +19,14 @@ describe('the datetime a document says', () => {
         expect(readSchedule(undefined)).toBe('');
     });
 
-    it('is what says the card has a moment to wait for', () => {
+    it('is what says the node has a moment to wait for', () => {
         expect(hasSchedule('2026-09-03T22:00')).toBe(true);
         expect(hasSchedule('')).toBe(false);
         expect(hasSchedule('whenever')).toBe(false);
     });
 });
 
-describe('what the card reads out', () => {
+describe('what the node reads out', () => {
     it('says the moment as a calendar and a clock do', () => {
         // The locale is the browser's, so this only asserts that the parts are in there.
         const said = scheduleLabel('2026-09-03T22:00');
@@ -34,7 +34,7 @@ describe('what the card reads out', () => {
         expect(said).toMatch(/3|03/);
     });
 
-    it('says nothing where the card names no moment', () => {
+    it('says nothing where the node names no moment', () => {
         expect(scheduleLabel('')).toBe('');
     });
 });

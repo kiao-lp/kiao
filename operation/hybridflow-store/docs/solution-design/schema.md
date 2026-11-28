@@ -6,38 +6,45 @@ document:
 
 # hybridflow-store — the schema
 
-Boards are rows: `board` + `flow_node` + `task` + `flow_node_tag` + `flow_node_successor` — and
-the runners the cards name, in `runner`. Agent configurations live in Git/APM projects. Beside the cards sit the reusable
-ones: `flow_node_class` + `flow_node_class_version` + `flow_node_class_tag`. What each AI card spent
-sits in `task_usage`, one row per report the harness sends. `task_execution` records the immutable
+Boards store flow nodes, workflow groups, tags and successor links. The `runner` table identifies
+the machines that can run them. Agent configurations live in Git/APM projects.
+`task_usage` holds one row per report the harness sends. `task_execution` records the immutable
 agent publication and resolved settings of each execution. Read the
 [agentic resource design](../../../../docs/solution-design/agentic-resources.md) for package delivery.
 
-**A card that is work somebody does is a task.** Two of the five kinds are: an **AI** card an agent
-plays and a **Human** card a person does. The other three — Shutdown, Scheduler, Gateway — are the
-board acting on its own machine and describe no work at all. `task` is that specialisation, one row
-per flow node that is one, keyed by the flow node it belongs to. The word exists so that the ordinary
-case stops being four: it used to be "an AI or a Human flow node" every time it was said.
-
-**A card that is never played is a class.** A **flow node class** is the reusable shape of work its
-instances do: the title, the kind, the chain to the next class, the note beside the card, and — on
-an AI class — how a turn answers its tool calls and where it is pinned. The words are its
-**versions**', one row each under a successive number: the description, what done means and the
-draft or published. Only the latest version that is not a draft is used when the
-class is instantiated; the others are past versions kept for statistics. A flow node names the
-version it was made from in `class_version_id`, and breaking that link disconnects it from its
-class and changes nothing else about it.
+**A task is work performed by an agent or a person.** AI and Human flow nodes each have a `task` row
+keyed by the flow node. Shutdown, Scheduler, Bitbucket PR Status and both gateways execute in the runner.
 
 ## Why a database
 
-**Several models play cards of one board at the same time while a person rearranges it.** Each of the rules that takes is a line of SQL:
+**Several models play flow nodes of one board at the same time while a person rearranges it.** Each of the rules that takes is a line of SQL:
 
 | the rule | how it holds |
 | --- | --- |
-| two writers, two fields of one card, both kept | `UPDATE flow_node SET status = …` and `UPDATE flow_node SET title = …` touch different columns |
+| two writers, two fields of one flow node, both kept | `UPDATE flow_node SET status = …` and `UPDATE flow_node SET title = …` touch different columns |
 | a stale write is refused, not silently applied | `WHERE revision = $n`, and the row count is the answer |
-| a card is played by one run | `WHERE run_id IS NULL AND status = 'ready'` — one of the two statements matches, the other matches nothing |
+| a flow node is played by one run | `SELECT … FOR UPDATE` locks the row while checking `run_id` and Ready or Done status, claiming the flow node and detaching a completed AI chat |
 | a client learns what changed without polling the board | `change_event` + `LISTEN/NOTIFY` |
+
+`flow_node.completion` records the database order of completed results. When a chain reaches a
+Done parallel gateway, its claim checks that each incoming flow node completed after the gateway's
+last firing. Flow nodes predating completion tracking start at zero.
+
+Migration V046 adds `workflow.runtime_values`, a JSON object that starts empty for every group.
+Successful flow node completions merge individual fields into this object in the same transaction as
+the guarded flow node release. Workflow name and ID come from the group's existing columns.
+
+## Classification folders
+
+`folder` stores names and IDs by collection scope. Names are unique within their scope,
+ignoring case. The `Folders` service, repository and HTTP routes can serve another collection
+by binding it to its own scope.
+
+Membership lives on the classified record. Boards carry a nullable `folder_id` and a
+`folder_scope` constrained to `boards`. The composite foreign key restricts each board to
+folders in that scope and clears membership when a folder is deleted. The board keeps its
+ID, slug and flow nodes. Another collection can use the same foreign-key pattern with its own
+scope and member table. Migration V045 starts existing boards at the top level.
 
 ## The schema
 
@@ -61,17 +68,24 @@ class flow_node <<table>> {
   **id** : uuid <<PK>>
   board_id : uuid <<FK cascade>>
   title : text
-  type : text <<ai|human|shutdown|scheduler|gateway>>
-  status : text <<draft|ready|blocked|running|waiting-refresh|interrupted|done|error>>
+  type : text <<ai|human|start|shutdown|scheduler|bitbucket-pr-status|bitbucket-commit-status|gateway|exclusive-gateway|limiter|note|value|role>>
+  status : text <<draft|ready|todo|blocked|running|waiting-refresh|interrupted|done|error>>
   --
   scheduled_at : text <<a Scheduler's local wall clock>>
   duration : text <<alternative fixed wait from play — V024>>
+  pull_request_id : text <<Bitbucket PR number or scoped ID — V041>>
+  pull_request_status : text <<Bitbucket target state — V041>>
+  commit_id : text <<Bitbucket commit hash or scoped ID — V042>>
+  commit_status : text <<Bitbucket target build state — V042>>
+  limiter_max_passes : integer <<configured number of first-branch passes — V043>>
+  limiter_remaining_passes : integer <<first-branch passes left — V043>>
   spot_x : integer
   spot_y : integer
+  size_w : integer <<resized width — V039>>
+  size_h : integer <<resized height, or NULL for the natural one — V039>>
   --
   run_id : text <<the one run holding it>>
   claimed_at : timestamptz
-  class_version_id : uuid <<the version instantiated from — V015>>
   workflow_id : uuid <<the workflow grouping it, or NULL — V020>>
   created_at : timestamptz
   updated_at : timestamptz
@@ -80,9 +94,14 @@ class flow_node <<table>> {
 
 class task <<table>> {
   **flow_node_id** : uuid <<PK **and** FK cascade>>
-  body : text <<the description; a play leaves it>>
+  body : text <<task description>>
+  multi_part_template : boolean <<fill the description when instantiating a copy>>
+  criteria : jsonb
+  complexity : integer
   --
-  agent : text <<an agent's id — or an engine, before V003>>
+  agent : text <<agent ID or legacy harness ID>>
+  harness : text
+  profile_id : text
   model : text <<selected model>>
   effort : text
   permission : text
@@ -113,73 +132,32 @@ class task_usage <<table>> {
 class flow_node_tag <<table>> {
   **flow_node_id** : uuid <<PK, FK cascade>>
   **ordinal** : integer <<PK>>
-  tag : text <<unique per card, case-insensitive>>
+  tag : text <<unique per flow node, case-insensitive>>
 }
 
 class flow_node_successor <<table>> {
   **flow_node_id** : uuid <<PK, FK cascade — the source>>
   **successor_id** : uuid <<PK, FK cascade — the target>>
-  ordinal : integer <<the order the card lists them>>
+  ordinal : integer <<successor order>>
 }
 
-class flow_node_class <<table>> {
-  **id** : uuid <<PK>>
-  board_id : uuid <<FK cascade>>
-  title : text
-  type : text <<ai|human|shutdown|scheduler>>
-  --
-  scheduled_at : text <<a Scheduler's preset>>
-  duration : text <<alternative fixed wait preset — V024>>
-  spot_x : integer
-  spot_y : integer
-  on_success_flow_node_class_id : uuid <<FK set null, deferrable>>
-  --
-  permission : text <<an AI class's alone>>
-  runner : text <<a runner's id, or NULL for wherever>>
-  on_success_mode : text <<continue|end>>
-  on_success_compact : boolean
-  note : text <<the class's own words — V019>>
-  workflow_class_id : uuid <<the workflow class grouping it, or NULL — V020>>
-  created_at : timestamptz
-  updated_at : timestamptz
-  revision : bigint
+class flow_node_route <<table>> {
+  **flow_node_id** : uuid <<PK, composite FK to the link>>
+  **ordinal** : integer <<PK, evaluation order>>
+  condition : text <<CEL>>
+  successor_id : uuid <<composite FK to the link>>
 }
 
 class workflow <<table>> {
   **id** : uuid <<PK>>
   board_id : uuid <<FK cascade>>
-  name : text <<the rectangle's name — V020>>
+  name : text
+  runtime_values : jsonb
+  workflow_folder : text
+  files : text[]
   created_at : timestamptz
   updated_at : timestamptz
   revision : bigint
-}
-
-class workflow_class <<table>> {
-  **id** : uuid <<PK>>
-  board_id : uuid <<FK cascade>>
-  name : text <<the rectangle's name — V020>>
-  created_at : timestamptz
-  updated_at : timestamptz
-  revision : bigint
-}
-
-class flow_node_class_version <<table>> {
-  **id** : uuid <<PK>>
-  flow_node_class_id : uuid <<FK cascade>>
-  version_number : integer <<1 for the first, then one more>>
-  body : text <<the description an instance is asked — or its template>>
-  criteria : jsonb <<what done means>>
-  is_template : boolean <<V016 — the body is filled in on instantiation>>
-  status : text <<draft|published>>
-  created_at : timestamptz
-  updated_at : timestamptz
-  revision : bigint
-}
-
-class flow_node_class_tag <<table>> {
-  **flow_node_class_id** : uuid <<PK, FK cascade>>
-  **ordinal** : integer <<PK>>
-  tag : text <<unique per class, case-insensitive>>
 }
 
 class task_execution <<table>> {
@@ -223,16 +201,10 @@ flow_node "1" *-- "0..*" task_execution : executed >
 flow_node "1" *-- "0..*" flow_node_tag : wears >
 flow_node "1" <-- "0..*" flow_node_successor : source >
 flow_node "1" <-- "0..*" flow_node_successor : target >
+flow_node_successor "1" <-- "0..*" flow_node_route : chooses >
 runner "0..1" <-- "0..*" task : pinned to >\n(a reference, not a FK)
-board "1" *-- "0..*" flow_node_class : holds >
-flow_node_class "1" *-- "1..*" flow_node_class_version : versions >
-flow_node_class "1" *-- "0..*" flow_node_class_tag : wears >
-flow_node_class "0..1" <-- "0..*" flow_node_class : played after >
-flow_node_class_version "0..1" <-- "0..*" flow_node : instantiated from >\n(set null)
 board "1" *-- "0..*" workflow : holds >
 workflow "0..1" <-- "0..*" flow_node : grouped in >\n(set null)
-board "1" *-- "0..*" workflow_class : holds >
-workflow_class "0..1" <-- "0..*" flow_node_class : grouped in >\n(set null)
 
 note bottom of flow_node
   A write names the fields it
@@ -243,20 +215,10 @@ note bottom of flow_node
 end note
 
 note bottom of task
-  No revision, no timestamps:
-  a task and its flow node are
-  one card, so `If-Match` is
-  the card's. Writing a task
-  stamps the flow node in the
-  same transaction.
-end note
-
-note bottom of flow_node_class_version
-  A revision of its own: a new
-  version is not the class
-  moving, so `If-Match` is the
-  version's and the class keeps
-  its own.
+  `If-Match` checks the flow node
+  revision. A task write advances
+  that revision in the same
+  transaction.
 end note
 
 note bottom of task_usage
@@ -269,11 +231,11 @@ end note
 @enduml
 ```
 -->
-![PlantUML diagram 1](schema.assets/01-plantuml.svg)
+![Boards, flow nodes and workflow groups](schema.assets/01-plantuml.svg)
 
 ### Events
 
-`change_event` holds the common identity and metadata. Its seven concrete subtypes hold the
+`change_event` holds the common identity and metadata. Its five concrete subtypes hold the
 identifiers specific to each scope. Each event has one base row and one subtype row. Deferred
 constraints validate this total, disjoint specialization when the transaction commits.
 
@@ -308,22 +270,10 @@ class flow_node_change_event <<table>> {
   flow_node_id : uuid
 }
 
-class flow_node_class_change_event <<table>> {
-  **seq** : bigint <<PK, FK cascade>>
-  board_id : uuid <<nullable for a cascaded version deletion>>
-  flow_node_class_id : uuid
-}
-
 class workflow_change_event <<table>> {
   **seq** : bigint <<PK, FK cascade>>
   board_id : uuid
   workflow_id : uuid
-}
-
-class workflow_class_change_event <<table>> {
-  **seq** : bigint <<PK, FK cascade>>
-  board_id : uuid
-  workflow_class_id : uuid
 }
 
 class agent_change_event <<table>> {
@@ -338,29 +288,21 @@ class runner_change_event <<table>> {
 
 class board <<table>>
 class flow_node <<table>>
-class flow_node_class <<table>>
 class workflow <<table>>
-class workflow_class <<table>>
 class agent <<table>>
 class runner <<table>>
 
 change_event <|-- board_change_event
 change_event <|-- flow_node_change_event
-change_event <|-- flow_node_class_change_event
 change_event <|-- workflow_change_event
-change_event <|-- workflow_class_change_event
 change_event <|-- agent_change_event
 change_event <|-- runner_change_event
 
 board_change_event "0..*" ..> "0..1" board : board_id
 flow_node_change_event "0..*" ..> "0..1" board : board_id
 flow_node_change_event "0..*" ..> "0..1" flow_node : flow_node_id
-flow_node_class_change_event "0..*" ..> "0..1" board : board_id
-flow_node_class_change_event "0..*" ..> "0..1" flow_node_class : flow_node_class_id
 workflow_change_event "0..*" ..> "0..1" board : board_id
 workflow_change_event "0..*" ..> "0..1" workflow : workflow_id
-workflow_class_change_event "0..*" ..> "0..1" board : board_id
-workflow_class_change_event "0..*" ..> "0..1" workflow_class : workflow_class_id
 agent_change_event "0..*" ..> "0..1" agent : agent_id
 runner_change_event "0..*" ..> "0..1" runner : runner_id
 
@@ -381,82 +323,62 @@ end note
 | --- | --- |
 | `seq` | Store-wide sequence number and primary key, shared by the subtype. Clients use it as a replay cursor; sequence gaps are allowed. |
 | `at` | Timestamp assigned from the database transaction's start time (`now()`). Retention uses it to prune old events. |
-| `scope` | Subtype discriminator: `board`, `flowNode`, `flowNodeClass`, `workflow`, `workflowClass`, `agent` or `runner`. The event must have exactly one matching subtype. |
+| `scope` | Subtype discriminator: `board`, `flowNode`, `workflow`, `agent` or `runner`. The event must have exactly one matching subtype. |
 | `kind` | Operation on the subject row: `created` for `INSERT`, `updated` for `UPDATE`, or `deleted` for `DELETE`. |
 | `actor` | Identity of the writer or run, passed from the service to SQL triggers through `kiao.actor`, a custom transaction-scoped PostgreSQL setting. |
-| `revision` | Historical copy of the changed row's own `revision`, captured after creation or update. `NULL` for a deletion. A class-version event copies the version row's revision. |
+| `revision` | Historical copy of the changed row's own `revision`, captured after creation or update. `NULL` for a deletion. |
 
 **References survive their subjects.** The subtype's `seq` is a foreign key to `change_event`
 with `ON DELETE CASCADE`; its subject identifiers are references without foreign keys. Deleting
-a board or a card must leave its deletion event available for replay. Retention deletes the base
+a board or a flow node must leave its deletion event available for replay. Retention deletes the base
 event and its subtype together. Board identifiers also remain on board-related subtypes so a
 board-scoped replay needs no join to a subject that may have disappeared.
-
-**A class version still announces a class change.** It uses `flow_node_class_change_event`,
-naming the class rather than the version. A version deleted by cascade after its class has gone
-cannot resolve that class's board; its nullable `board_id` preserves that existing case, including
-retained history. The class's own deletion event still names the board.
 
 **The feed remains flat.** `change_event_feed` is a read-only view joining the base event to a
 union of its subtypes. The adapter reads it into `Change`, the feed projection, so `/changes`
 keeps the same scopes, identifiers, ordering and cursor semantics. Triggers insert both rows
 before announcing the sequence on `kiao_hybridflow`; runner heartbeats still emit no event.
 
-### The seven things worth knowing about it
+### Storage invariants
 
-**A task is a kind of flow node, and the key says so.** `task.flow_node_id` is the primary key
-**and** the foreign key, so a flow node has at most one task and a task has exactly one flow node —
-the identity is shared rather than duplicated, and no row can claim otherwise. What is on it is
-everything a Shutdown, a Scheduler and a Gateway have no answer to: the description, the folder the
-work happens in, the four settings a turn is run with, the chat it is played in and what becomes of
-that chat. Connections live in `flow_node_successor`, one ordered row per link for every
-card type. Tasks and Schedulers have at most one predecessor and successor. Shutdown has at most
-one predecessor and no successor. Gateways allow several of both. An index on the target supports
-incoming-link checks; the primary key supports outgoing-link reads. The API keeps a scalar
-`onSuccess.flowNode` for a single successor and `onSuccess.flowNodes` for Gateway branches.
+**Each AI or Human flow node has a task row.** `task.flow_node_id` is both the primary key and
+the foreign key. The shared ID gives each flow node at most one task and each task exactly one
+flow node. The task row holds the description, settings, conversation and handoff options.
 
-**The revision stays on the card.** A task has no `revision`, no `created_at` and no `updated_at`: a
-task and its flow node are one card to everything that reads a board, so `If-Match: <revision>` has
-to mean the whole of it. The adapter stamps `flow_node` in the same transaction as every write to
-`task` — as it already did for `flow_node_tag`, which has no revision either — so a change to a body
-bumps the card's revision and appends to the change log exactly once. The wire is flat for the same
-reason: `flowNode` carries `body`, `settings`, `chat` and `onSuccess` beside `title` and `type`, and
-which of the two rows each lives in stops at this service's edge.
+Connections live in `flow_node_successor`, one ordered row per link. Tasks, Schedulers and
+Bitbucket status events have at most one predecessor and successor. Shutdown accepts at most
+one predecessor. Parallel and exclusive gateways allow several predecessors and successors.
+A limiter allows two successors.
+An index on the target supports incoming-link checks.
+The primary key supports outgoing-link reads. The API uses `onSuccess.flowNode` for a single
+successor and `onSuccess.flowNodes` for gateway branches. `flow_node_route` stores the ordered CEL
+routes of an exclusive gateway and references the corresponding links.
 
-**A class and its versions are two aggregates, so the revision is on each.** Unlike a task, a
-version is not one card with its class: it is filed, edited and published through its own calls,
-carries its own `revision`, and `If-Match` on a version write means the version's. What the class
-holds is what every instance shares — the title, the kind, the chain, the tags, the spot, the
-Scheduler's preset, and the permission, runner and transition an AI class alone is asked — and what
-it never holds is what it is never asked: no folder, no agent, no effort, no chat, no body and no
-success criteria of its own, and no status, a class never being executed. The chain is the one
-column that names its own table twice over: `on_success_flow_node_class_id` names a class of the
-same board, never a version and never a simple flow node, so the two kinds chain among themselves
-and never across — and a class retyped to Shutdown loses its chain for the reason a flow node does.
-A flow node's `class_version_id` is the version it was instantiated from, `ON DELETE SET NULL` both
-ways: a version that has gone leaves the flow nodes made from it saying what they were asked. A
-version's change is logged under its class's id in the `flowNodeClass` scope, because the class is
-the card the board draws.
+**The flow node revision covers the task and tags.** The adapter stamps `flow_node` in the
+same transaction as each write to `task` or `flow_node_tag`, bumping the revision and appending
+to the change log once. The flat `flowNode` object includes `body`, `settings`, `chat` and
+`onSuccess` alongside `title` and `type`.
 
-**A board is a set of cards, and the editor lays them out by their spots.** A card says where it
-sits with `spot_x`/`spot_y`, and the chain — what runs after what — is the whole of the order a
-board has. There is nothing to file a card in and nothing to rank it against: the columns and the
-fractional ranks that ordered the cards inside them went in `V010`.
+**Positions and dimensions describe the canvas layout.** The editor places each card at its
+flow node's `spot_x` and `spot_y`. Dragging an edge saves the selected card's dimensions in
+`size_w` and `size_h`. With a null height the card grows with its contents. The database
+requires positive values and the client clamps them to the type's minimum size.
 
-**A revision is per row, not per board.** An edit conflicts only with another edit of the same card.
+**A revision is per row, not per board.** An edit conflicts only with another edit of the same flow node.
 `If-Match: <revision>` on the wire is what makes a write conditional; no header is a write that does
 not care, which is what a run's status write means and what a person's rename does not.
 
-**The claim is the database's.** `ClaimFlowNode` is one `UPDATE … WHERE run_id IS NULL AND status =
-'ready'`. Twenty goroutines against one row give one winner (`TestOnlyOneRunTakesACardForReal`).
+**Claims are serialized in the database.** `ClaimFlowNode` locks the flow node row before
+checking its status and current claim. Twenty goroutines against one row give one winner
+(`TestOnlyOneRunTakesAFlowNodeForReal`).
 
 **The change log is written by triggers.** A feed with a hole in it leaves a client wrong until it
 reloads, so the append cannot be something a call site may forget.
 
 ### AI task consumption
 
-**Each AI card's spend lands in `task_usage`, one row per report.** A runner finishes a turn — or
-a play — and writes what the harness said it spent: the card, the run, the model slug as said, and
+**Each AI flow node's spend lands in `task_usage`, one row per report.** A runner finishes a turn — or
+a play — and writes what the harness said it spent: the flow node, the run, the model slug as said, and
 the tokens. A Human task never gets a row; a Shutdown, a Scheduler and a Gateway cannot, the key
 naming `task` rather than `flow_node`.
 
@@ -490,16 +412,15 @@ in millionths of a dollar — an integer, so sums stay exact. NULL is "the harne
 and the store never prices a report itself: it owns no price table and wants none.
 
 **No revision, no change event, no stored total.** A usage row is never updated — a correction is a
-new row — so there is nothing `If-Match` could guard, and a token report must not bump the card
-under an editor's keystrokes. Totals are `SUM()`s at the read, per card, per board, or per class
-through `flow_node.class_version_id`, which the statistics the versions are kept for get for free.
+new row — so there is nothing `If-Match` could guard, and a token report must not bump the flow node
+under an editor's keystrokes. Totals are summed at the read.
 Like `runner.last_seen`, writes here move nothing else.
 
 **Replays are safe.** The `id` is minted by the reporter, so a spool replay re-sends the same row
 and the second insert is a no-op (`ON CONFLICT DO NOTHING`) rather than a double count.
 
 **What is not here is in the runner.** Turns, transcripts and durations stay in the runner's
-registry, where `V014` left them: this table says what a card spent, not what it did.
+registry, where `V014` left them: this table says what a flow node spent, not what it did.
 
 ### Schema history and migration
 
@@ -516,46 +437,37 @@ A session advisory lock is taken for the pass, so two instances starting togethe
 `V002`. `GET /schema` reports the ledger, because "which version is that instance on?" is a question
 asked of a running service.
 
-`V002` drops the foreign key from `flow_node.conversation_id` to `conversation(id)`. The chat a card
+`V002` drops the foreign key from `flow_node.conversation_id` to `conversation(id)`. The chat a flow node
 is played in is minted and kept by the hybridflow-runner's registry in worker — turns, transcripts
 and the chat panel all still live there — and nothing registers those ids here, so the constraint refused every
-play at its first turn. The column stays: it says which chat each card belongs to, as a reference
+play at its first turn. The column stays: it says which chat each flow node belongs to, as a reference
 rather than a key, exactly like `run_id`.
 
 `V003` files the managed agents: one `agent` row per named definition of what plays a flow node, and
-a flow node naming one by id in its `settings.agent`. The engine and the model a turn runs on moved
-from the card to the agent; the effort, the permission mode and the folder stayed the card's. There
-is deliberately **no foreign key** between the two: a card naming an agent that has gone must still
+a flow node naming one by id in its `settings.agent`. The harness and the model a turn runs on moved
+from the flow node to the agent; the effort, the permission mode and the folder stayed the flow node's. There
+is deliberately **no foreign key** between the two: a flow node naming an agent that has gone must still
 open and say which agent it wanted, refused at its next play rather than at the delete. The change
 log learns the `agent` scope with it, so the panel listing them is told rather than asking.
 
-`V009` renames the card: the table is `flow_node`, its tags are `flow_node_tag`, the card played
-next is `on_success_flow_node_id`, and the change log's own column and `scope` word follow — with
-the rows already in the log converted, so a client reading the feed after a restart is not made to
-know both words. Nothing about a row changed; only what it is called. "Task" said *a unit of work in
-a queue*, which is neither what the row holds nor how anything reads it: a board is a graph, a card
-names the card played after it, and three of the four kinds — Shutdown, Scheduler, and a Human card
-waiting on somebody — are not work to be done at all. The schema's own history is the one place the
-old word is still written, which is what a migration is for. The file half of the same rename is the
-store migration `V013__workflow-tasks-are-flow-nodes.js`, and the two are independent.
+`V009` renames the original `task` table to `flow_node` to cover both work and control steps.
+It also renames the tag table to `flow_node_tag`, the successor column to
+`on_success_flow_node_id` and the change log's reference column and scope. Existing log entries
+receive the new scope as well. The independent file-store migration
+`V013__workflow-tasks-are-flow-nodes.js` made the equivalent change to workflow documents.
 
 `V011` files the tasks: `task`, one row per flow node whose type is `ai` or `human`, taking
 `body`, `agent`, `model`, `effort`, `permission`, `folder`, `settings_extra`, `conversation_id`,
-`on_success_mode` and `on_success_compact` off `flow_node`. A card that is work somebody does is a
-**task**, and there was no word for that pair before — everything that spoke about them said "an AI
-or a Human flow node", for the ordinary case. `V009` is what made the word free: it is what a card
-used to be called whatever kind it was, which was wrong for a Shutdown and a Scheduler and is right
-for these two. The flow node's change trigger stops naming the card's conversation with the column
-it loses — the board is what narrows a card's change, every client reads the feed that way, and the
-in-memory store never set it — and a Shutdown or a Scheduler carrying anything in the moved columns
-loses it, since a task row for a card that is not a task would break the invariant on its first day.
+`on_success_mode` and `on_success_compact` from `flow_node`. The change trigger uses the board
+as the scope for those updates. The migration copies the task fields only for AI and Human
+steps.
 
 `V010` drops the columns: `board_column` goes whole, and with it `flow_node.column_id`,
 `flow_node.rank`, the change log's `column_id` and the `column` scope — with the rows already in
 the log under it deleted, since a scope outside the check would refuse every future write. A column
-was a place to file a card and nothing more — not a queue, not a state, not an order — and the
+was a place to file a flow node and nothing more — not a queue, not a state, not an order — and the
 editor shows one face, the canvas, where every card sits at the point somebody put it. With the
-filing goes the ordering inside it: a rank said where a card sat among the cards of its column, and
+filing goes the ordering inside it: a rank said where a flow node sat among the flow nodes of its column, and
 with no columns there is nothing to sit among.
 
 `V014` drops the conversations: `conversation` and `transcript_record` go whole, with the two
@@ -566,45 +478,24 @@ schema: turns run in the hybridflow-runner, whose registry mints the ids and kee
 nothing ever registered them here. `task.conversation_id` stays: it names a chat of that registry,
 a reference rather than a key.
 
-`V015` files the node classes: `flow_node_class`, one row per reusable card beside the board's own,
-with its tags in `flow_node_class_tag` — and `flow_node_class_version` beneath each, one row per
-version under a successive number, taking the description and the success criteria a class is
-instantiated with. It is two tables and not one for the reason a task is one row and not none: what
-changes together lives together, and the description changes from version to version while the
-title, the kind and the chain do not. A class always has at least one version, numbered from 1, and
-only the latest one that is not a draft is used at instantiation; a published version is frozen by
-the service, not by the schema — the check constraint only holds the two words — because freezing
-is a rule about writes and the schema holds rows. `flow_node.class_version_id` names the version a
-flow node was made from, `ON DELETE SET NULL`, and the change log learns the `flowNodeClass` scope
-with its own column, a version's change logged under its class — the class is the card the board
-draws, and the board id on the row is what wakes the clients watching that board.
+`V020` introduces workflow groups. A flow node stores membership in `flow_node.workflow_id`.
+Deleting a workflow ungroups its flow nodes. Grouping a flow node produces a flow node change event.
 
-`V020` files the workflows: `workflow` and `workflow_class`, one row per rectangle round a set of
-cards or classes — a name and nothing else, because the bounds are computed from the members, the
-way an archdia container's are. Membership is the card's, `flow_node.workflow_id` and
-`flow_node_class.workflow_class_id`, each at most one, both `ON DELETE SET NULL`: deleting a
-workflow ungroups its cards rather than taking them. The change log learns the `workflow` and
-`workflowClass` scopes with their own columns, and grouping a card is a change to the card too —
-its own row moves, so its own trigger says so.
-
-`V021` files the spend: `task_usage`, one row per usage report on an AI card — the run, the model
+`V021` files the spend: `task_usage`, one row per usage report on an AI flow node — the run, the model
 slug as said, five token columns, a micro-dollar cost or NULL, and an `extra` the service carries
 the way it carries `settings_extra`. The key names `task`, so a Shutdown and a Scheduler cannot
 hold one; there is no trigger and no revision, so a report moves nothing but its own row.
 
 `V023` files the fifth kind: `gateway` joins the type check, and `flow_node_successor` holds a
-Gateway's branches — one row per branch, in the order the card lists them. One successor is a
+Gateway's branches — one row per branch, in the order the flow node lists them. One successor is a
 column; several are rows of their own. Both foreign keys are `ON DELETE CASCADE`, so deleting the
 Gateway takes its branches with it and deleting a branch takes it out of every list naming it, the
-way `ON DELETE SET NULL` takes a deleted card out of the single chain — and both `DEFERRABLE`, for
+way `ON DELETE SET NULL` takes a deleted flow node out of the single chain — and both `DEFERRABLE`, for
 the reason the single chain is: a pasted Gateway arrives in one batch with the branches it names.
-The class table keeps its four kinds: a Gateway holds no words, so there is nothing reusable in it
-to file.
-
 
 ### V024 — Scheduler duration
 
-Adds nullable `duration` to flow nodes and node classes. A database check keeps `duration` and
+Adds nullable `duration` for Scheduler flow nodes. A database check keeps `duration` and
 `scheduled_at` mutually exclusive. Setting a nonempty alternative clears the other atomically.
 The runner counts a positive duration from entering the Scheduler; existing date-time schedules
 retain their local wall-clock interpretation. Scheduler Play and Stop are available on the board.
@@ -632,12 +523,8 @@ the latest publication when creating a task conversation; see the
 
 ### V030 — Change event subtypes
 
-Moves the seven subject identifier columns off `change_event` into `board_change_event`,
-`flow_node_change_event`, `flow_node_class_change_event`, `workflow_change_event`,
-`workflow_class_change_event`, `agent_change_event` and `runner_change_event`. Existing events
-keep their sequence, timestamp, scope, kind, actor, revision and subject identifiers, including
-references to deleted subjects. The sequence generator is retained, so existing cursors remain
-valid and future writes continue after them.
+Moves subject identifiers from `change_event` into event subtype tables and exposes the flat
+view used by the feed. Event sequences and the sequence generator are preserved.
 
 The migration locks event-producing tables and the event log, backfills the subtypes, replaces
 the recording functions, removes the identifier columns from the base and creates the flat feed
@@ -651,9 +538,9 @@ Moves every single successor into `flow_node_successor` and removes the scalar c
 `flow_node`. The migration preserves existing links, including legacy joins that the runner
 refuses to start until repaired. It does not insert Gateways or choose which predecessor to keep.
 
-Deferred constraints validate cardinality, same-board targets, self-links and display cards.
+Deferred constraints validate cardinality, same-board targets, self-links and display flow nodes.
 A transaction lock per board serializes topology writes so concurrent writers cannot give a task
-two predecessors. Batch creation defers checks until all cards exist. Deleting a target removes
+two predecessors. Batch creation defers checks until all flow nodes exist. Deleting a target removes
 its links and records updates on surviving predecessors. The service also checks connection
 changes in domain code, allowing legacy links to be removed without repairing unrelated chains.
 
@@ -674,13 +561,55 @@ The migration removes archived tasks and retires SQL agent configuration and pub
 tables. The hosting assembly validates its Git baseline before this migration runs.
 
 
-### V037 — Task agent selection
-
-Task instances carry their explicit agent selection. Instantiation accepts an `agents` map
-keyed by source class ID, alongside its template `bodies`.
-
 ### V038 — Agent and harness selection
 
-`task.harness`, `task.model` and `task.profile_id` record the harness choice. The class's
-`agent_selection` holds the agent and harness choice for new instances. Older cards that name
-an engine in `task.agent` still read its model from `task.model`.
+`task.harness`, `task.model` and `task.profile_id` record the harness choice. Older flow nodes that name
+a harness in `task.agent` read its model from `task.model`.
+
+### V039 — Flow node dimensions
+
+`flow_node.size_w` and `size_h` keep the dimensions a person
+dragged a selected card's edges to. The height is nullable: a card whose height nobody dragged
+keeps growing with its wrapped text, and clearing the height restores that.
+
+### V040 — Exclusive gateway
+
+The `exclusive-gateway` flow node can link several successors. Each `flow_node_route` row stores one
+CEL condition at an ordinal. The foreign key to `flow_node_successor` removes routes when their
+link is deleted.
+
+### V041 — Bitbucket PR Status
+
+The `bitbucket-pr-status` flow node stores its PR identifier in `pull_request_id` and its
+target state in `pull_request_status`. Both fields can be empty while configuring the flow node.
+
+### V042 — Bitbucket Commit Status
+
+The `bitbucket-commit-status` flow node stores its commit identifier in `commit_id` and its
+target build state in `commit_status`. Both fields can be empty while configuring the flow node.
+
+### V043 — Limiter
+
+A limiter has two ordered successors and at most one predecessor. Its remaining count
+is between zero and its configured maximum. Creating a limiter starts it at the maximum.
+Board archives can restore both counts.
+
+A pass selects the first successor when the count is positive and the second at zero.
+The store writes the decremented count, status and any output against the supplied flow node
+revision, then returns the selected successor. A repeated request at the same revision
+conflicts.
+
+### V049 — Exclusive gateway joins
+
+The deferred connection check accepts multiple incoming links on an exclusive gateway. An
+existing exclusive gateway can receive additional predecessors as soon as the migration runs.
+
+### V054 and V055 — Reuse board flow nodes
+
+`task.multi_part_template` marks descriptions that use a TemplateLang collection. Dashboard
+fills templates when the user chooses **Instantiate here** with copied flow nodes or a workflow.
+
+[V055](../../adapters/postgres/schema/V055__reuse-board-cards.sql) converts stored reusable
+definitions to draft flow nodes and workflows during startup. It preserves the latest wording,
+group membership, placement, and valid connections. It records usage notes as Note flow nodes and
+uses exclusive gateways for converging connections.

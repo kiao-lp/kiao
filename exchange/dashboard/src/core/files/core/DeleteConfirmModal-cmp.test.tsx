@@ -5,26 +5,18 @@ import { DeleteConfirmModal } from './DeleteConfirmModal-cmp';
 import { DeleteScope } from './deleteScope';
 import { FileDto } from 'src/core/files/service';
 
-vi.mock('antd', async (importOriginal) => {
-    const actual = await importOriginal<typeof import('antd')>();
-    return {
-        ...actual,
-        Modal: ({ open, children }: any) => (open ? <div data-testid="delete-modal">{children}</div> : null),
-    };
-});
-
 const entry = (path: string, isDirectory = false): FileDto => ({ path, isDirectory, size: 0, lastModified: 0 });
 
 const show = (scope: DeleteScope) =>
     render(<DeleteConfirmModal scope={scope} onConfirm={vi.fn()} onCancel={vi.fn()} />);
 
-const message = () => screen.getByTestId('delete-confirm-message').textContent ?? '';
+const dialog = () => screen.getByRole('dialog');
 
 describe('DeleteConfirmModal', () => {
     it('names a single file and lists nothing', () => {
         show({ selection: ['docs/a.md'], entries: [entry('docs/a.md')], truncated: false });
 
-        expect(message()).toContain('Delete "a.md"?');
+        expect(dialog()).toHaveAccessibleName('Delete "a.md"?');
         expect(screen.queryByRole('list')).toBeNull();
     });
 
@@ -37,7 +29,7 @@ describe('DeleteConfirmModal', () => {
             truncated: false,
         });
 
-        expect(message()).toContain('Delete "docs" and the 3 entries inside?');
+        expect(dialog()).toHaveAccessibleName('Delete "docs" and the 3 entries inside?');
         expect(screen.getAllByRole('listitem')).toHaveLength(4);
     });
 
@@ -48,7 +40,7 @@ describe('DeleteConfirmModal', () => {
 
         show({ selection: ['big'], entries, truncated: true });
 
-        expect(message()).toContain('more than 499 entries inside');
+        expect(dialog()).toHaveAccessibleName(/more than 499 entries inside/);
         expect(screen.getByTestId('delete-confirm-more').textContent).toContain('and more than');
         expect(screen.getAllByRole('listitem').length).toBeLessThan(entries.length);
     });
@@ -57,6 +49,6 @@ describe('DeleteConfirmModal', () => {
     it('still names the selection when the scope could not be described', () => {
         show({ selection: ['a.md', 'b.md'], entries: [], truncated: false });
 
-        expect(message()).toContain('Delete 2 items?');
+        expect(dialog()).toHaveAccessibleName('Delete 2 items?');
     });
 });

@@ -79,6 +79,7 @@
 
 .runNote[data-state='waiting'],
 .runNote[data-state='refreshing'],
+.runNote[data-state='polling'],
 .runNote[data-state='scheduled'] {
     color: var(--flow-node-waiting-refresh);
 }

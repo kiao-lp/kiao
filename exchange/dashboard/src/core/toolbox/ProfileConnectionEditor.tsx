@@ -73,7 +73,7 @@ export const ProfileConnectionEditor: React.FC<{
         </div>
         {connection.secretRef && !secretConfigured && <p className={styles.hint}>This key is not available on the runner. Store it or choose another key.</p>}
         <h4>Models offered by this connection</h4>
-        <p className={styles.hint}>Add the model IDs your provider supports. Harnesses and conversations can choose any of these models.</p>
+        <p className={styles.hint}>Add the model IDs your provider supports. Pi offers these models when you select this profile.</p>
         {!connection.models.length && <Alert type="info" showIcon title="No models added" description="Add at least one model ID before checking this connection." />}
         {connection.models.map((model, at) => <div key={at} className={styles.model}>
             <FormField label={`Model ID ${at + 1}`}>

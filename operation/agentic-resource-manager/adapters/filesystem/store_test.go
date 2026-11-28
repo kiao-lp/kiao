@@ -1,6 +1,7 @@
 package filesystem
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os"
@@ -180,13 +181,45 @@ func TestAPMFailureDoesNotPublish(t *testing.T) {
 	s, a := fixture(t)
 	ctx := context.Background()
 	compiler := s.compiler
-	s.compiler = apm.Compiler{Binary: "/missing/apm"}
+	project := filepath.Join(s.AgentRoot, a.Repository)
+	manifest := filepath.Join(project, manifestFile)
+	original, err := os.ReadFile(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.git(ctx, project, "add", manifestFile); err != nil {
+		t.Fatal(err)
+	}
+	draft := append(original, []byte("\n# Unstaged draft change\n")...)
+	if err := os.WriteFile(manifest, draft, 0600); err != nil {
+		t.Fatal(err)
+	}
+	indexPath := filepath.Join(project, ".git", "index")
+	index, err := os.ReadFile(indexPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fail := filepath.Join(t.TempDir(), "apm")
+	if err := os.WriteFile(fail, []byte("#!/bin/sh\nprintf 'lockfile_version: 1\\n' > apm.lock.yaml\nif [ \"$1\" = compile ]; then exit 1; fi\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	s.compiler = apm.Compiler{Binary: fail}
 	if _, err := s.PublishAgent(ctx, a.ID, nil, time.Now(), "owner", "", entities.BumpMinor); err == nil {
 		t.Fatal("published despite failed APM resolution")
 	}
 	versions, err := s.AgentVersions(ctx, a.ID)
 	if err != nil || len(versions) != 0 {
 		t.Fatalf("failed publication retained: %v %v", versions, err)
+	}
+	for path, expected := range map[string][]byte{manifest: draft, indexPath: index} {
+		if actual, err := os.ReadFile(path); err != nil || !bytes.Equal(actual, expected) {
+			t.Fatalf("failed publication changed %s: %v", path, err)
+		}
+	}
+	for _, name := range []string{"apm.lock.yaml", "kiao.lock.json"} {
+		if _, err := os.Stat(filepath.Join(project, name)); !os.IsNotExist(err) {
+			t.Fatalf("failed publication wrote %s: %v", name, err)
+		}
 	}
 	s.compiler = compiler
 	retried, err := s.PublishAgent(ctx, a.ID, nil, time.Now(), "owner", "", entities.BumpMinor)
@@ -266,6 +299,10 @@ func TestAPMPublicationAfterClone(t *testing.T) {
 		t.Fatal(err)
 	}
 	published, err := store.PublishAgent(ctx, list[0].ID, nil, time.Now().UTC(), "test", "", "")
+	var warning *entities.PushConfirmation
+	if errors.As(err, &warning) {
+		published, err = store.PublishAgent(ctx, list[0].ID, nil, time.Now().UTC(), "test", warning.Token, "")
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -275,7 +312,12 @@ func TestAPMPublicationAfterClone(t *testing.T) {
 		t.Fatalf("new publication: %+v", published.Published)
 	}
 	versions, err := store.AgentVersions(ctx, list[0].ID)
-	if err != nil || versions[0].Instructions != first.Instructions {
-		t.Fatalf("history: %+v %v", versions, err)
+	if err != nil || len(versions) < 2 || versions[len(versions)-2].Commit != first.Commit ||
+		versions[len(versions)-2].Instructions != first.Instructions {
+		t.Fatalf("previous publication was not retained: %v", err)
+	}
+	bundle, err := store.AgentPackage(ctx, list[0].ID, published.Published.Commit)
+	if err != nil || len(bundle.Files["deployment/apm.lock.yaml"]) == 0 {
+		t.Fatalf("could not restore the newly published lock: %v", err)
 	}
 }

@@ -8,19 +8,23 @@ document:
 
 Part of the [Dashboard solution design](../../../../../docs/solution-design/README.md).
 
-Store links use a leading slash, such as `/docs/guide.md`, without host or Dashboard mount
-prefix. Resolve that prefix at display time so documents survive deployment changes.
+Use DCMS links for document references such as `/docs/guide.md`. Dashboard adds its mount
+point at display time so the document can move between deployments. See the
+[DCMS concept catalog](../../../../../../../docs/architecture/data/dcms-concept-catalog.md).
 
-[internal-links.ts](../../internal-links.ts) exports three helpers:
+[internal-links.ts](../../internal-links.ts) handles links at the Dashboard boundary.
 
 | Helper | Use |
 | --- | --- |
-| `toStoredLink` | Normalize links when writing Markdown, copying a file link or pasting into a mindmap; external URLs pass through |
-| `resolveInternalLink` | Resolve stored links for display |
-| `internalPathOf` | Return the internal router path designated by an href, or `null` |
+| `normalizeDocumentLink` | Remove the current origin and mount from Dashboard hrefs. For a file or folder this produces a DCMS link. Preserve external URLs and document-relative links. |
+| `encodedDcmsLinkOf` | Convert a file API path to a percent-encoded DCMS link for a Markdown destination. |
+| `resolveInternalLink` | Add the mount point to a DCMS link for display. |
+| `internalPathOf` | Return the router path for a Dashboard href or `null` outside the app. |
+| `storePathOfHref` | Return the decoded file API path for a Dashboard href, dropping query and fragment. |
 
 The mount comes from Vite's `BASE_URL` (`VITE_BASE_PATH`, default `/dashboard/`), shared with
-router basename and OIDC redirect. Root-relative hrefs already use the current origin.
+router basename and OIDC redirect. A rendered href such as `/dashboard/docs/guide.md` is
+relative to the web origin.
 `ConfiguredMarkdown` resolves ordinary anchors after custom `prefix::` handling; embed
 renderers such as `template::` own their own resolution.
 
@@ -29,11 +33,13 @@ internal anchor clicks once at application level, including diagram tooltips and
 anchors. It listens during bubbling and respects `defaultPrevented`, so React Router links and
 plugin click handlers retain control.
 
-## Stored links and relative paths
+## Writing DCMS links
 
-Worker's link fixer recognizes the leading slash. Write it in document references, including
-bookmark links and node `settings.folder`, so renames can repair them. Use `storeLinkOf` and
-`storePathOf` from `kiao-worker/utils` to convert links and API paths; do not manipulate the slash
-by hand. Without it, Markdown links resolve relative to their containing document.
+Use `dcmsLinkOf` and `storePathOf` from `kiao-worker/utils` to convert between file API
+paths and raw DCMS links. For example, **Copy DCMS link** copies `/docs/guide.md`, while
+**Copy markdown link** copies `[guide.md](/docs/guide.md)` with a Markdown destination.
+Structured fields such as a node's `settings.folder` also use DCMS links.
 
-Resolution is idempotent for links containing the mount prefix. Such links display but cannot be repaired as store references by [LinkFixer](../../../../../../../operation/worker/internal/files/refactor/linkfix.go): the prefix prevents a path token boundary. All writes use bare store links.
+Resolution also accepts legacy hrefs with the mount point. The mount point prevents a
+path token boundary for link repair, which is why writers use DCMS links.
+[LinkFixer](../../../../../../../operation/worker/internal/files/refactor/linkfix.go)

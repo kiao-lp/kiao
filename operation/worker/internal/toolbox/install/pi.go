@@ -171,7 +171,7 @@ func (s *Service) HarnessInstallations() []equipment.HarnessInstallation {
 		}
 		path := filepath.Join(root, "pi", equipment.PiVersion, "bin", "pi")
 		if filesystem.FileExists(path) {
-			return []equipment.HarnessInstallation{{ID: "pi-" + equipment.PiVersion, Engine: "pi", Version: equipment.PiVersion, Path: path, Protocol: equipment.PiRPCProtocol}}
+			return []equipment.HarnessInstallation{{ID: "pi-" + equipment.PiVersion, Harness: "pi", Version: equipment.PiVersion, Path: path, Protocol: equipment.PiRPCProtocol}}
 		}
 	}
 	return nil

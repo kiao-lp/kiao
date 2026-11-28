@@ -3,6 +3,7 @@ import {
     FileDto,
     DashboardPlugin,
     lazyComponent,
+    extractName,
     extractFileNameFn,
     FileLabelCmp,
     MainViewCmp,
@@ -15,11 +16,13 @@ import { FileTextOutlined } from '@ant-design/icons';
 
 const TextEditor = lazyComponent(() => import('./TextEditor').then(m => ({ default: m.TextEditor })));
 
+const scriptExtensions = ['.bat', '.cmd', '.csh', '.fish', '.tcsh'];
+
 // Plain text this plugin owns. `.cls` is a class file in the LaTeX sense — a text source no
 // other plugin claims — not the compiled kind, which is not text at all. `.csv` and `.tsv` are
 // read as the tabular text they are, including the `.index.csv` a workbook or a PDF leaves beside
 // itself; no syntax colours them, so no viewer claims them.
-const extensions = [".txt", ".jsonl", ".cls", ".csv", ".tsv"];
+const extensions = [".txt", ".jsonl", ".cls", ".csv", ".tsv", ...scriptExtensions];
 
 // The store's declaration of exclusions from automatic document passes (see migrations/README.md)
 // is plain text whose name is `.kiao-files` entire, and it sits at the root of every store. Without
@@ -28,11 +31,15 @@ const extensions = [".txt", ".jsonl", ".cls", ".csv", ".tsv"];
 // it away from it is exactly what stops it working.
 const openable = [...extensions, ".kiao-files"];
 
-const extensionFor = (file: FileDto) => openable.find((extension) => file.path.endsWith(extension));
+const extensionFor = (file: FileDto) => {
+    const path = file.path.toLowerCase();
+    return openable.find(extension => path.endsWith(extension));
+};
 
 const fileTitleFor = (file: FileDto) => {
-    const withoutExtension = extractFileNameFn(extensionFor(file) ?? "")(file);
-    return withoutExtension || extractFileNameFn("")(file); // a name that is entirely its extension
+    const extension = extensionFor(file);
+    if (!extension || scriptExtensions.includes(extension)) return extractName(file.path);
+    return extractFileNameFn(extension)(file) || extractName(file.path);
 };
 
 const fileLabelCmp: FileLabelCmp = ({ file }) => {

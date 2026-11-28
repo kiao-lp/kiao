@@ -51,14 +51,18 @@ export interface AgentPatchDto {
 }
 
 
+export type ResourceKind = 'agent' | 'skill' | 'mcp';
+
 export interface AgenticResourceDto {
- name: string;
- kind: 'agent' | 'skill' | 'mcp';
- repository?: string;
- commit?: string;
- version?: string;
- dirty: boolean;
- files: string[];
+    name: string;
+    kind: ResourceKind;
+    description?: string;
+    repository?: string;
+    commit?: string;
+    version?: string;
+    publishedVersion?: string;
+    dirty: boolean;
+    files: string[];
 }
 export type AgentDependencyKind = 'skills' | 'mcp';
 export interface AgentDependencyDto {
@@ -69,6 +73,14 @@ export interface AgentDependencyDto {
     local: boolean;
 }
 export interface ResourceFileDto { path: string; content: string; revision?: string; }
+
+export interface AgentRemoteDto {
+    hasRemote: boolean;
+    /** Commits the remote holds beyond the working tree. */
+    behind: number;
+    /** Why the remote cannot be read; `behind` is then unknown. */
+    problem?: string;
+}
 
 export interface PushConfirmation { dependencies: string[]; token: string; }
 

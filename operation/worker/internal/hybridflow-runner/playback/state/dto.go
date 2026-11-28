@@ -58,11 +58,17 @@ type PlayChainRunRequestDto struct {
 	FlowNodeID string `json:"flowNodeId"`
 	// Empty Name defaults to the start time.
 	Name string `json:"name"`
+	// AfterPredecessor starts a successor after a Human task is submitted.
+	AfterPredecessor bool `json:"afterPredecessor,omitempty"`
+	// PredecessorID identifies the arrival when starting an exclusive gateway.
+	PredecessorID string `json:"predecessorId,omitempty"`
 }
 
 // ChainRunRequestDto identifies a run for stop, resume, restart or forget.
 type ChainRunRequestDto struct {
 	RunID string `json:"runId"`
+	// StartTurn immediately continues a suspended task on resume.
+	StartTurn bool `json:"startTurn,omitempty"`
 }
 
 // ChainRunsStateDto includes live and retained ended runs, oldest first.

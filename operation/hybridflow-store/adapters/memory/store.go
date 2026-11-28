@@ -15,6 +15,9 @@ package memory
 
 import (
 	"context"
+	"encoding/json"
+	"maps"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -29,6 +32,7 @@ import (
 type Store struct {
 	mu        sync.Mutex
 	boards    map[string]*entities.Board
+	folders   map[entities.FolderScope]map[string]entities.Folder
 	flowNodes map[string]*entities.FlowNode
 	slugs     map[string]string
 	changes   []entities.Change
@@ -38,16 +42,12 @@ type Store struct {
 	agentVersions map[string][]entities.AgentVersion
 	runners       map[string]*entities.Runner
 
-	// usage is what the AI cards spent, by card, oldest report first — with the ids beside
+	// usage is what the AI flow nodes spent, by flow node, oldest report first — with the ids beside
 	// it, so a replayed report is recognised and dropped the way ON CONFLICT DO NOTHING does.
 	usage   map[string][]entities.TaskUsage
 	usageID map[string]bool
 
-	classes  map[string]*entities.FlowNodeClass
-	versions map[string]*entities.FlowNodeClassVersion
-
-	workflows       map[string]*entities.Workflow
-	workflowClasses map[string]*entities.WorkflowClass
+	workflows map[string]*entities.Workflow
 
 	// waiters are released whenever the change log moves, so Await is a wait here too and the
 	// surface's watch endpoint is tested on the path it actually takes.
@@ -58,6 +58,7 @@ type Store struct {
 func New() *Store {
 	return &Store{
 		boards:        map[string]*entities.Board{},
+		folders:       map[entities.FolderScope]map[string]entities.Folder{},
 		flowNodes:     map[string]*entities.FlowNode{},
 		slugs:         map[string]string{},
 		agents:        map[string]*entities.Agent{},
@@ -65,17 +66,14 @@ func New() *Store {
 		runners:       map[string]*entities.Runner{},
 		usage:         map[string][]entities.TaskUsage{},
 		usageID:       map[string]bool{},
-		classes:       map[string]*entities.FlowNodeClass{},
-		versions:      map[string]*entities.FlowNodeClassVersion{},
 
-		workflows:       map[string]*entities.Workflow{},
-		workflowClasses: map[string]*entities.WorkflowClass{},
+		workflows: map[string]*entities.Workflow{},
 	}
 }
 
 var (
 	_ ports.BoardRepository    = (*Store)(nil)
-	_ ports.ClassRepository    = (*Store)(nil)
+	_ ports.FolderRepository   = (*Store)(nil)
 	_ ports.WorkflowRepository = (*Store)(nil)
 	_ ports.AgentRepository    = (*Store)(nil)
 	_ ports.RunnerRepository   = (*Store)(nil)
@@ -106,6 +104,9 @@ func (f *Store) appendChange(change entities.Change) {
 func (f *Store) CreateBoard(_ context.Context, board *entities.Board, actor string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if _, exists := f.folders[entities.BoardFolderScope][board.FolderID]; board.FolderID != "" && !exists {
+		return entities.NotFoundf("board folder")
+	}
 	for _, held := range f.boards {
 		if held.Name == board.Name {
 			return entities.ErrNameTaken
@@ -160,16 +161,22 @@ func (f *Store) FindBoardBySlug(ctx context.Context, slug string) (*entities.Boa
 	return f.FindBoard(ctx, id)
 }
 
-func (f *Store) PatchBoard(ctx context.Context, id string, patch entities.BoardPatch, expected *int64, actor string) (*entities.Board, error) {
+func (f *Store) PatchBoard(_ context.Context, id string, patch entities.BoardPatch, expected *int64, actor string) (*entities.Board, error) {
 	f.mu.Lock()
+	defer f.mu.Unlock()
 	board, ok := f.boards[id]
 	if !ok {
-		f.mu.Unlock()
 		return nil, entities.NotFoundf("board %s", id)
 	}
 	if expected != nil && *expected != board.Revision {
-		f.mu.Unlock()
 		return nil, entities.Conflictf("board %s is at revision %d, not %d", id, board.Revision, *expected)
+	}
+	if patch.FolderID != nil {
+		folderID := *patch.FolderID
+		if _, exists := f.folders[entities.BoardFolderScope][folderID]; folderID != "" && !exists {
+			return nil, entities.NotFoundf("board folder")
+		}
+		board.FolderID = folderID
 	}
 	if patch.Name != nil {
 		board.Name = *patch.Name
@@ -183,8 +190,7 @@ func (f *Store) PatchBoard(ctx context.Context, id string, patch entities.BoardP
 	}
 	board.Revision++
 	f.record(entities.ScopeBoard, entities.ChangeUpdated, id, "", actor, board.Revision)
-	f.mu.Unlock()
-	return f.FindBoard(ctx, id)
+	return f.findBoardLocked(id)
 }
 
 func (f *Store) DeleteBoard(_ context.Context, id string, actor string) error {
@@ -201,24 +207,9 @@ func (f *Store) DeleteBoard(_ context.Context, id string, actor string) error {
 			delete(f.flowNodes, tid)
 		}
 	}
-	for cid, class := range f.classes {
-		if class.BoardID == id {
-			delete(f.classes, cid)
-			for vid, version := range f.versions {
-				if version.ClassID == cid {
-					delete(f.versions, vid)
-				}
-			}
-		}
-	}
 	for wid, workflow := range f.workflows {
 		if workflow.BoardID == id {
 			delete(f.workflows, wid)
-		}
-	}
-	for wid, workflow := range f.workflowClasses {
-		if workflow.BoardID == id {
-			delete(f.workflowClasses, wid)
 		}
 	}
 	f.record(entities.ScopeBoard, entities.ChangeDeleted, id, "", actor, 0)
@@ -230,6 +221,8 @@ func (f *Store) DeleteBoard(_ context.Context, id string, actor string) error {
 // holding — which a store backed by a database cannot do and this one must not either.
 func cloned(flowNode *entities.FlowNode) entities.FlowNode {
 	out := *flowNode
+	out.Routes = slices.Clone(flowNode.Routes)
+	out.People = slices.Clone(flowNode.People)
 	if flowNode.Nexts != nil {
 		out.Nexts = append([]string(nil), flowNode.Nexts...)
 	}
@@ -248,54 +241,73 @@ func cloned(flowNode *entities.FlowNode) entities.FlowNode {
 		spot := *flowNode.Spot
 		out.Spot = &spot
 	}
-	if flowNode.ClassRef != nil {
-		ref := *flowNode.ClassRef
-		out.ClassRef = &ref
+	if flowNode.Size != nil {
+		size := *flowNode.Size
+		out.Size = &size
 	}
 	return out
-}
-
-// resolveLocked names what a flow node's class version is called now: the class and the
-// version, resolved at the read like the database's join. Called with the lock held.
-func (f *Store) resolveLocked(flowNode *entities.FlowNode) {
-	flowNode.ClassRef = nil
-	if flowNode.ClassVersionID == "" {
-		return
-	}
-	version, ok := f.versions[flowNode.ClassVersionID]
-	if !ok {
-		return
-	}
-	class, ok := f.classes[version.ClassID]
-	if !ok {
-		return
-	}
-	flowNode.ClassRef = &entities.ClassRef{
-		ClassID: class.ID, ClassTitle: class.Title,
-		VersionID: version.ID, VersionNumber: version.Number,
-	}
 }
 
 func (f *Store) CreateFlowNodes(_ context.Context, flowNodes []*entities.FlowNode, actor string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if err := f.validateNewFlowNodesLocked(flowNodes); err != nil {
+		return err
+	}
+	f.insertFlowNodesLocked(flowNodes, actor)
+	return nil
+}
+
+func (f *Store) validateNewFlowNodesLocked(flowNodes []*entities.FlowNode) error {
 	held := make([]entities.FlowNode, 0, len(f.flowNodes))
 	for _, n := range f.flowNodes {
 		held = append(held, *n)
 	}
 	changes := make([]entities.FlowNode, 0, len(flowNodes))
+	seen := make(map[string]bool, len(flowNodes))
 	for _, n := range flowNodes {
+		if seen[n.ID] || f.flowNodes[n.ID] != nil {
+			return entities.Conflictf("flow node %s already exists", n.ID)
+		}
+		seen[n.ID] = true
+		if err := n.ValidateRoutes(); err != nil {
+			return err
+		}
 		changes = append(changes, *n)
 	}
-	if err := entities.ValidateConnectionChanges(held, changes); err != nil {
+	if err := checkRoleIDs(held, changes); err != nil {
 		return err
 	}
+	return entities.ValidateConnectionChanges(held, changes)
+}
+
+func checkRoleIDs(held, changes []entities.FlowNode) error {
+	type roleKey struct{ board, id string }
+	active := make(map[roleKey]string)
+	for _, node := range held {
+		if node.Type == entities.FlowNodeRole && !node.Archived && node.RoleID != "" {
+			active[roleKey{node.BoardID, node.RoleID}] = node.ID
+		}
+	}
+	for _, node := range changes {
+		if node.Type != entities.FlowNodeRole || node.Archived || node.RoleID == "" {
+			continue
+		}
+		key := roleKey{node.BoardID, node.RoleID}
+		if id, found := active[key]; found && id != node.ID {
+			return entities.Conflictf("a role with that ID already exists on this board")
+		}
+		active[key] = node.ID
+	}
+	return nil
+}
+
+func (f *Store) insertFlowNodesLocked(flowNodes []*entities.FlowNode, actor string) {
 	for _, flowNode := range flowNodes {
 		copied := cloned(flowNode)
 		f.flowNodes[flowNode.ID] = &copied
 		f.record(entities.ScopeFlowNode, entities.ChangeCreated, flowNode.BoardID, flowNode.ID, actor, flowNode.Revision)
 	}
-	return nil
 }
 
 func (f *Store) FindFlowNode(_ context.Context, id string) (*entities.FlowNode, error) {
@@ -306,7 +318,6 @@ func (f *Store) FindFlowNode(_ context.Context, id string) (*entities.FlowNode, 
 		return nil, entities.NotFoundf("flow node %s", id)
 	}
 	out := cloned(flowNode)
-	f.resolveLocked(&out)
 	return &out, nil
 }
 
@@ -317,7 +328,6 @@ func (f *Store) ListFlowNodes(_ context.Context, boardID string) ([]entities.Flo
 	for _, flowNode := range f.flowNodes {
 		if flowNode.BoardID == boardID {
 			one := cloned(flowNode)
-			f.resolveLocked(&one)
 			out = append(out, one)
 		}
 	}
@@ -339,23 +349,50 @@ func (f *Store) patchFlowNodeLocked(id string, patch entities.FlowNodePatch, exp
 	if expected != nil && *expected != flowNode.Revision {
 		return nil, entities.Conflictf("flow node %s is at revision %d, not %d", id, flowNode.Revision, *expected)
 	}
-	if patch.Next != nil || patch.Nexts != nil || patch.Type != nil {
-		changed := *flowNode
-		if patch.Next != nil {
-			changed.Next = *patch.Next
+	changed := *flowNode
+	if patch.Next != nil {
+		changed.Next = *patch.Next
+	}
+	if patch.Nexts != nil {
+		changed.Nexts = slices.Clone(*patch.Nexts)
+	}
+	if patch.Type != nil {
+		changed.Type = *patch.Type
+	}
+	if patch.RoleID != nil {
+		changed.RoleID = *patch.RoleID
+	}
+	if patch.Archived != nil {
+		changed.Archived = *patch.Archived
+	}
+	if patch.Routes != nil {
+		changed.Routes = slices.Clone(*patch.Routes)
+		if err := changed.ValidateRoutes(); err != nil {
+			return nil, err
 		}
-		if patch.Nexts != nil {
-			changed.Nexts = *patch.Nexts
-		}
-		if patch.Type != nil {
-			changed.Type = *patch.Type
-		}
+	} else if changed.Type != entities.FlowNodeExclusiveGateway {
+		changed.Routes = nil
+	} else if patch.Nexts != nil {
+		changed.Routes = slices.DeleteFunc(slices.Clone(changed.Routes), func(route entities.Route) bool {
+			return !slices.Contains(changed.Nexts, route.FlowNode)
+		})
+	}
+	topologyChanged := patch.Next != nil || patch.Nexts != nil || patch.Type != nil
+	roleChanged := changed.Type == entities.FlowNodeRole && (patch.RoleID != nil || patch.Type != nil || patch.Archived != nil)
+	if topologyChanged || roleChanged {
 		held := make([]entities.FlowNode, 0, len(f.flowNodes))
 		for _, n := range f.flowNodes {
 			held = append(held, *n)
 		}
-		if err := entities.ValidateConnectionChanges(held, []entities.FlowNode{changed}); err != nil {
-			return nil, err
+		if topologyChanged {
+			if err := entities.ValidateConnectionChanges(held, []entities.FlowNode{changed}); err != nil {
+				return nil, err
+			}
+		}
+		if roleChanged {
+			if err := checkRoleIDs(held, []entities.FlowNode{changed}); err != nil {
+				return nil, err
+			}
 		}
 	}
 	if patch.Title != nil {
@@ -369,6 +406,18 @@ func (f *Store) patchFlowNodeLocked(id string, patch entities.FlowNodePatch, exp
 	}
 	if patch.ValueType != nil {
 		flowNode.ValueType = *patch.ValueType
+	}
+	if patch.RoleID != nil {
+		flowNode.RoleID = changed.RoleID
+	}
+	if patch.RoleKind != nil {
+		flowNode.RoleKind = *patch.RoleKind
+	}
+	if patch.People != nil {
+		flowNode.People = slices.Clone(*patch.People)
+	}
+	if patch.Description != nil {
+		flowNode.Description = *patch.Description
 	}
 	if patch.ClearOutput {
 		flowNode.Output = ""
@@ -391,25 +440,38 @@ func (f *Store) patchFlowNodeLocked(id string, patch entities.FlowNodePatch, exp
 	if patch.Duration != nil {
 		flowNode.Duration = *patch.Duration
 	}
+	if patch.PullRequestID != nil {
+		flowNode.PullRequestID = *patch.PullRequestID
+	}
+	if patch.PullRequestStatus != nil {
+		flowNode.PullRequestStatus = *patch.PullRequestStatus
+	}
+	if patch.CommitID != nil {
+		flowNode.CommitID = *patch.CommitID
+	}
+	if patch.CommitStatus != nil {
+		flowNode.CommitStatus = *patch.CommitStatus
+	}
+	if patch.MaxPasses != nil {
+		flowNode.MaxPasses = *patch.MaxPasses
+	}
+	if patch.RemainingPasses != nil {
+		flowNode.RemainingPasses = *patch.RemainingPasses
+	}
 	if patch.Status != nil {
 		flowNode.Status = *patch.Status
+		if flowNode.Status == entities.StatusDone {
+			flowNode.Completion = f.seq + 1
+		}
 	}
 	if patch.Archived != nil {
 		flowNode.Archived = *patch.Archived
 	}
-	if patch.Next != nil {
-		flowNode.Next = *patch.Next
-	}
-	if patch.Nexts != nil {
-		flowNode.Nexts = append([]string(nil), *patch.Nexts...)
-	}
-	if patch.ClassVersionID != nil {
-		flowNode.ClassVersionID = *patch.ClassVersionID
-	}
+	flowNode.Next, flowNode.Nexts, flowNode.Routes = changed.Next, changed.Nexts, changed.Routes
 	if patch.WorkflowID != nil {
 		flowNode.WorkflowID = *patch.WorkflowID
 	}
-	// The task appears and disappears with the type, as its row does in the database: a card
+	// The task appears and disappears with the type, as its row does in the database: a flow node
 	// becoming an AI or a Human one is given an empty task, and one becoming a Shutdown or a
 	// Scheduler gives it up. Replaced rather than written into, so a copy already handed out is
 	// not changed under its holder.
@@ -421,6 +483,9 @@ func (f *Store) patchFlowNodeLocked(id string, patch entities.FlowNodePatch, exp
 	}
 	if patch.Body != nil {
 		task.Body = *patch.Body
+	}
+	if patch.MultiPartTemplate != nil {
+		task.MultiPartTemplate = *patch.MultiPartTemplate
 	}
 	if patch.Criteria != nil {
 		task.Criteria = append([]entities.SuccessCriterion(nil), *patch.Criteria...)
@@ -453,10 +518,13 @@ func (f *Store) patchFlowNodeLocked(id string, patch entities.FlowNodePatch, exp
 	if patch.ClearSpot {
 		flowNode.Spot = nil
 	}
+	if patch.Size != nil {
+		size := *patch.Size
+		flowNode.Size = &size
+	}
 	flowNode.Revision++
 	f.record(entities.ScopeFlowNode, entities.ChangeUpdated, flowNode.BoardID, id, actor, flowNode.Revision)
 	out := cloned(flowNode)
-	f.resolveLocked(&out)
 	return &out, nil
 }
 
@@ -469,12 +537,12 @@ func (f *Store) DeleteFlowNodes(_ context.Context, ids []string, actor string) e
 			continue
 		}
 		delete(f.flowNodes, id)
-		// The card's spend goes with it, as the schema's ON DELETE CASCADE does it.
+		// The flow node's spend goes with it, as the schema's ON DELETE CASCADE does it.
 		for _, report := range f.usage[id] {
 			delete(f.usageID, report.ID)
 		}
 		delete(f.usage, id)
-		// A chain onto a deleted card is broken, as the schema's ON DELETE SET NULL does it —
+		// A chain onto a deleted flow node is broken, as the schema's ON DELETE SET NULL does it —
 		// and a branch naming one is taken out of the list, as its ON DELETE CASCADE does.
 		for _, other := range f.flowNodes {
 			if other.ValueType == id {
@@ -492,6 +560,7 @@ func (f *Store) DeleteFlowNodes(_ context.Context, ids []string, actor string) e
 				}
 				if len(kept) != len(other.Nexts) {
 					other.Nexts = kept
+					other.Routes = slices.DeleteFunc(other.Routes, func(route entities.Route) bool { return route.FlowNode == id })
 				}
 			}
 		}
@@ -500,19 +569,38 @@ func (f *Store) DeleteFlowNodes(_ context.Context, ids []string, actor string) e
 	return nil
 }
 
-func (f *Store) ClaimFlowNode(_ context.Context, id, runID string, status entities.FlowNodeStatus, actor string) (*entities.FlowNode, error) {
+func (f *Store) ClaimFlowNode(_ context.Context, id, runID string, status entities.FlowNodeStatus, actor string, afterPredecessor ...bool) (*entities.FlowNode, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	flowNode, ok := f.flowNodes[id]
 	if !ok {
 		return nil, entities.NotFoundf("flow node %s", id)
 	}
-	// Free and ready, or already this run's — see ports.BoardRepository.ClaimFlowNode.
-	if flowNode.RunID != runID && (flowNode.RunID != "" || flowNode.Status.Held()) {
+	if flowNode.Type == entities.FlowNodeLimiter {
+		return nil, entities.Invalidf("a limiter is played through its pass operation")
+	}
+	if flowNode.RunID != "" && flowNode.RunID != runID {
 		return nil, entities.ErrFlowNodeHeld
 	}
+	if !flowNode.Status.CanClaim(flowNode.Type, flowNode.RunID == runID) {
+		return nil, entities.Invalidf("the flow node stands at %q", flowNode.Status)
+	}
 	if flowNode.RunID != runID {
+		if flowNode.Type == entities.FlowNodeGateway {
+			replaying := flowNode.Status == entities.StatusDone && len(afterPredecessor) > 0 && afterPredecessor[0]
+			for _, input := range f.flowNodes {
+				if input.BoardID == flowNode.BoardID && !input.Archived && slices.Contains(input.Successors(), id) &&
+					(input.Status != entities.StatusDone || (replaying && input.Completion <= flowNode.Completion)) {
+					return nil, entities.ErrGatewayWaiting
+				}
+			}
+		}
 		flowNode.Output = ""
+	}
+	if flowNode.Status == entities.StatusDone && flowNode.Type == entities.FlowNodeAI && flowNode.Task != nil {
+		task := *flowNode.Task
+		task.ConversationID = ""
+		flowNode.Task = &task
 	}
 	flowNode.RunID = runID
 	if flowNode.ClaimedAt.IsZero() {
@@ -522,11 +610,10 @@ func (f *Store) ClaimFlowNode(_ context.Context, id, runID string, status entiti
 	flowNode.Revision++
 	f.record(entities.ScopeFlowNode, entities.ChangeUpdated, flowNode.BoardID, id, actor, flowNode.Revision)
 	out := cloned(flowNode)
-	f.resolveLocked(&out)
 	return &out, nil
 }
 
-func (f *Store) ReleaseFlowNode(_ context.Context, id, runID string, status entities.FlowNodeStatus, output, actor string) (*entities.FlowNode, error) {
+func (f *Store) ReleaseFlowNode(_ context.Context, id, runID, actor string, result entities.PlayResult) (*entities.FlowNode, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	flowNode, ok := f.flowNodes[id]
@@ -536,14 +623,27 @@ func (f *Store) ReleaseFlowNode(_ context.Context, id, runID string, status enti
 	if flowNode.RunID != runID {
 		return nil, entities.Conflictf("flow node %s is held by %q, not by %q", id, flowNode.RunID, runID)
 	}
+	if update := result.Workflow; update != nil {
+		workflow := f.workflows[update.ID]
+		if workflow == nil || flowNode.WorkflowID != update.ID {
+			return nil, entities.Conflictf("flow node %s no longer belongs to workflow %s", id, update.ID)
+		}
+		if err := patchWorkflowValues(workflow, update.Values, nil); err != nil {
+			return nil, err
+		}
+		workflow.Revision++
+		f.recordWorkflow(entities.ChangeUpdated, workflow.BoardID, workflow.ID, actor, workflow.Revision)
+	}
 	flowNode.RunID = ""
 	flowNode.ClaimedAt = time.Time{}
-	flowNode.Status = status
-	flowNode.Output = output
+	flowNode.Status = result.Status
+	if result.Status == entities.StatusDone {
+		flowNode.Completion = f.seq + 1
+	}
+	flowNode.Output = result.Output
 	flowNode.Revision++
 	f.record(entities.ScopeFlowNode, entities.ChangeUpdated, flowNode.BoardID, id, actor, flowNode.Revision)
 	out := cloned(flowNode)
-	f.resolveLocked(&out)
 	return &out, nil
 }
 
@@ -571,278 +671,10 @@ func (f *Store) HeldFlowNodes(_ context.Context, runID string) ([]entities.FlowN
 	for _, flowNode := range f.flowNodes {
 		if flowNode.RunID == runID {
 			one := cloned(flowNode)
-			f.resolveLocked(&one)
 			out = append(out, one)
 		}
 	}
 	return out, nil
-}
-
-// ── node classes ──────────────────────────────────────────────────────────────
-
-func (f *Store) recordClass(kind, boardID, classID, actor string, revision int64) {
-	f.appendChange(entities.Change{
-		Scope: entities.ScopeFlowNodeClass, Kind: kind,
-		BoardID: boardID, FlowNodeClassID: classID, Actor: actor, Revision: revision,
-	})
-}
-
-func clonedClass(class *entities.FlowNodeClass) entities.FlowNodeClass {
-	out := *class
-	if class.Tags != nil {
-		out.Tags = append([]string(nil), class.Tags...)
-	}
-	if class.Spot != nil {
-		spot := *class.Spot
-		out.Spot = &spot
-	}
-	return out
-}
-
-func clonedVersion(version *entities.FlowNodeClassVersion) entities.FlowNodeClassVersion {
-	out := *version
-	if version.Criteria != nil {
-		out.Criteria = append([]entities.SuccessCriterion(nil), version.Criteria...)
-	}
-	return out
-}
-
-func (f *Store) CreateClass(_ context.Context, class *entities.FlowNodeClass, actor string) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	copied := clonedClass(class)
-	f.classes[class.ID] = &copied
-	f.recordClass(entities.ChangeCreated, class.BoardID, class.ID, actor, class.Revision)
-	return nil
-}
-
-func (f *Store) FindClass(_ context.Context, id string) (*entities.FlowNodeClass, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	class, ok := f.classes[id]
-	if !ok {
-		return nil, entities.NotFoundf("node class %s", id)
-	}
-	out := clonedClass(class)
-	return &out, nil
-}
-
-func (f *Store) ListClasses(_ context.Context, boardID string) ([]entities.FlowNodeClass, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	out := []entities.FlowNodeClass{}
-	for _, class := range f.classes {
-		if class.BoardID == boardID {
-			out = append(out, clonedClass(class))
-		}
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
-	return out, nil
-}
-
-func (f *Store) ListAllClasses(_ context.Context) ([]entities.FlowNodeClass, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	out := []entities.FlowNodeClass{}
-	for _, class := range f.classes {
-		out = append(out, clonedClass(class))
-	}
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].BoardID != out[j].BoardID {
-			return out[i].BoardID < out[j].BoardID
-		}
-		return out[i].ID < out[j].ID
-	})
-	return out, nil
-}
-
-func (f *Store) PatchClass(_ context.Context, id string, patch entities.FlowNodeClassPatch, expected *int64, actor string) (*entities.FlowNodeClass, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	class, ok := f.classes[id]
-	if !ok {
-		return nil, entities.NotFoundf("node class %s", id)
-	}
-	if expected != nil && *expected != class.Revision {
-		return nil, entities.Conflictf("node class %s is at revision %d, not %d", id, class.Revision, *expected)
-	}
-	if patch.Title != nil {
-		class.Title = *patch.Title
-	}
-	if patch.Instantiable != nil {
-		class.Instantiable = *patch.Instantiable
-	}
-	if patch.Type != nil {
-		class.Type = *patch.Type
-	}
-	if patch.Tags != nil {
-		class.Tags = append([]string(nil), *patch.Tags...)
-	}
-	if patch.ScheduledAt != nil {
-		class.ScheduledAt = *patch.ScheduledAt
-	}
-	if patch.Duration != nil {
-		class.Duration = *patch.Duration
-	}
-	if patch.Next != nil {
-		class.Next = *patch.Next
-	}
-	if patch.Spot != nil {
-		spot := *patch.Spot
-		class.Spot = &spot
-	}
-	if patch.ClearSpot {
-		class.Spot = nil
-	}
-	if patch.Permission != nil {
-		class.Permission = *patch.Permission
-	}
-	if patch.Selection != nil {
-		class.Selection = *patch.Selection
-	}
-	if patch.Runner != nil {
-		class.Runner = *patch.Runner
-	}
-	if patch.Transition != nil {
-		class.Transition = *patch.Transition
-	}
-	if patch.Note != nil {
-		class.Note = *patch.Note
-	}
-	if patch.WorkflowClassID != nil {
-		class.WorkflowClassID = *patch.WorkflowClassID
-	}
-	// The AI-only answers leave with the type, as the service's WithoutAI drops them on the way
-	// in: a class retyped away from AI keeps none of them.
-	if !class.Type.ForHarness() {
-		class.Permission, class.Runner = "", ""
-		class.Transition = entities.Transition{Mode: entities.TransitionModeDefault}
-	}
-	class.Revision++
-	f.recordClass(entities.ChangeUpdated, class.BoardID, id, actor, class.Revision)
-	out := clonedClass(class)
-	return &out, nil
-}
-
-func (f *Store) DeleteClasses(_ context.Context, ids []string, actor string) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	for _, id := range ids {
-		class, ok := f.classes[id]
-		if !ok {
-			continue
-		}
-		delete(f.classes, id)
-		for vid, version := range f.versions {
-			if version.ClassID == id {
-				delete(f.versions, vid)
-			}
-		}
-		// A chain onto a deleted class is broken, as the schema's ON DELETE SET NULL does it —
-		// and the flow nodes made from its versions are unlinked, keeping what they say.
-		for _, other := range f.classes {
-			if other.Next == id {
-				other.Next = ""
-			}
-		}
-		for _, flowNode := range f.flowNodes {
-			if flowNode.ClassVersionID == "" {
-				continue
-			}
-			if _, ok := f.versions[flowNode.ClassVersionID]; !ok {
-				flowNode.ClassVersionID = ""
-			}
-		}
-		f.recordClass(entities.ChangeDeleted, class.BoardID, id, actor, 0)
-	}
-	return nil
-}
-
-func (f *Store) CreateVersion(_ context.Context, version *entities.FlowNodeClassVersion, actor string) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	class, ok := f.classes[version.ClassID]
-	if !ok {
-		return entities.NotFoundf("node class %s", version.ClassID)
-	}
-	copied := clonedVersion(version)
-	f.versions[version.ID] = &copied
-	f.recordClass(entities.ChangeUpdated, class.BoardID, class.ID, actor, version.Revision)
-	return nil
-}
-
-func (f *Store) FindVersion(_ context.Context, id string) (*entities.FlowNodeClassVersion, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	version, ok := f.versions[id]
-	if !ok {
-		return nil, entities.NotFoundf("node class version %s", id)
-	}
-	out := clonedVersion(version)
-	return &out, nil
-}
-
-func (f *Store) ListVersions(_ context.Context, classID string) ([]entities.FlowNodeClassVersion, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	out := []entities.FlowNodeClassVersion{}
-	for _, version := range f.versions {
-		if version.ClassID == classID {
-			out = append(out, clonedVersion(version))
-		}
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Number < out[j].Number })
-	return out, nil
-}
-
-func (f *Store) PatchVersion(_ context.Context, id string, patch entities.FlowNodeClassVersionPatch, expected *int64, actor string) (*entities.FlowNodeClassVersion, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	version, ok := f.versions[id]
-	if !ok {
-		return nil, entities.NotFoundf("node class version %s", id)
-	}
-	if expected != nil && *expected != version.Revision {
-		return nil, entities.Conflictf("node class version %s is at revision %d, not %d", id, version.Revision, *expected)
-	}
-	if patch.Body != nil {
-		version.Body = *patch.Body
-	}
-	if patch.Criteria != nil {
-		version.Criteria = append([]entities.SuccessCriterion(nil), *patch.Criteria...)
-	}
-	if patch.IsTemplate != nil {
-		version.IsTemplate = *patch.IsTemplate
-	}
-	if patch.Status != nil {
-		version.Status = *patch.Status
-	}
-	version.Revision++
-	classID := version.ClassID
-	boardID := ""
-	if class, ok := f.classes[classID]; ok {
-		boardID = class.BoardID
-	}
-	f.recordClass(entities.ChangeUpdated, boardID, classID, actor, version.Revision)
-	out := clonedVersion(version)
-	return &out, nil
-}
-
-func (f *Store) DeleteVersion(_ context.Context, id string, actor string) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	version, ok := f.versions[id]
-	if !ok {
-		return entities.NotFoundf("node class version %s", id)
-	}
-	classID := version.ClassID
-	boardID := ""
-	if class, ok := f.classes[classID]; ok {
-		boardID = class.BoardID
-	}
-	delete(f.versions, id)
-	f.recordClass(entities.ChangeDeleted, boardID, classID, actor, version.Revision)
-	return nil
 }
 
 // ── workflows ───────────────────────────────────────────────────────────────
@@ -854,17 +686,34 @@ func (f *Store) recordWorkflow(kind, boardID, workflowID, actor string, revision
 	})
 }
 
-func (f *Store) recordWorkflowClass(kind, boardID, workflowID, actor string, revision int64) {
-	f.appendChange(entities.Change{
-		Scope: entities.ScopeWorkflowClass, Kind: kind,
-		BoardID: boardID, WorkflowClassID: workflowID, Actor: actor, Revision: revision,
-	})
-}
-
 func (f *Store) CreateWorkflow(_ context.Context, workflow *entities.Workflow, actor string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	return f.insertWorkflowLocked(workflow, actor)
+}
+
+func (f *Store) CreateWorkflowWithFlowNodes(_ context.Context, workflow *entities.Workflow, flowNodes []*entities.FlowNode, actor string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.validateNewFlowNodesLocked(flowNodes); err != nil {
+		return err
+	}
+	if err := f.insertWorkflowLocked(workflow, actor); err != nil {
+		return err
+	}
+	f.insertFlowNodesLocked(flowNodes, actor)
+	return nil
+}
+
+func (f *Store) insertWorkflowLocked(workflow *entities.Workflow, actor string) error {
+	if f.boards[workflow.BoardID] == nil {
+		return entities.NotFoundf("board %s", workflow.BoardID)
+	}
+	if f.workflows[workflow.ID] != nil {
+		return entities.Conflictf("workflow %s already exists", workflow.ID)
+	}
 	copied := *workflow
+	copied.Files = slices.Clone(workflow.Files)
 	f.workflows[workflow.ID] = &copied
 	f.recordWorkflow(entities.ChangeCreated, workflow.BoardID, workflow.ID, actor, workflow.Revision)
 	return nil
@@ -878,6 +727,7 @@ func (f *Store) FindWorkflow(_ context.Context, id string) (*entities.Workflow, 
 		return nil, entities.NotFoundf("workflow %s", id)
 	}
 	out := *workflow
+	out.Files = slices.Clone(workflow.Files)
 	return &out, nil
 }
 
@@ -887,7 +737,9 @@ func (f *Store) ListWorkflows(_ context.Context, boardID string) ([]entities.Wor
 	out := []entities.Workflow{}
 	for _, workflow := range f.workflows {
 		if workflow.BoardID == boardID {
-			out = append(out, *workflow)
+			copy := *workflow
+			copy.Files = slices.Clone(workflow.Files)
+			out = append(out, copy)
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
@@ -904,13 +756,44 @@ func (f *Store) PatchWorkflow(_ context.Context, id string, patch entities.Workf
 	if expected != nil && *expected != workflow.Revision {
 		return nil, entities.Conflictf("workflow %s is at revision %d, not %d", id, workflow.Revision, *expected)
 	}
+	if patch.ChangesValues() {
+		if err := patchWorkflowValues(workflow, patch.SetValues, patch.RemoveValues); err != nil {
+			return nil, err
+		}
+	}
 	if patch.Name != nil {
 		workflow.Name = *patch.Name
+	}
+	if patch.WorkflowFolder != nil {
+		workflow.WorkflowFolder = *patch.WorkflowFolder
+	}
+	if patch.Files != nil {
+		workflow.Files = slices.Clone(patch.Files)
 	}
 	workflow.Revision++
 	f.recordWorkflow(entities.ChangeUpdated, workflow.BoardID, id, actor, workflow.Revision)
 	out := *workflow
+	out.Files = slices.Clone(workflow.Files)
 	return &out, nil
+}
+
+func patchWorkflowValues(workflow *entities.Workflow, set map[string]json.RawMessage, remove []string) error {
+	values := make(map[string]json.RawMessage)
+	if workflow.Values != "" {
+		if err := json.Unmarshal([]byte(workflow.Values), &values); err != nil {
+			return err
+		}
+	}
+	for _, field := range remove {
+		delete(values, field)
+	}
+	maps.Copy(values, set)
+	raw, err := json.Marshal(values)
+	if err != nil {
+		return err
+	}
+	workflow.Values = string(raw)
+	return nil
 }
 
 func (f *Store) DeleteWorkflows(_ context.Context, ids []string, actor string) error {
@@ -922,7 +805,7 @@ func (f *Store) DeleteWorkflows(_ context.Context, ids []string, actor string) e
 			continue
 		}
 		delete(f.workflows, id)
-		// The cards are ungrouped, as the schema's ON DELETE SET NULL does it — and left
+		// The flow nodes are ungrouped, as the schema's ON DELETE SET NULL does it — and left
 		// where they are.
 		for _, flowNode := range f.flowNodes {
 			if flowNode.WorkflowID == id {
@@ -930,93 +813,6 @@ func (f *Store) DeleteWorkflows(_ context.Context, ids []string, actor string) e
 			}
 		}
 		f.recordWorkflow(entities.ChangeDeleted, workflow.BoardID, id, actor, 0)
-	}
-	return nil
-}
-
-func (f *Store) CreateWorkflowClass(_ context.Context, workflow *entities.WorkflowClass, actor string) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	copied := *workflow
-	f.workflowClasses[workflow.ID] = &copied
-	f.recordWorkflowClass(entities.ChangeCreated, workflow.BoardID, workflow.ID, actor, workflow.Revision)
-	return nil
-}
-
-func (f *Store) FindWorkflowClass(_ context.Context, id string) (*entities.WorkflowClass, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	workflow, ok := f.workflowClasses[id]
-	if !ok {
-		return nil, entities.NotFoundf("workflow class %s", id)
-	}
-	out := *workflow
-	return &out, nil
-}
-
-func (f *Store) ListWorkflowClasses(_ context.Context, boardID string) ([]entities.WorkflowClass, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	out := []entities.WorkflowClass{}
-	for _, workflow := range f.workflowClasses {
-		if workflow.BoardID == boardID {
-			out = append(out, *workflow)
-		}
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
-	return out, nil
-}
-
-func (f *Store) ListAllWorkflowClasses(_ context.Context) ([]entities.WorkflowClass, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	out := []entities.WorkflowClass{}
-	for _, workflow := range f.workflowClasses {
-		out = append(out, *workflow)
-	}
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].BoardID != out[j].BoardID {
-			return out[i].BoardID < out[j].BoardID
-		}
-		return out[i].ID < out[j].ID
-	})
-	return out, nil
-}
-
-func (f *Store) PatchWorkflowClass(_ context.Context, id string, patch entities.WorkflowClassPatch, expected *int64, actor string) (*entities.WorkflowClass, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	workflow, ok := f.workflowClasses[id]
-	if !ok {
-		return nil, entities.NotFoundf("workflow class %s", id)
-	}
-	if expected != nil && *expected != workflow.Revision {
-		return nil, entities.Conflictf("workflow class %s is at revision %d, not %d", id, workflow.Revision, *expected)
-	}
-	if patch.Name != nil {
-		workflow.Name = *patch.Name
-	}
-	workflow.Revision++
-	f.recordWorkflowClass(entities.ChangeUpdated, workflow.BoardID, id, actor, workflow.Revision)
-	out := *workflow
-	return &out, nil
-}
-
-func (f *Store) DeleteWorkflowClasses(_ context.Context, ids []string, actor string) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	for _, id := range ids {
-		workflow, ok := f.workflowClasses[id]
-		if !ok {
-			continue
-		}
-		delete(f.workflowClasses, id)
-		for _, class := range f.classes {
-			if class.WorkflowClassID == id {
-				class.WorkflowClassID = ""
-			}
-		}
-		f.recordWorkflowClass(entities.ChangeDeleted, workflow.BoardID, id, actor, 0)
 	}
 	return nil
 }
@@ -1248,7 +1044,7 @@ func (f *Store) Heartbeat(_ context.Context, id string, now time.Time, _ string)
 	return &out, nil
 }
 
-// ── what the AI cards spent ─────────────────────────────────────────────────────
+// ── what the AI flow nodes spent ─────────────────────────────────────────────────────
 
 func (f *Store) RecordUsage(_ context.Context, usage *entities.TaskUsage) error {
 	f.mu.Lock()

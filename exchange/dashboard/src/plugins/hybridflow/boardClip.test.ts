@@ -31,6 +31,19 @@ describe('pasting', () => {
         expect(pasted).toMatchObject({ title: 'Write the plan', body: 'Introduction.' });
     });
 
+    it('keeps role fields on the clipboard', () => {
+        const original = {
+            ...newFlowNode('Reviewers'), type: 'role' as const, roleId: 'reviewers', roleKind: 'agent' as const,
+            people: ['Alex Rivera', 'Sam Lee'], description: 'Review each release.',
+        };
+        const pasted = oneFlowNode(flowNodeClipText(original))!;
+        expect(pasted.id).not.toBe(original.id);
+        expect(pasted).toMatchObject({
+            type: 'role', title: original.title, roleId: original.roleId, roleKind: original.roleKind,
+            people: original.people, description: original.description,
+        });
+    });
+
     it('takes a bare flow node object', () => {
         expect(oneFlowNode('{"title":"Hand written","body":"b"}'))
             .toMatchObject({ title: 'Hand written', body: 'b' });
@@ -63,7 +76,7 @@ describe('several flow nodes on the clipboard', () => {
         expect(parsed.flowNodes.map((flowNode: { title: string }) => flowNode.title)).toEqual(['First', 'Second']);
     });
 
-    it('writes one card as a single card was always written', () => {
+    it('writes one node as a single node was always written', () => {
         expect(flowNodesClipText([FIRST])).toBe(flowNodeClipText(FIRST));
     });
 
@@ -101,7 +114,7 @@ describe('a chain on the clipboard', () => {
         expect(pasted[0].onSuccess).toEqual({ flowNode: pasted[1].id, flowNodes: [], mode: 'continue', compact: true });
     });
 
-    it('goes where only the card that starts it was picked out', () => {
+    it('goes where only the node that starts it was picked out', () => {
         const linked = {
             ...FIRST, onSuccess: { flowNode: SECOND.id, flowNodes: [], mode: 'continue' as const, compact: true },
         };
@@ -117,6 +130,18 @@ describe('the type of a flow node on the clipboard', () => {
         const pasted = oneFlowNode(flowNodeClipText(waits))!;
         expect(pasted.type).toBe('scheduler');
         expect(pasted.at).toBe('2026-09-03T22:00');
+    });
+
+    it('keeps duration and Bitbucket field references as written', () => {
+        const scheduler = { ...newFlowNode('Wait'), type: 'scheduler' as const, duration: '{{input.minutes}}m' };
+        const bitbucket = {
+            ...newFlowNode('Watch'), type: 'bitbucket-commit-status' as const,
+            commitId: 'team/repo@{{ currentWorkflow.commitId }}', commitStatus: '{{input.targetStatus}}',
+        };
+        const [wait, watch] = readFlowNodesClip(flowNodesClipText([scheduler, bitbucket]));
+        expect(wait.duration).toBe(scheduler.duration);
+        expect(watch.commitId).toBe(bitbucket.commitId);
+        expect(watch.commitStatus).toBe(bitbucket.commitStatus);
     });
 
     it('is read off the settings where the clipboard says none', () => {
@@ -144,7 +169,7 @@ describe('a played flow node on the clipboard', () => {
         const played = { ...newFlowNode('Played', 'Asked.\n\n---\n\nAnswered.'), status: 'done' as const, chat: 'chat-1' };
         const pasted = oneFlowNode(flowNodeClipText(played))!;
         expect(pasted.status).toBe('done');
-        // The id names a conversation of this instance, and two cards on one chat because one was copied from.
+        // The id names a conversation of this instance, and two nodes on one chat because one was copied from.
         expect(pasted.chat).toBe('');
     });
 });
@@ -165,7 +190,7 @@ describe('a managed agent on the clipboard', () => {
         expect(oneFlowNode(flowNodeClipText(played()))!.settings).toEqual({ effort: 'high', folder: '/' });
     });
 
-    it('keeps the engine of a card written before managed agents', () => {
+    it('keeps the harness of a node written before managed agents', () => {
         const played = newFlowNode('Played', 'Do it.', { agent: 'claude', model: 'opus', effort: 'high' });
         const pasted = oneFlowNode(flowNodeClipText(played))!;
         expect(pasted.settings).toEqual({ agent: 'claude', model: 'opus', effort: 'high' });
@@ -208,7 +233,7 @@ describe('a pasted flow node and what it claims happens after it', () => {
     });
 });
 
-/** Where a card sat on the board canvas of the board it came from. */
+/** Where a node sat on the board canvas of the board it came from. */
 describe('a placed flow node on the clipboard', () => {
     it('arrives unplaced, whatever the clipboard said', () => {
         const [pasted] = readFlowNodesClip(JSON.stringify({
@@ -222,7 +247,7 @@ describe('a placed flow node on the clipboard', () => {
 
 
 describe('a copy written before the rename', () => {
-    it('pastes one card wrapped the old way', () => {
+    it('pastes one node wrapped the old way', () => {
         const [pasted] = readFlowNodesClip(JSON.stringify({
             kind: 'kiao-workflow-flow-node',
             version: 1,
@@ -231,7 +256,7 @@ describe('a copy written before the rename', () => {
         expect(pasted.title).toBe('Old copy');
     });
 
-    it('pastes several cards wrapped the old way', () => {
+    it('pastes several nodes wrapped the old way', () => {
         const pasted = readFlowNodesClip(JSON.stringify({
             kind: 'kiao-workflow-flow-nodes',
             version: 1,
@@ -246,7 +271,7 @@ describe("a gateway's branches on the clipboard", () => {
     const LEFT = newFlowNode('Left');
     const RIGHT = newFlowNode('Right');
 
-    it('travels with the cards copied together, rewritten with the new ids', () => {
+    it('travels with the nodes copied together, rewritten with the new ids', () => {
         const join = {
             ...JOIN, onSuccess: { flowNode: '', flowNodes: [LEFT.id, RIGHT.id], mode: 'end' as const, compact: false },
         };
@@ -260,5 +285,22 @@ describe("a gateway's branches on the clipboard", () => {
         };
         const pasted = readFlowNodesClip(flowNodesClipText([join, LEFT]));
         expect(pasted[0].onSuccess.flowNodes).toEqual([pasted[1].id]);
+    });
+
+    it('remaps exclusive routes in order and drops routes to uncopied nodes', () => {
+        const decision = {
+            ...JOIN, type: 'exclusive-gateway' as const,
+            onSuccess: { ...JOIN.onSuccess, flowNodes: [LEFT.id, RIGHT.id] },
+            routes: [
+                { condition: 'input.first', flowNode: LEFT.id },
+                { condition: 'input.second', flowNode: RIGHT.id },
+                { condition: 'true', flowNode: LEFT.id },
+            ],
+        };
+        const [pasted, left] = readFlowNodesClip(flowNodesClipText([decision, LEFT]));
+        expect(pasted.routes).toEqual([
+            { condition: 'input.first', flowNode: left.id },
+            { condition: 'true', flowNode: left.id },
+        ]);
     });
 });

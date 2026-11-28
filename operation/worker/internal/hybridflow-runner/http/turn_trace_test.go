@@ -385,12 +385,12 @@ func driveOneTurn(t *testing.T, store *pkgConversations.ConversationStore, srv *
 	readUntil(t, conn, "done")
 }
 
-// A turn through the real spawn path leaves a trace containing the engine run record,
+// A turn through the real spawn path leaves a trace containing the worker run record,
 // the driver process record and CLI stderr, separate from the reply stream.
 func TestATurnLeavesATraceOfHowItWasRun(t *testing.T) {
 	store, cfg := newTurnRegistry(t)
 	srv := newSocketTestServerWith(t, cfg, store)
-	srv.hub.Harnesses.Set(harnessapi.HarnessClaude, claudeAgentAt(cfg, claudeStub(t)))
+	srv.hub.Harnesses.Set(harnessapi.HarnessClaude, claudeHarnessAt(cfg, claudeStub(t)))
 	conversation := mustCreateConversation(t, store, "")
 	driveOneTurn(t, store, srv, conversation.ID)
 
@@ -448,7 +448,7 @@ func asStrings(values []any) []string {
 func TestTheStreamSwitchKeepsWhatTheDriverDrops(t *testing.T) {
 	store, cfg := newTurnRegistry(t)
 	srv := newSocketTestServerWith(t, cfg, store)
-	srv.hub.Harnesses.Set(harnessapi.HarnessClaude, claudeAgentAt(cfg, claudeStub(t)))
+	srv.hub.Harnesses.Set(harnessapi.HarnessClaude, claudeHarnessAt(cfg, claudeStub(t)))
 	conversation := mustCreateConversation(t, store, "")
 	if _, err := store.Update(conversation.ID, func(meta *pkgConversations.ConversationMeta) {
 		meta.TraceStream = true

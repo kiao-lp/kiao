@@ -1,6 +1,7 @@
 package runnerhttp
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"kiao/worker/internal/core/access"
@@ -15,13 +16,13 @@ import (
 
 // memoryBoards is a BoardStore holding its boards in memory, under their handles: the shape the
 // service implementation answers with, without a database beside the test. Claims included: a
-// card is taken by one run, and a second run reaching for it is refused, exactly as the store
-// refuses it — which is what makes a replay of a card a run never gave back fail here the way it
+// flow node is taken by one run, and a second run reaching for it is refused, exactly as the store
+// refuses it — which is what makes a replay of a flow node a run never gave back fail here the way it
 // fails there.
 type memoryBoards struct {
 	mu     pkgSync.Mutex
 	boards map[string]*pkgBoards.BoardContent
-	// settled is every run freed, in order: what a test reads to say a replay took the card back
+	// settled is every run freed, in order: what a test reads to say a replay took the flow node back
 	// rather than tripping over the run that held it.
 	settled []string
 	// usage is every bill filed, in order: what a test reads to say a turn reported its spend.
@@ -92,7 +93,7 @@ func (m *memoryBoards) apply(handle, flowNodeID, runID string, change func(*pkgB
 	return &out, nil
 }
 
-func (m *memoryBoards) Start(handle, flowNodeID, runID string) (*pkgBoards.BoardContent, error) {
+func (m *memoryBoards) Start(handle, flowNodeID, runID string, afterPredecessor ...bool) (*pkgBoards.BoardContent, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	board, ok := m.boards[handle]
@@ -106,6 +107,9 @@ func (m *memoryBoards) Start(handle, flowNodeID, runID string) (*pkgBoards.Board
 	if flowNode.Run != "" && flowNode.Run != runID {
 		return nil, &httpkit.HTTPError{Status: http.StatusConflict,
 			Msg: "flow node is already being played: run " + flowNode.Run + " has it"}
+	}
+	if flowNode.IsGateway() && len(board.GatewayWaiting(*flowNode, len(afterPredecessor) > 0 && afterPredecessor[0])) > 0 {
+		return nil, &httpkit.HTTPError{Status: http.StatusConflict, Msg: "the gateway is waiting for its incoming branches"}
 	}
 	flowNode.Run = runID
 	board.Start(flowNodeID)
@@ -132,7 +136,7 @@ func (m *memoryBoards) Hold(handle, flowNodeID, runID string) (*pkgBoards.BoardC
 	return m.apply(handle, flowNodeID, runID, func(board *pkgBoards.BoardContent) bool { return board.Hold(flowNodeID) })
 }
 
-func (m *memoryBoards) Finish(handle, flowNodeID, runID, status string, outputs ...json.RawMessage) (*pkgBoards.BoardContent, error) {
+func (m *memoryBoards) Finish(handle, flowNodeID, runID string, result pkgBoards.PlayResult) (*pkgBoards.BoardContent, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	board, ok := m.boards[handle]
@@ -145,15 +149,39 @@ func (m *memoryBoards) Finish(handle, flowNodeID, runID, status string, outputs 
 	}
 	if flowNode.Run != runID {
 		return nil, &httpkit.HTTPError{Status: http.StatusConflict,
-			Msg: "card " + flowNodeID + " is not held by run " + runID}
+			Msg: "flow node " + flowNodeID + " is not held by run " + runID}
+	}
+	if update := result.Workflow; update != nil {
+		workflow := board.Workflow(update.ID)
+		if workflow == nil || flowNode.Workflow != update.ID {
+			return nil, &httpkit.HTTPError{Status: http.StatusConflict, Msg: "the flow node’s workflow has changed"}
+		}
+		workflow.MergeValues(update.Values)
 	}
 	flowNode.Run = ""
-	flowNode.Output = nil
-	if len(outputs) > 0 {
-		flowNode.Output = outputs[0]
-	}
-	board.SetStatus(flowNodeID, status)
+	flowNode.Output = result.Output
+	board.SetStatus(flowNodeID, result.Status)
 	return m.copyLocked(board)
+}
+
+func (m *memoryBoards) PassLimiter(_ context.Context, handle, id, _ string, revision int64, output json.RawMessage) (*pkgBoards.FlowNode, string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	board := m.boards[handle]
+	node := board.FlowNode(id)
+	if node.Revision != revision {
+		return nil, "", &httpkit.HTTPError{Status: http.StatusConflict, Msg: "stale limiter revision"}
+	}
+	next := node.OnSuccess.FlowNodes[1]
+	if node.RemainingPasses > 0 {
+		node.RemainingPasses--
+		next = node.OnSuccess.FlowNodes[0]
+	}
+	node.Status = pkgBoards.FlowNodeStatusDone
+	node.Output = output
+	node.Revision++
+	completed := *node
+	return &completed, next, nil
 }
 
 func (m *memoryBoards) Chat(handle, flowNodeID, chat string) (*pkgBoards.BoardContent, error) {
@@ -167,7 +195,7 @@ func (m *memoryBoards) Drop(handle, flowNodeID, runID string) (*pkgBoards.BoardC
 	if !ok {
 		return nil, &httpkit.HTTPError{Status: http.StatusNotFound, Msg: "no such board: " + handle}
 	}
-	// The guard is the whole of it: a card this run no longer holds is left exactly as it is,
+	// The guard is the whole of it: a flow node this run no longer holds is left exactly as it is,
 	// which is the ordinary case rather than an error.
 	if flowNode := board.FlowNode(flowNodeID); flowNode != nil && flowNode.Run == runID {
 		flowNode.Run = ""
@@ -259,11 +287,11 @@ func TestChainRunPlayNamesNoBoard(t *testing.T) {
 	}
 }
 
-// TestChainRunReplaysACardHeldByAGoneRun is the replay: a card whose run died holding it —
+// TestChainRunReplaysAFlowNodeHeldByAGoneRun is the replay: a flow node whose run died holding it —
 // the service restarted under it, the process went away — and which somebody set ready again.
-// Playing it sends its body into the chat it already has, taking the card back from the run that
+// Playing it sends its body into the chat it already has, taking the flow node back from the run that
 // is gone rather than tripping over it.
-func TestChainRunReplaysACardHeldByAGoneRun(t *testing.T) {
+func TestChainRunReplaysAFlowNodeHeldByAGoneRun(t *testing.T) {
 	rt := newRunnerTest(t, chainBoard(pkgBoards.TransitionEnd))
 	chat := mustCreateConversation(t, rt.convs, "/")
 	boards := newMemoryBoards(t, map[string]*pkgBoards.BoardContent{"major": rt.board()})
@@ -276,7 +304,7 @@ func TestChainRunReplaysACardHeldByAGoneRun(t *testing.T) {
 	rt.runner.Boards = boards
 
 	if _, err := rt.runner.Play(access.Identity{User: "tester"}, "major", "flow-node-1", "Replay"); err != nil {
-		t.Fatalf("replay the card run-dead held: %v", err)
+		t.Fatalf("replay the flow node run-dead held: %v", err)
 	}
 	rt.waitIdle()
 
@@ -298,21 +326,21 @@ func TestChainRunReplaysACardHeldByAGoneRun(t *testing.T) {
 		t.Errorf("flow node status = %q, want done", played.Status)
 	}
 	if played.Run != "" {
-		t.Errorf("flow node run = %q, want the card free", played.Run)
+		t.Errorf("flow node run = %q, want the flow node free", played.Run)
 	}
 	if played.Chat != chat.ID {
 		t.Errorf("flow node chat = %q, want the chat it already had (%s)", played.Chat, chat.ID)
 	}
 	prompts := rt.prompts()
 	if len(prompts) != 1 || !strings.Contains(prompts[0], "Do the first thing.") {
-		t.Errorf("prompts sent = %q, want the card's body sent once", prompts)
+		t.Errorf("prompts sent = %q, want the flow node's body sent once", prompts)
 	}
 }
 
-// TestChainRunPlayRefusesACardARunIsPlaying is the other half: a card a live run holds is not
+// TestChainRunPlayRefusesAFlowNodeARunIsPlaying is the other half: a flow node a live run holds is not
 // taken from it, whatever its status says — somebody setting it ready by hand does not end the
 // play, and the claim is left where it is.
-func TestChainRunPlayRefusesACardARunIsPlaying(t *testing.T) {
+func TestChainRunPlayRefusesAFlowNodeARunIsPlaying(t *testing.T) {
 	rt := newRunnerTest(t, chainBoard(pkgBoards.TransitionEnd))
 	chat := mustCreateConversation(t, rt.convs, "/")
 	boards := newMemoryBoards(t, map[string]*pkgBoards.BoardContent{"major": rt.board()})
@@ -330,9 +358,9 @@ func TestChainRunPlayRefusesACardARunIsPlaying(t *testing.T) {
 	rt.runner.Mu.Unlock()
 
 	if _, err := rt.runner.Play(access.Identity{User: "tester"}, "major", "flow-node-1", "Replay"); err == nil {
-		t.Fatal("play a card a live run holds: no error")
+		t.Fatal("play a flow node a live run holds: no error")
 	} else if !strings.Contains(err.Error(), "already playing") {
-		t.Fatalf("play a card a live run holds: error = %q, want the run named as playing it", err)
+		t.Fatalf("play a flow node a live run holds: error = %q, want the run named as playing it", err)
 	}
 	boards.mu.Lock()
 	settled := append([]string(nil), boards.settled...)
@@ -342,10 +370,10 @@ func TestChainRunPlayRefusesACardARunIsPlaying(t *testing.T) {
 	}
 }
 
-// TestChainRunRestartTakesBackACardHeldByAGoneRun: restarting an ended run plays again from
-// the card it started on, and takes it back first where the run holding it is gone — a restart
+// TestChainRunRestartTakesBackAFlowNodeHeldByAGoneRun: restarting an ended run plays again from
+// the flow node it started on, and takes it back first where the run holding it is gone — a restart
 // is a play under a name the list already holds.
-func TestChainRunRestartTakesBackACardHeldByAGoneRun(t *testing.T) {
+func TestChainRunRestartTakesBackAFlowNodeHeldByAGoneRun(t *testing.T) {
 	rt := newRunnerTest(t, chainBoard(pkgBoards.TransitionEnd))
 	chat := mustCreateConversation(t, rt.convs, "/")
 	boards := newMemoryBoards(t, map[string]*pkgBoards.BoardContent{"major": rt.board()})
@@ -365,7 +393,7 @@ func TestChainRunRestartTakesBackACardHeldByAGoneRun(t *testing.T) {
 	rt.runner.Mu.Unlock()
 
 	if _, err := rt.runner.Restart(access.Identity{User: "tester"}, "run-old"); err != nil {
-		t.Fatalf("restart onto the card run-dead held: %v", err)
+		t.Fatalf("restart onto the flow node run-dead held: %v", err)
 	}
 	rt.waitIdle()
 

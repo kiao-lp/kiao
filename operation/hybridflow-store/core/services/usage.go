@@ -9,11 +9,11 @@ import (
 	"kiao/hybridflow-store/core/ports"
 )
 
-// Usage is what the AI cards spent: one row per report a runner filed.
+// Usage is what the AI flow nodes spent: one row per report a runner filed.
 //
 // What it does **not** do is price one — the cost travels on the report, in the reporter's own
 // figures, and a report that carries none is unknown rather than free. This half files what the
-// harnesses said and sums it back, per card.
+// harnesses said and sums it back, per flow node.
 type Usage struct {
 	repo   ports.UsageRepository
 	boards ports.BoardRepository
@@ -25,7 +25,7 @@ func NewUsage(repo ports.UsageRepository, boards ports.BoardRepository, clock po
 	return &Usage{repo: repo, boards: boards, clock: clock, ids: ids}
 }
 
-// RecordUsageRequest is one report to be filed: the card, the run, the model slug as said, and
+// RecordUsageRequest is one report to be filed: the flow node, the run, the model slug as said, and
 // the tokens. The id is the reporter's to mint — a spool replay re-sends the same row — or empty
 // to have one minted here, which a replay then cannot name again.
 type RecordUsageRequest struct {
@@ -50,7 +50,7 @@ func (r *Usage) Record(ctx context.Context, req RecordUsageRequest) (*entities.T
 		return nil, err
 	}
 	if flowNode.Type != entities.FlowNodeAI {
-		return nil, entities.Invalidf("usage is an AI card's; this one is %s", flowNode.Type)
+		return nil, entities.Invalidf("usage is an AI flow node's; this one is %s", flowNode.Type)
 	}
 	id := strings.TrimSpace(req.ID)
 	if id == "" {
@@ -88,8 +88,8 @@ func (r *Usage) Record(ctx context.Context, req RecordUsageRequest) (*entities.T
 	return usage, nil
 }
 
-// Totals is what one card spent, whole: the sums of its reports. A card the store does not
-// hold is not found rather than zero — zero is what a card with no reports spent.
+// Totals is what one flow node spent, whole: the sums of its reports. A flow node the store does not
+// hold is not found rather than zero — zero is what a flow node with no reports spent.
 func (r *Usage) Totals(ctx context.Context, flowNodeID string) (entities.TaskUsageTotals, error) {
 	if _, err := r.boards.FindFlowNode(ctx, strings.TrimSpace(flowNodeID)); err != nil {
 		return entities.TaskUsageTotals{}, err

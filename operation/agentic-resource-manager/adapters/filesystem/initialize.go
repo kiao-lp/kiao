@@ -108,7 +108,7 @@ func (s *Store) initializeRemoteAgent(ctx context.Context, dir, project string, 
 		return err
 	}
 	if _, err = s.git(ctx, dir, "push", "--set-upstream", "origin", "HEAD"); err != nil {
-		return entities.Conflictf("could not push the initial agent commit: %s", err)
+		return &entities.OperationError{Message: err.Error(), Cause: errors.Join(entities.ErrConflict, err)}
 	}
 	return nil
 }

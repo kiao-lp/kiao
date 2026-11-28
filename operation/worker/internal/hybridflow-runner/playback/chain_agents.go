@@ -9,9 +9,9 @@ import (
 
 type PlayAgent struct {
 	Snapshot *pkgBoards.ManagedAgentVersion
-	// Empty for legacy cards.
+	// Empty for legacy flow nodes.
 	Name string
-	// Managed agent id or legacy engine name, preserved in transcript records.
+	// Managed agent id or legacy harness name, preserved in transcript records.
 	Id           string
 	Harness      string
 	Model        string
@@ -54,7 +54,7 @@ func (r *ChainRunner) ResolveAgent(flowNode pkgBoards.FlowNode) (PlayAgent, erro
 			return PlayAgent{}, err
 		}
 	}
-	// Legacy cards require both a supported engine and a model; an engine alone is insufficient.
+	// Legacy flow nodes require a supported harness and an explicit model.
 	if harness == "" && profileID == "" && flowNode.Settings.Model != "" && r.drives(want) {
 		return PlayAgent{Id: want, Harness: want, Model: flowNode.Settings.Model}, nil
 	}
@@ -88,7 +88,7 @@ func publishedPlayAgent(version *pkgBoards.ManagedAgentVersion) PlayAgent {
 }
 
 // drives checks build support, regardless of availability on this host.
-// Tests without a registry fall back to the built-in engine names.
+// Tests without a registry fall back to the built-in harness names.
 func (r *ChainRunner) drives(name string) bool {
 	if r.Hub == nil || r.Hub.HarnessRegistry() == nil {
 		return name == harnessapi.HarnessClaude || name == harnessapi.HarnessCodex || name == harnessapi.HarnessMuse || name == harnessapi.HarnessPi
@@ -100,7 +100,7 @@ func FlowNodeWithAgent(id string) pkgBoards.FlowNode {
 	return pkgBoards.FlowNode{Settings: pkgBoards.FlowNodeSettings{Agent: id}}
 }
 
-// AgentRefusal checks harness availability, profile and permission support for an AI card.
+// AgentRefusal checks harness availability, profile and permission support for an AI flow node.
 func (r *ChainRunner) AgentRefusal(flowNode pkgBoards.FlowNode) string {
 	if !flowNode.IsAI() || r.Hub == nil || r.Hub.HarnessRegistry() == nil {
 		return ""
@@ -113,7 +113,7 @@ func (r *ChainRunner) AgentRefusal(flowNode pkgBoards.FlowNode) string {
 		return "Select a published APM agent before running this task."
 	}
 	if !r.Hub.HarnessRegistry().Known(resolved.Harness) {
-		// Name a managed agent in the refusal; legacy engine/model cards identify their harness.
+		// Name a managed agent in the refusal; legacy harness/model flow nodes identify their harness.
 		if resolved.Name != "" {
 			return "the agent \"" + resolved.Name + "\" runs on " + resolved.Harness +
 				", which this service does not offer"
@@ -135,7 +135,7 @@ func (r *ChainRunner) AgentRefusal(flowNode pkgBoards.FlowNode) string {
 	return ""
 }
 
-// RunnerRefusal rejects a card pinned to another runner.
+// RunnerRefusal rejects a flow node pinned to another runner.
 func (r *ChainRunner) RunnerRefusal(flowNode pkgBoards.FlowNode) string {
 	want := strings.TrimSpace(flowNode.Settings.Runner)
 	if want == "" {

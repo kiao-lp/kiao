@@ -1,8 +1,6 @@
 import React, { MouseEvent, useCallback, useEffect, useRef, useState } from 'react';
 import classnames from 'classnames';
-import { Dropdown } from 'antd';
-
-import { KEEP_MENU_IN_VIEWPORT, useFileBrowsingPersistenceContext, useSelectionContext } from '@kiao-dashboard-core';
+import { ContextMenu, ZoomSurface, useFileBrowsingPersistenceContext, useMouseOverViewport, useSelectionContext } from '@kiao-dashboard-core';
 import { usePointedElementContext, usePointedLocationTracker, withPointedLocationTracker } from 'react-advanced-interactions';
 
 import { HEIGHT, WIDTH } from '../lib/geom2d';
@@ -16,8 +14,6 @@ import { useRelationDragContext } from './RelationDrag-ctx';
 import { RelationDraftCmp } from './RelationDraft-cmp';
 import { useMindmapMenuItems } from './MindmapContextMenu';
 import { useBoxSelection } from '../hooks/useBoxSelection';
-import { useMouseOverViewport } from '@kiao-dashboard-core';
-import { useWheelZoom } from '../hooks/useWheelZoom';
 import { useKeyboardZoom } from '../hooks/useKeyboardZoom';
 import { useCreateNote } from '../hooks/useNote';
 import { useMapFileDrop } from '../hooks/useDroppedFiles';
@@ -35,7 +31,6 @@ export const MindmapViewportCmp: React.FC<{}> = withPointedLocationTracker(() =>
     const { isActive: isBoxSelecting, boxBounds, startSelection, updateSelection, endSelection } = useBoxSelection(setSelection, zoom);
 
     const { isMouseOverViewport, onMouseEnter, onMouseLeave } = useMouseOverViewport();
-    useWheelZoom(divRef, zoom, setZoom);
     useKeyboardZoom(isMouseOverViewport, zoom, setZoom);
 
     const mindmapLocation = useCallback((clientX: number, clientY: number) => {
@@ -118,9 +113,6 @@ export const MindmapViewportCmp: React.FC<{}> = withPointedLocationTracker(() =>
             startSelection(e, rect, selection);
         }
     }, [mode, setMode, divRef, startSelection, selection, setSelection]);
-
-    const onMindmapClick = useCallback(() => {
-    }, []);
 
     const onMindmapDoubleClick = useCallback((e: MouseEvent) => {
         if (!editedBeforeClick.current || pointedElement) return;
@@ -205,41 +197,32 @@ export const MindmapViewportCmp: React.FC<{}> = withPointedLocationTracker(() =>
 
 
 
-    const style = {
-        minWidth: ((maxWidth + 10) * zoom) + 'px',
-        minHeight: ((maxHeight + 10) * zoom) + 'px'
-    };
-
     return (
-        <Dropdown
-            menu={{ items: menuItems, selectedKeys: menuSelectedKeys }}
-            trigger={mode === 'EDIT' ? ['contextMenu'] : []}
+        <ContextMenu
+            items={menuItems}
+            selectedKeys={menuSelectedKeys}
+            disabled={mode !== 'EDIT'}
             onOpenChange={onMenuOpenChange}
-            {...KEEP_MENU_IN_VIEWPORT}
         >
-        <div className={classnames('mindmap', {
-            'mindmap-visualize': mode === 'VISUALIZE',
-            'mindmap-edit': mode !== 'VISUALIZE'
-        })} ref={divRef}
-            onMouseDown={onMindmapDown}
-            onMouseMove={localOnMindmapMove}
-            onClick={onMindmapClick}
-            onDoubleClick={onMindmapDoubleClick}
-            onContextMenu={onMindmapContextMenu}
-            onMouseUp={onMindmapUp}
-            onMouseEnter={onMouseEnter}
-            onMouseLeave={localOnMouseLeave}
-            onTouchStart={onTouchStart}
-            onTouchMove={onTouchMove}
-            onTouchEnd={onTouchEnd}
-            {...fileDropProps}
-            style={style}>
-            <div className="mindmap-zoom-container" style={{
-                transform: `scale(${zoom})`,
-                transformOrigin: 'top left',
-                width: `${100 / zoom}%`,
-                height: `${100 / zoom}%`
-            }}>
+            <ZoomSurface className={classnames('mindmap', {
+                'mindmap-visualize': mode === 'VISUALIZE',
+                'mindmap-edit': mode !== 'VISUALIZE'
+            })} ref={divRef}
+                zoom={zoom}
+                onZoomChange={setZoom}
+                contentSize={{ width: maxWidth + 10, height: maxHeight + 10 }}
+                contentClassName="mindmap-zoom-container"
+                onMouseDown={onMindmapDown}
+                onMouseMove={localOnMindmapMove}
+                onDoubleClick={onMindmapDoubleClick}
+                onContextMenu={onMindmapContextMenu}
+                onMouseUp={onMindmapUp}
+                onMouseEnter={onMouseEnter}
+                onMouseLeave={localOnMouseLeave}
+                onTouchStart={onTouchStart}
+                onTouchMove={onTouchMove}
+                onTouchEnd={onTouchEnd}
+                {...fileDropProps}>
                 {relationDraft && relationDraft.from === relationPulledFrom && (
                     <RelationDraftCmp from={relationDraft.from} to={relationDraft.to} />
                 )}
@@ -261,8 +244,7 @@ export const MindmapViewportCmp: React.FC<{}> = withPointedLocationTracker(() =>
                         }}
                     />
                 )}
-            </div>
-        </div>
-        </Dropdown>
+            </ZoomSurface>
+        </ContextMenu>
     );
 });

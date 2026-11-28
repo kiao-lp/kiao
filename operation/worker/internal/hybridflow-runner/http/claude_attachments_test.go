@@ -22,7 +22,7 @@ import (
 // directory of its own.
 func newAttachmentTestServer(t *testing.T) (*Service, *pkgConversations.AttachmentStore) {
 	t.Helper()
-	cfg := &runnerconfig.Config{Config: &coreconfig.Config{AuthMode: "debug", RootPath: t.TempDir(), StatePath: t.TempDir()}}
+	cfg := &runnerconfig.Config{Config: &coreconfig.Config{AuthMode: "debug", DCMSRoot: t.TempDir(), StatePath: t.TempDir()}}
 	store, err := pkgConversations.NewAttachmentStore(filepath.Join(cfg.StatePath, pkgConversations.AttachmentsDirName))
 	if err != nil {
 		t.Fatalf("newAttachmentStore: %v", err)

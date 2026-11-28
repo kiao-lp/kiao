@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react';
-import { useSelectionContext, Clipboard, useWorkerClient, toStoredLink, useFileBrowsingPersistenceContext } from '@kiao-dashboard-core';
+import { useSelectionContext, Clipboard, useWorkerClient, normalizeDocumentLink, useFileBrowsingPersistenceContext } from '@kiao-dashboard-core';
 import { HEIGHT, WIDTH } from '../lib/geom2d';
 
 import { randomWord } from './randomWord';
@@ -136,7 +136,7 @@ export const usePasteLink = () => {
     return useCallback(async () => {
         const clipboardText = await Clipboard.getClipboardText();
         if (isLink(clipboardText)) {
-            const link = toStoredLink(clipboardText);
+            const link = normalizeDocumentLink(clipboardText);
             createNote(linkNoteContent(link, await findFavicon(link)));
             saveMindmap();
         }

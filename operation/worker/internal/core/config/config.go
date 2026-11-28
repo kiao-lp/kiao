@@ -12,11 +12,11 @@ import (
 // Each half embeds it in its own Config.
 type Config struct {
 	Port     string // SERVER_PORT, default 8080
-	RootPath string // KIAO_WORKER_ROOT_PATH, default /tmp
+	DCMSRoot string // KIAO_WORKER_DCMS_ROOT, default /tmp
 
-	// State follows the store by default. Storage hides it from the file API;
-	// a .gitignore excludes it from Source Control to protect transcripts.
-	StatePath string // KIAO_WORKER_STATE_PATH, default <RootPath>/.kiao-config
+	// State lives under the DCMS root by default. Storage hides it from the file API.
+	// A .gitignore excludes it from Source Control to protect transcripts.
+	StatePath string // KIAO_WORKER_STATE_PATH, default <dcms-root>/.kiao-config
 
 	IssuerURI string // KIAO_KEYCLOAK_ISSUER_URI
 	JwkSetURI string // KIAO_KEYCLOAK_JWK_SET_URI
@@ -33,13 +33,13 @@ type Config struct {
 // Validate returns configuration problems; main logs them and exits at startup.
 func (c *Config) Validate() []string {
 	var problems []string
-	rootInfo, rootErr := os.Stat(c.RootPath)
+	rootInfo, rootErr := os.Stat(c.DCMSRoot)
 
 	switch {
-	case strings.TrimSpace(c.RootPath) == "":
-		problems = append(problems, "KIAO_WORKER_ROOT_PATH is empty")
+	case strings.TrimSpace(c.DCMSRoot) == "":
+		problems = append(problems, "KIAO_WORKER_DCMS_ROOT is empty")
 	case rootErr != nil || !rootInfo.IsDir():
-		problems = append(problems, fmt.Sprintf("KIAO_WORKER_ROOT_PATH %q is not an existing directory", c.RootPath))
+		problems = append(problems, fmt.Sprintf("KIAO_WORKER_DCMS_ROOT %q is not an existing directory", c.DCMSRoot))
 	}
 
 	// Reject relative state paths: a service working directory may be unintended.
@@ -71,7 +71,7 @@ func (c *Config) Validate() []string {
 
 // LoadConfig reads environment settings with deployment defaults.
 func LoadConfig() *Config {
-	root := Getenv("KIAO_WORKER_ROOT_PATH", "/tmp")
+	dcmsRoot := Getenv("KIAO_WORKER_DCMS_ROOT", Getenv("KIAO_WORKER_ROOT_PATH", "/tmp"))
 
 	authMode := Getenv("KIAO_WORKER_AUTH_MODE", "")
 	if authMode == "" {
@@ -85,8 +85,8 @@ func LoadConfig() *Config {
 
 	return &Config{
 		Port:           Getenv("SERVER_PORT", "8080"),
-		RootPath:       root,
-		StatePath:      Getenv("KIAO_WORKER_STATE_PATH", DefaultStatePath(root)),
+		DCMSRoot:       dcmsRoot,
+		StatePath:      Getenv("KIAO_WORKER_STATE_PATH", DefaultStatePath(dcmsRoot)),
 		IssuerURI:      Getenv("KIAO_KEYCLOAK_ISSUER_URI", ""),
 		JwkSetURI:      Getenv("KIAO_KEYCLOAK_JWK_SET_URI", ""),
 		NodeBinary:     Getenv("KIAO_WORKER_MIGRATIONS_NODE_BINARY", "node"),
@@ -95,13 +95,12 @@ func LoadConfig() *Config {
 	}
 }
 
-// defaultStatePath keeps state with its store and makes the path absolute
-// to satisfy Validate, even when the root is relative.
-func DefaultStatePath(root string) string {
-	abs, err := filepath.Abs(root)
+// DefaultStatePath describes the state directory under the DCMS root as an absolute path.
+func DefaultStatePath(dcmsRoot string) string {
+	abs, err := filepath.Abs(dcmsRoot)
 	if err != nil {
 		// Unreadable working directory: Validate rejects the relative fallback.
-		return filepath.Join(root, StateDirName)
+		return filepath.Join(dcmsRoot, StateDirName)
 	}
 	return filepath.Join(abs, StateDirName)
 }

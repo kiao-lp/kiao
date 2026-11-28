@@ -4,7 +4,12 @@ import { render, screen, fireEvent, act, within } from 'src/test/render';
 import { MockWebSocket } from 'src/test/webSocket';
 import type { HarnessConversation, HarnessServerMessage } from 'kiao-worker';
 
-vi.mock('@kiao-dashboard-core', async () => ({ useAuthToken: () => 'tok', Tooltip: (await import('antd')).Tooltip }));
+vi.mock('@kiao-dashboard-core', async () => ({
+    CommitInput: (await import('src/core/ui-foundation/forms/CommitInput')).CommitInput,
+    IconButton: (await import('src/core/ui-foundation/toolbar/IconButton')).IconButton,
+    useAuthToken: () => 'tok',
+    Tooltip: (await import('antd')).Tooltip,
+}));
 
 import { ChatSocketProvider, useChatSocketContext } from './ChatSocket-ctx';
 import type { ConversationRuntime } from './chatConversationReducer';
@@ -50,8 +55,7 @@ const CONVERSATIONS = [
 const handlers = {
     onRename: vi.fn(),
     onTogglePin: vi.fn(),
-    onArchive: vi.fn(),
-    onDelete: vi.fn(),
+    onManage: vi.fn(),
 };
 
 /**
@@ -84,8 +88,7 @@ const Panel: React.FC<{ conversations?: HarnessConversation[] }> = ({ conversati
                 onSelect={() => { }}
                 onRename={title => handlers.onRename('conv-c', title)}
                 onTogglePin={() => handlers.onTogglePin('conv-c')}
-                onArchive={() => handlers.onArchive('conv-c')}
-                onDelete={() => handlers.onDelete('conv-c')}
+                onManage={handlers.onManage}
             />
             <span data-testid="text-conv-a">{runtimeText(runtimes['conv-a'])}</span>
             <span data-testid="text-conv-b">{runtimeText(runtimes['conv-b'])}</span>
@@ -168,29 +171,38 @@ describe('ChatConversationList', () => {
         expect(handlers.onRename).toHaveBeenCalledWith('conv-a', 'Renamed');
     });
 
-    it('acts on whichever conversation the select is showing', async () => {
+    it('renames a pinned conversation on blur and dismisses edits on Escape', () => {
         renderPanel();
+        const rename = within(header()).getByRole('button', { name: 'Rename' });
+        fireEvent.click(rename);
+        const box = within(header()).getByRole('textbox', { name: 'Conversation name' });
+        expect(box).toHaveFocus();
+        fireEvent.change(box, { target: { value: 'Cancelled' } });
+        fireEvent.keyDown(box, { key: 'Escape' });
+        expect(box).not.toBeInTheDocument();
+        expect(handlers.onRename).not.toHaveBeenCalled();
 
-        choose('Beta');
-
-        fireEvent.click(within(bar()).getByLabelText('Delete'));
-        // Deleting drops the transcript with the record, so the click alone must do nothing.
-        expect(handlers.onDelete).not.toHaveBeenCalled();
-
-        await screen.findByText('Delete this conversation?');
-        const buttons = document.querySelectorAll<HTMLElement>('.ant-popconfirm-buttons button');
-        fireEvent.click(buttons[buttons.length - 1]);
-
-        expect(handlers.onDelete).toHaveBeenCalledWith('conv-b');
+        fireEvent.click(rename);
+        const next = within(header()).getByRole('textbox', { name: 'Conversation name' });
+        fireEvent.change(next, { target: { value: '  Pinned name  ' } });
+        fireEvent.blur(next);
+        expect(handlers.onRename.mock.calls).toEqual([['conv-c', 'Pinned name']]);
     });
 
-    it('hangs the confirmation from the button\'s right corner', async () => {
+    it('opens the conversation manager from the switcher and the pinned header', () => {
         renderPanel();
 
-        fireEvent.click(within(bar()).getByLabelText('Delete'));
-        await screen.findByText('Delete this conversation?');
+        fireEvent.click(within(bar()).getByRole('button', { name: 'Manage conversations' }));
+        fireEvent.click(within(header()).getByRole('button', { name: 'Manage conversations' }));
 
-        expect(document.querySelector('.ant-popover-placement-topRight')).not.toBeNull();
+        expect(handlers.onManage).toHaveBeenCalledTimes(2);
+    });
+
+    it('opens the conversation manager when no conversation is selected', () => {
+        renderPanel([]);
+
+        fireEvent.click(within(bar()).getByRole('button', { name: 'Manage conversations' }));
+        expect(handlers.onManage).toHaveBeenCalledOnce();
     });
 
     it('offers to pin the selected conversation and to unpin a pinned one', () => {

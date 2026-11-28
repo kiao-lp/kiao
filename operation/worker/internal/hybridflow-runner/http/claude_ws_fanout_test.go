@@ -29,7 +29,7 @@ type fanoutTest struct {
 
 func newFanoutTest(t *testing.T) *fanoutTest {
 	t.Helper()
-	cfg := &runnerconfig.Config{Config: &coreconfig.Config{AuthMode: "debug", RootPath: t.TempDir(), MaxUploadBytes: 1 << 20}}
+	cfg := &runnerconfig.Config{Config: &coreconfig.Config{AuthMode: "debug", DCMSRoot: t.TempDir(), MaxUploadBytes: 1 << 20}}
 	hub := assembly.NewEngine(cfg, nil)
 	srv := &Service{cfg: cfg, hub: hub}
 	srv.bindHarnesses(hub.Harnesses)

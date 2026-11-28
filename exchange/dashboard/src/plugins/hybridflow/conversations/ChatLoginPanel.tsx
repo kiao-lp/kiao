@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { Alert, Button, Input, Modal, Spin, message } from 'antd';
-import { CopyOutlined, LinkOutlined, LoginOutlined } from '@ant-design/icons';
+import { LinkOutlined, LoginOutlined } from '@ant-design/icons';
 import type { HarnessAuthStatus } from 'kiao-worker';
-import { useWorkerClient } from '@kiao-dashboard-core';
+import { CopyTextButton, useWorkerClient } from '@kiao-dashboard-core';
 
 /** `starting` and `submitting` are the two waits; `code` is the one the user drives, with the CLI. */
 type Step = 'idle' | 'starting' | 'code' | 'submitting' | 'failed';
@@ -70,15 +70,6 @@ export const ChatLoginPanel: React.FC<{
         setError('');
     };
 
-    const copyLink = async () => {
-        try {
-            await navigator.clipboard.writeText(url);
-            message.success('Link copied');
-        } catch {
-            message.error('Could not copy the link');
-        }
-    };
-
     if (!status || status.loggedIn) return null;
 
     return (
@@ -125,7 +116,8 @@ export const ChatLoginPanel: React.FC<{
                             >
                                 Open the authorisation page
                             </Button>
-                            <Button icon={<CopyOutlined />} onClick={copyLink} aria-label="Copy the sign-in link" />
+                            <CopyTextButton text={url} label="Copy the sign-in link" size="middle" type="default"
+                                successMessage="Link copied" errorMessage="Could not copy the link" />
                         </div>
                         <Input
                             value={code}

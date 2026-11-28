@@ -9,12 +9,12 @@ import (
 	"testing"
 )
 
-// The state directory defaults into the data root, so a store carries the ledger, the registries
+// The state directory defaults into the DCMS root, so a store carries the ledger, the registries
 // and the config documents that describe it — and a machine serving two stores keeps two sets.
-func TestStatePathDefaultsInsideTheDataRoot(t *testing.T) {
+func TestStatePathDefaultsInsideTheDCMSRoot(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("HOME", t.TempDir())
-	t.Setenv("KIAO_WORKER_ROOT_PATH", root)
+	t.Setenv("KIAO_WORKER_DCMS_ROOT", root)
 	t.Setenv("KIAO_WORKER_STATE_PATH", "")
 
 	got := coreconfig.LoadConfig().StatePath
@@ -23,7 +23,7 @@ func TestStatePathDefaultsInsideTheDataRoot(t *testing.T) {
 	}
 }
 
-// A relative data root is legal — storage resolves it against the working directory — but the state
+// A relative DCMS root is legal — storage resolves it against the working directory — but the state
 // path derived from it must not be, or every registry write would follow the working directory.
 func TestStatePathIsAbsoluteEvenForARelativeRoot(t *testing.T) {
 	got := coreconfig.DefaultStatePath(".")
@@ -31,7 +31,7 @@ func TestStatePathIsAbsoluteEvenForARelativeRoot(t *testing.T) {
 	if !filepath.IsAbs(got) {
 		t.Errorf("defaultStatePath(%q) = %q, want an absolute path", ".", got)
 	}
-	cfg := &coreconfig.Config{RootPath: ".", StatePath: got, AuthMode: "debug"}
+	cfg := &coreconfig.Config{DCMSRoot: ".", StatePath: got, AuthMode: "debug"}
 	if problems := cfg.Validate(); len(problems) != 0 {
 		t.Errorf("Validate() = %v, want no complaint about the derived state path", problems)
 	}
@@ -40,7 +40,7 @@ func TestStatePathIsAbsoluteEvenForARelativeRoot(t *testing.T) {
 // A state path configured by hand is only ever used verbatim, and a relative one would land the
 // registries at the working directory — "/" for a systemd unit — so it is refused at startup.
 func TestStatePathRejectsARelativeConfiguredValue(t *testing.T) {
-	cfg := &coreconfig.Config{RootPath: t.TempDir(), StatePath: ".kiao-config", AuthMode: "debug"}
+	cfg := &coreconfig.Config{DCMSRoot: t.TempDir(), StatePath: ".kiao-config", AuthMode: "debug"}
 
 	problems := cfg.Validate()
 	if len(problems) != 1 || !strings.Contains(problems[0], "KIAO_WORKER_STATE_PATH") {
@@ -51,7 +51,7 @@ func TestStatePathRejectsARelativeConfiguredValue(t *testing.T) {
 // The env var is what a deployment uses to keep state out of the git work tree, so it must win over
 // the root-derived default.
 func TestStatePathEnvOverridesTheDefault(t *testing.T) {
-	t.Setenv("KIAO_WORKER_ROOT_PATH", t.TempDir())
+	t.Setenv("KIAO_WORKER_DCMS_ROOT", t.TempDir())
 	t.Setenv("KIAO_WORKER_STATE_PATH", "/var/lib/kiao-state")
 
 	if got := coreconfig.LoadConfig().StatePath; got != "/var/lib/kiao-state" {
@@ -59,13 +59,13 @@ func TestStatePathEnvOverridesTheDefault(t *testing.T) {
 	}
 }
 
-// State inside the data root must be ignored by git: the root is a work tree whose contents the
+// State inside the DCMS root must be ignored by git: the root is a work tree whose contents the
 // user commits, and a transcript is a verbatim copy of what was typed into the prompt.
-func TestEnsureStateDirIgnoresStateInsideTheDataRoot(t *testing.T) {
+func TestEnsureStateDirIgnoresStateInsideTheDCMSRoot(t *testing.T) {
 	root := t.TempDir()
-	cfg := &coreconfig.Config{RootPath: root, StatePath: filepath.Join(root, ".kiao-config")}
+	cfg := &coreconfig.Config{DCMSRoot: root, StatePath: filepath.Join(root, ".kiao-config")}
 
-	if err := EnsureStateDir(cfg.RootPath, cfg.StatePath); err != nil {
+	if err := EnsureStateDir(cfg.DCMSRoot, cfg.StatePath); err != nil {
 		t.Fatalf("EnsureStateDir() = %v", err)
 	}
 	body, err := mustGitignore(t, cfg.StatePath)
@@ -80,27 +80,27 @@ func TestEnsureStateDirIgnoresStateInsideTheDataRoot(t *testing.T) {
 // Outside the root there is nothing to hide from: a deployment that keeps state elsewhere is not a
 // git work tree's business, and writing an ignore file into somebody else's directory is not this
 // service's place.
-func TestEnsureStateDirWritesNoGitignoreOutsideTheDataRoot(t *testing.T) {
-	cfg := &coreconfig.Config{RootPath: t.TempDir(), StatePath: filepath.Join(t.TempDir(), "state")}
+func TestEnsureStateDirWritesNoGitignoreOutsideTheDCMSRoot(t *testing.T) {
+	cfg := &coreconfig.Config{DCMSRoot: t.TempDir(), StatePath: filepath.Join(t.TempDir(), "state")}
 
-	if err := EnsureStateDir(cfg.RootPath, cfg.StatePath); err != nil {
+	if err := EnsureStateDir(cfg.DCMSRoot, cfg.StatePath); err != nil {
 		t.Fatalf("EnsureStateDir() = %v", err)
 	}
 	if !IsDir(cfg.StatePath) {
 		t.Fatalf("state directory %q was not created", cfg.StatePath)
 	}
 	if _, err := os.Stat(filepath.Join(cfg.StatePath, ".gitignore")); !os.IsNotExist(err) {
-		t.Errorf("wrote a .gitignore outside the data root (stat error = %v)", err)
+		t.Errorf("wrote a .gitignore outside the DCMS root (stat error = %v)", err)
 	}
 }
 
-// The state directory being the data root itself is the one case a .gitignore of "*" would be
+// The state directory being the DCMS root itself is the one case a .gitignore of "*" would be
 // catastrophic: it would hide the entire content store from git.
-func TestEnsureStateDirNeverIgnoresTheDataRootItself(t *testing.T) {
+func TestEnsureStateDirNeverIgnoresTheDCMSRootItself(t *testing.T) {
 	root := t.TempDir()
-	cfg := &coreconfig.Config{RootPath: root, StatePath: root}
+	cfg := &coreconfig.Config{DCMSRoot: root, StatePath: root}
 
-	if err := EnsureStateDir(cfg.RootPath, cfg.StatePath); err != nil {
+	if err := EnsureStateDir(cfg.DCMSRoot, cfg.StatePath); err != nil {
 		t.Fatalf("EnsureStateDir() = %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(root, ".gitignore")); !os.IsNotExist(err) {
@@ -112,13 +112,13 @@ func TestEnsureStateDirNeverIgnoresTheDataRootItself(t *testing.T) {
 // not overrule them.
 func TestEnsureStateDirKeepsAnExistingGitignore(t *testing.T) {
 	root := t.TempDir()
-	cfg := &coreconfig.Config{RootPath: root, StatePath: filepath.Join(root, ".kiao-config")}
+	cfg := &coreconfig.Config{DCMSRoot: root, StatePath: filepath.Join(root, ".kiao-config")}
 	if err := os.MkdirAll(cfg.StatePath, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	mustWriteBytes(t, filepath.Join(cfg.StatePath, ".gitignore"), []byte("*\n!migrations.json\n"))
 
-	if err := EnsureStateDir(cfg.RootPath, cfg.StatePath); err != nil {
+	if err := EnsureStateDir(cfg.DCMSRoot, cfg.StatePath); err != nil {
 		t.Fatalf("EnsureStateDir() = %v", err)
 	}
 	body, err := mustGitignore(t, cfg.StatePath)
@@ -135,7 +135,7 @@ func TestEnsureStateDirKeepsAnExistingGitignore(t *testing.T) {
 // the process lock — and the operator wants to read that, not a message about a .gitignore.
 func TestEnsureStateDirSurvivesAnUnwritableGitignore(t *testing.T) {
 	root := t.TempDir()
-	cfg := &coreconfig.Config{RootPath: root, StatePath: filepath.Join(root, ".kiao-config")}
+	cfg := &coreconfig.Config{DCMSRoot: root, StatePath: filepath.Join(root, ".kiao-config")}
 	if err := os.MkdirAll(cfg.StatePath, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -145,7 +145,7 @@ func TestEnsureStateDirSurvivesAnUnwritableGitignore(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := EnsureStateDir(cfg.RootPath, cfg.StatePath); err != nil {
+	if err := EnsureStateDir(cfg.DCMSRoot, cfg.StatePath); err != nil {
 		t.Errorf("EnsureStateDir() = %v, want a startup that survives a cosmetic write", err)
 	}
 }

@@ -25,11 +25,11 @@ test('converts a task between AI and Human from its context menu and preserves i
             id: 'pause', title: 'Pause', type: 'scheduler', duration: '15m', status: 'ready',
             spot: { x: 100, y: 400 }, ...stamp,
         }],
-        flowNodeClasses: [], workflows: [{ id: 'release', name: 'Release', ...stamp }],
-        workflowClasses: [], cursor: 0,
+        workflows: [{ id: 'release', name: 'Release', ...stamp }],
+        cursor: 0,
     };
     const patches: unknown[] = [];
-    // The harness has no boards backend; record writes at its HTTP boundary.
+    // The test stack has no boards backend; record writes at its HTTP boundary.
     await page.route('**/api/{hybridflow,agentic}/**', async route => {
         const path = new URL(route.request().url()).pathname.replace(/^\/api\/(?:hybridflow|agentic)/, '');
         if (path === '/boards/conversion/flow-nodes/review' && route.request().method() === 'PATCH') {
@@ -51,10 +51,6 @@ test('converts a task between AI and Human from its context menu and preserves i
             }] } });
         } else if (path === '/runners') {
             await route.fulfill({ json: { runners: [{ id: 'local', name: 'Local', ...stamp }] } });
-        } else if (path === '/flow-node-classes') {
-            await route.fulfill({ json: { flowNodeClasses: [] } });
-        } else if (path === '/workflow-classes') {
-            await route.fulfill({ json: { workflowClasses: [] } });
         } else if (path === '/changes') {
             await route.fulfill({ status: 204 });
         } else {
@@ -67,7 +63,6 @@ test('converts a task between AI and Human from its context menu and preserves i
     await expect(card.getByTestId('flow-node-card-chip').filter({ hasText: 'Reviewer' })).toBeVisible();
     await card.click({ button: 'right' });
     await page.getByRole('menuitem', { name: 'Convert' }).hover();
-    await expect(page.getByRole('menuitem', { name: 'Node class' })).toBeVisible();
     await expect(page.getByRole('menuitem', { name: 'AI task' })).toHaveCount(0);
     await page.getByRole('menuitem', { name: 'Human task' }).click();
 

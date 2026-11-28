@@ -1,37 +1,32 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Modal, message } from 'antd';
+import { message } from 'antd';
+import { useConfirmation } from '@kiao-dashboard-core';
 import { boardUrl } from './boardRoute';
 import { useHybridflow } from './Hybridflow-ctx';
+import { useBoardsCatalog } from './BoardsCatalog-ctx';
 import {
     boardArchiveFilename, boardArchiveText, downloadTextFile, importBoardArchive, readBoardArchive,
     readFileText,
 } from './boardArchive';
 import { ARCHIVED_FLOW_NODES_CSV_FILENAME, fetchArchivedFlowNodesCsv } from './archivedFlowNodesCsv';
-import { BoardSummary, HybridflowClient, HybridflowError, useHybridflowClient } from './service';
+import { BoardSummary, FolderDto, HybridflowError } from './service';
+
+type NameDialog =
+    | { kind: 'board'; item?: BoardSummary; folder?: FolderDto }
+    | { kind: 'folder'; item?: FolderDto };
 
 interface BoardsListValue {
-    client: HybridflowClient | null;
-    boards: BoardSummary[] | null;
-    error: string | null;
-    loading: boolean;
-    load: () => Promise<void>;
-    showArchived: boolean;
-    setShowArchived: (show: boolean) => void;
-    creating: boolean;
-    setCreating: (creating: boolean) => void;
-    newName: string;
-    setNewName: (name: string) => void;
-    create: () => Promise<void>;
-    renaming: BoardSummary | null;
-    renameTo: string;
-    setRenameTo: (name: string) => void;
-    startRename: (board: BoardSummary) => void;
-    closeRename: () => void;
-    rename: () => Promise<void>;
+    nameDialog: NameDialog | null;
+    openNameDialog: (dialog: NameDialog) => void;
+    closeNameDialog: () => void;
+    saveName: (name: string) => Promise<void | boolean>;
+    moveBoard: (board: BoardSummary, folderId: string) => Promise<void>;
+    movingBoard: boolean;
     askDelete: (board: BoardSummary) => void;
+    askDeleteFolder: (folder: FolderDto) => void;
     download: (board: BoardSummary) => Promise<void>;
-    downloading: string | null;
+    downloading: ReadonlySet<string>;
     importFile: (file: File) => Promise<void>;
     importing: boolean;
     exportArchivedCsv: () => Promise<void>;
@@ -47,120 +42,117 @@ export const useBoardsList = (): BoardsListValue => {
     return context;
 };
 
-/** The boards list state: the listing, the dialogs over it, and the gestures reaching the store. */
+/** Dialogs and writes for one boards list. */
 export const BoardsListProvider: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
-    const client = useHybridflowClient();
+    const { client, reload, connectList, expandFolder, forgetFolder } = useBoardsCatalog();
     const navigate = useNavigate();
     const { handle: currentHandle } = useHybridflow();
-    const [boards, setBoards] = useState<BoardSummary[] | null>(null);
-    const [error, setError] = useState<string | null>(null);
-    const [loading, setLoading] = useState(false);
-    const [showArchived, setShowArchived] = useState(false);
-    const [creating, setCreating] = useState(false);
-    const [newName, setNewName] = useState('');
-    const [renaming, setRenaming] = useState<BoardSummary | null>(null);
-    const [renameTo, setRenameTo] = useState('');
-    const [downloading, setDownloading] = useState<string | null>(null);
+    const [nameDialog, openNameDialog] = useState<NameDialog | null>(null);
+    const [movingBoard, setMovingBoard] = useState(false);
+    const [downloading, setDownloading] = useState<ReadonlySet<string>>(() => new Set());
     const [importing, setImporting] = useState(false);
     const [exportingCsv, setExportingCsv] = useState(false);
 
-    const load = useCallback(async () => {
-        if (!client) return;
-        setLoading(true);
+    useEffect(connectList, [connectList]);
+
+    const closeNameDialog = useCallback(() => openNameDialog(null), []);
+
+    const saveName = useCallback(async (name: string) => {
+        if (!client || !nameDialog) return false;
+        if (name === nameDialog.item?.name) return;
         try {
-            setBoards(await client.boards(showArchived));
-            setError(null);
+            let createdSlug: string | undefined;
+            if (nameDialog.kind === 'board') {
+                if (nameDialog.item) await client.renameBoard(nameDialog.item.slug, name);
+                else {
+                    const { board } = await client.createBoard(name, nameDialog.folder?.id);
+                    if (board.folderId) expandFolder(board.folderId);
+                    createdSlug = board.slug;
+                }
+            } else if (nameDialog.item) {
+                await client.renameBoardFolder(nameDialog.item.id, name);
+            } else {
+                await client.createBoardFolder(name);
+            }
+            reload();
+            if (createdSlug) navigate(boardUrl(createdSlug));
         } catch (cause) {
-            setError(cause instanceof Error ? cause.message : String(cause));
+            const { kind, item } = nameDialog;
+            const taken = cause instanceof HybridflowError && cause.status === 409;
+            throw new Error(taken
+                ? `There is already a ${kind} called “${name}”.`
+                : `The ${kind} could not be ${item ? 'renamed' : 'created'}: ${cause instanceof Error ? cause.message : cause}`);
+        }
+    }, [client, nameDialog, expandFolder, reload, navigate]);
+
+    const moveBoard = useCallback(async (board: BoardSummary, folderId: string) => {
+        if (!client || movingBoard || folderId === (board.folderId ?? '')) return;
+        setMovingBoard(true);
+        try {
+            await client.moveBoard(board.slug, folderId, board.revision);
+            message.success(`Board “${board.name}” moved.`);
+        } catch (cause) {
+            const changed = cause instanceof HybridflowError && cause.status === 409;
+            message.error(changed ? 'The board changed. Choose its destination again.'
+                : `The board could not be moved: ${cause instanceof Error ? cause.message : cause}`);
         } finally {
-            setLoading(false);
+            reload();
+            setMovingBoard(false);
         }
-    }, [client, showArchived]);
+    }, [client, movingBoard, reload]);
 
-    useEffect(() => { void load(); }, [load]);
-
-    const create = useCallback(async () => {
-        if (!client) return;
-        const name = newName.trim();
-        if (!name) return;
-        try {
-            const made = await client.createBoard(name);
-            setCreating(false);
-            setNewName('');
-            // Straight onto it: making a board is something you do because you are about to use it.
-            navigate(boardUrl(made.board.slug));
-        } catch (cause) {
-            const taken = cause instanceof HybridflowError && cause.status === 409;
-            message.error(taken
-                ? `There is already a board called “${name}”.`
-                : `The board could not be created: ${cause instanceof Error ? cause.message : cause}`);
-        }
-    }, [client, newName, navigate]);
-
-    const closeRename = useCallback(() => {
-        setRenaming(null);
-        setRenameTo('');
-    }, []);
-
-    const startRename = useCallback((board: BoardSummary) => {
-        setRenaming(board);
-        setRenameTo(board.name);
-    }, []);
-
-    const rename = useCallback(async () => {
-        if (!client || !renaming) return;
-        const name = renameTo.trim();
-        if (!name) return;
-
-        if (name === renaming.name) {
-            closeRename();
-            return;
-        }
-        try {
-            const changed = await client.renameBoard(renaming.slug, name);
-            setBoards(held => (held ?? []).map(board => (board.id === changed.id ? changed : board)));
-            closeRename();
-        } catch (cause) {
-            const taken = cause instanceof HybridflowError && cause.status === 409;
-            message.error(taken
-                ? `There is already a board called “${name}”.`
-                : `The board could not be renamed: ${cause instanceof Error ? cause.message : cause}`);
-        }
-    }, [client, renaming, renameTo, closeRename]);
-
+    const confirm = useConfirmation();
     const askDelete = useCallback((board: BoardSummary) => {
         if (!client) return;
-        Modal.confirm({
+        confirm({
             title: `Delete “${board.name}”?`,
-            content: 'Its cards go with it, and there is no undo.',
-            okText: 'Delete',
-            okButtonProps: { danger: true },
-            cancelText: 'Cancel',
-            onOk: async () => {
+            description: 'This also deletes its flow nodes and workflows.',
+            onConfirm: async () => {
                 try {
                     await client.deleteBoard(board.slug);
-                    setBoards(held => (held ?? []).filter(heldBoard => heldBoard.id !== board.id));
                 } catch (cause) {
                     message.error(`The board could not be deleted: ${cause instanceof Error ? cause.message : cause}`);
-                    // The list may be what is wrong — a board deleted in another tab is a row this one should never have offered —.
-                    await load();
+                } finally {
+                    reload();
                 }
             },
         });
-    }, [client, load]);
+    }, [client, confirm, reload]);
+
+    const askDeleteFolder = useCallback((folder: FolderDto) => {
+        if (!client) return;
+        confirm({
+            title: `Delete folder “${folder.name}”?`,
+            description: 'Boards in this folder will move to the top level.',
+            onConfirm: async () => {
+                try {
+                    await client.deleteBoardFolder(folder.id);
+                    forgetFolder(folder.id);
+                } catch (cause) {
+                    message.error(`The folder could not be deleted: ${cause instanceof Error ? cause.message : cause}`);
+                } finally {
+                    reload();
+                }
+            },
+        });
+    }, [client, confirm, forgetFolder, reload]);
 
     const download = useCallback(async (board: BoardSummary) => {
-        if (!client) return;
-        setDownloading(board.slug);
+        if (!client || downloading.has(board.slug)) return;
+        setDownloading(held => new Set(held).add(board.slug));
         try {
             const detail = await client.board(board.slug);
             downloadTextFile(boardArchiveFilename(board.slug), boardArchiveText(detail));
         } catch (cause) {
             message.error(`The board could not be downloaded: ${cause instanceof Error ? cause.message : cause}`);
         } finally {
-            setDownloading(null);
+            setDownloading(held => {
+                const next = new Set(held);
+                next.delete(board.slug);
+                return next;
+            });
         }
-    }, [client]);
+    }, [client, downloading]);
 
     const importFile = useCallback(async (file: File) => {
         if (!client) return;
@@ -172,6 +164,7 @@ export const BoardsListProvider: React.FC<{ children?: React.ReactNode }> = ({ c
                 return;
             }
             const { board: made, droppedRefs } = await importBoardArchive(client, archive);
+            reload();
             navigate(boardUrl(made.slug));
             message.success(`Board “${made.name}” imported.`);
             if (droppedRefs > 0) {
@@ -187,7 +180,7 @@ export const BoardsListProvider: React.FC<{ children?: React.ReactNode }> = ({ c
         } finally {
             setImporting(false);
         }
-    }, [client, navigate]);
+    }, [client, navigate, reload]);
 
     const exportArchivedCsv = useCallback(async () => {
         if (!client) return;
@@ -206,21 +199,13 @@ export const BoardsListProvider: React.FC<{ children?: React.ReactNode }> = ({ c
         }
     }, [client]);
 
-    const orderedBoards = useMemo(() => boards === null ? null
-        : [...boards].sort((a, b) => a.name.localeCompare(b.name)), [boards]);
-
     const value = useMemo(() => ({
-        client, boards: orderedBoards, error, loading, load,
-        showArchived, setShowArchived,
-        creating, setCreating, newName, setNewName, create,
-        renaming, renameTo, setRenameTo, startRename, closeRename, rename,
-        askDelete, download, downloading, importFile, importing,
+        nameDialog, openNameDialog, closeNameDialog, saveName,
+        moveBoard, movingBoard, askDelete, askDeleteFolder, download, downloading, importFile, importing,
         exportArchivedCsv, exportingCsv, currentHandle,
     }), [
-        client, orderedBoards, error, loading, load,
-        showArchived, creating, newName, create,
-        renaming, renameTo, startRename, closeRename, rename,
-        askDelete, download, downloading, importFile, importing,
+        nameDialog, closeNameDialog, saveName,
+        moveBoard, movingBoard, askDelete, askDeleteFolder, download, downloading, importFile, importing,
         exportArchivedCsv, exportingCsv, currentHandle,
     ]);
 

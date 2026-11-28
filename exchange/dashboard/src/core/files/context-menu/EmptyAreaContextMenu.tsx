@@ -1,9 +1,8 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Dropdown } from 'antd';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useContextMenuItemsAt } from './ContextMenuRegistry-ctx';
 import { useFileBrowsingPersistenceContext } from '../core/FileBrowsingPersistence-ctx';
 import { useMenuItemsWithNew } from './useMenuItemsWithNew';
-import { KEEP_MENU_IN_VIEWPORT } from '../../ui-foundation/interactions/menuPlacement';
+import { ContextMenu, type ContextMenuPoint } from '../../ui-foundation/interactions/ContextMenu';
 import { useClipboardOptional } from '../clipboard/ClipboardModel-ctx';
 
 interface EmptyAreaContextMenuProps {
@@ -14,11 +13,9 @@ export const EmptyAreaContextMenu: React.FC<EmptyAreaContextMenuProps> = ({ chil
     const { currentPath } = useFileBrowsingPersistenceContext();
     const clipboard = useClipboardOptional();
     const refreshTextFiles = clipboard?.refreshTextFiles;
-    const [open, setOpen] = useState(false);
-    const [pos, setPos] = useState({ x: 0, y: 0 });
-    const anchorRef = useRef<HTMLDivElement>(null);
+    const [anchor, setAnchor] = useState<ContextMenuPoint | null>(null);
 
-    useEffect(() => { setOpen(false); }, [currentPath]);
+    useEffect(() => { setAnchor(null); }, [currentPath]);
 
     const ctx = useMemo(() => ({
         paths: [],
@@ -35,27 +32,15 @@ export const EmptyAreaContextMenu: React.FC<EmptyAreaContextMenuProps> = ({ chil
         const target = e.target as HTMLElement;
         if (target.closest('[data-row-path]')) return; // row handles its own
         e.preventDefault();
-        setPos({ x: e.clientX, y: e.clientY });
-        setOpen(true);
+        e.stopPropagation();
+        setAnchor({ x: e.clientX, y: e.clientY });
         void refreshTextFiles?.();
     }, [refreshTextFiles]);
 
     return (
         <div onContextMenu={onContextMenu} style={{ width: '100%' }}>
             {children}
-            <Dropdown
-                menu={{ items }}
-                open={open}
-                onOpenChange={setOpen}
-                // Context-menu triggers also enable outside-click dismissal for the controlled menu.
-                trigger={['contextMenu']}
-                {...KEEP_MENU_IN_VIEWPORT}
-            >
-                <div
-                    ref={anchorRef}
-                    style={{ position: 'fixed', left: pos.x, top: pos.y, width: 1, height: 1, pointerEvents: 'none' }}
-                />
-            </Dropdown>
+            <ContextMenu items={items} anchor={anchor} onClose={() => setAnchor(null)} />
         </div>
     );
 };

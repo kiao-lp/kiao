@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
-import { Button, Flex, Input } from 'antd';
+import React from 'react';
+import { CommitInput } from '../forms/CommitInput';
+import { IconButton } from '../toolbar/IconButton';
+import { Flex } from 'antd';
 import { DownOutlined, UpOutlined } from '@ant-design/icons';
 
 /** Follows the current page except while a draft page number is being entered. */
@@ -8,42 +10,35 @@ export const PageNavigation: React.FC<{
     numPages: number;
     onGoTo: (pageNumber: number) => void;
 }> = ({ page, numPages, onGoTo }) => {
-    const [draft, setDraft] = useState<string | null>(null);
-
-    const commit = () => {
-        if (draft === null) return;
-        const wanted = Number.parseInt(draft, 10);
-        setDraft(null);
+    const commit = (value: string) => {
+        const wanted = Number.parseInt(value, 10);
         if (Number.isFinite(wanted)) onGoTo(Math.min(Math.max(wanted, 1), numPages));
     };
 
     return (
         <Flex gap={4} align="center">
-            <Button
-                size="small"
+            <IconButton
+                label="Previous page"
+                type="default"
                 icon={<UpOutlined />}
                 disabled={page <= 1}
                 onClick={() => onGoTo(page - 1)}
-                aria-label="Previous page"
             />
-            <Input
-                size="small"
+            <CommitInput
                 style={{ width: 52, textAlign: 'center' }}
-                value={draft ?? (page || '')}
-                onFocus={() => setDraft(String(page || ''))}
-                onChange={event => setDraft(event.target.value)}
-                onPressEnter={commit}
-                onBlur={commit}
+                value={String(page || '')}
+                onCommit={commit}
+                preserveDraft
                 disabled={!numPages}
                 aria-label="Page number"
             />
             <span style={{ whiteSpace: 'nowrap' }}>/ {numPages || '--'}</span>
-            <Button
-                size="small"
+            <IconButton
+                label="Next page"
+                type="default"
                 icon={<DownOutlined />}
                 disabled={!numPages || page >= numPages}
                 onClick={() => onGoTo(page + 1)}
-                aria-label="Next page"
             />
         </Flex>
     );

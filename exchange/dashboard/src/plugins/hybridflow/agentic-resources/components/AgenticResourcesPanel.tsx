@@ -1,108 +1,195 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Button, Input, Select, Space, Typography, message } from 'antd';
+import { Alert, Button, Tabs, message } from 'antd';
+import { DeleteOutlined, DownOutlined, EditOutlined, PlusOutlined, ReloadOutlined, RightOutlined } from '@ant-design/icons';
+import { AsyncList, IconButton, useCentralStack, useConfirmation, useToolBarsOptional } from '@kiao-dashboard-core';
+import type { AgentDto, AgenticResourceDto, ResourceKind } from '../types';
 import { useResourceClient } from '../Client-ctx';
-import type { AgenticResourceDto } from '../types';
-import type { ReleaseBump } from '../release';
 import { useAgents } from '../Agents-ctx';
-import { confirmAgentPush } from './confirmAgentPush';
-import { PublishButtons } from './PublishButtons';
+import { AgentCreationModal, AgentEditorPanel, DELETE_HELP, useAgentHarnessOptions } from './AgentEditorPanel';
+import { ProjectEditorPanel } from './ProjectEditorPanel';
+import { resourceLabels } from './ResourceEditor';
+import styles from './AgenticResourcesPanel.module.css';
 
-/** Edits the APM project working tree and publishes through Git. */
-const AgenticResourcesPanel: React.FC = () => {
-    const client = useResourceClient();
-    const { reload: reloadAgents } = useAgents();
-    const [resources, setResources] = useState<AgenticResourceDto[]>([]);
-    const [selected, setSelected] = useState('');
-    const [path, setPath] = useState('apm.yml');
-    const [content, setContent] = useState('');
-    const [error, setError] = useState('');
-    const [busy, setBusy] = useState(false);
-    const [loaded, setLoaded] = useState(false);
-    const timer = useRef<ReturnType<typeof setTimeout>>();
-    const writing = useRef<Promise<unknown>>(Promise.resolve());
-    const pending = useRef<null | (() => Promise<void>)>(null);
-    const generation = useRef(0);
-    const revision = useRef<string>();
-    const reload = useCallback(async () => {
-        if (!client) return;
-        try { setResources(await client.agenticResources()); setError(''); }
-        catch (cause) { setError(String(cause)); }
-    }, [client]);
-    useEffect(() => { void reload(); }, [reload]);
-    const flush = useCallback(async () => {
-        clearTimeout(timer.current);
-        const save = pending.current;
-        pending.current = null;
-        if (save) writing.current = writing.current.catch(() => {}).then(save);
-        await writing.current;
-    }, []);
-    useEffect(() => {
-        const current = ++generation.current;
-        setLoaded(false);
-        if (client && selected) void flush().then(() => client.resourceFile(selected, path)).then(file => {
-            if (current === generation.current) { setContent(file.content); revision.current = file.revision; setLoaded(true); }
-        }).catch(cause => { if (current === generation.current) setError(String(cause)); });
-    }, [client, selected, path, flush]);
-    useEffect(() => {
-        const save = () => { void flush().catch(cause => message.error(String(cause))); };
-        window.addEventListener('beforeunload', save);
-        return () => { window.removeEventListener('beforeunload', save); save(); };
-    }, [flush]);
-    const resource = resources.find(one => one.name === selected);
-    const change = (value: string) => {
-        setContent(value);
-        clearTimeout(timer.current);
-        pending.current = async () => {
-            const saved = await client!.writeResourceFile(selected, { path, content: value, revision: revision.current });
-            revision.current = saved.revision;
-            await reloadAgents();
-            await reload();
-        };
-        timer.current = setTimeout(() => { void flush().catch(cause => setError(String(cause))); }, 1000);
-    };
-    const operate = async (operation: 'install' | 'publish' | 'pull' | 'push', bump?: ReleaseBump) => {
-        setBusy(true);
-        try {
-            await flush();
-            await confirmAgentPush(confirmation => client!.resourceOperation(selected, operation, { confirmation, bump }));
-            await reloadAgents();
-            await reload();
-            const file = await client!.resourceFile(selected, path);
-            setContent(file.content);
-            revision.current = file.revision;
-            setError('');
-        } catch (cause) { setError(String(cause)); }
-        finally { setBusy(false); }
-    };
-    if (!client) return <p>This instance needs an agentic resource manager to manage agentic resources.</p>;
-    return <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {error && <Alert type="error" message={error} />}
-        <Select aria-label="Agentic resource" placeholder="Select a resource" value={selected || undefined} disabled={busy}
-            onChange={name => { setSelected(name); setPath('apm.yml'); }}
-            options={resources.map(one => ({
-                value: one.name,
-                label: [one.name, one.version && `v${one.version}`, one.dirty && 'draft'].filter(Boolean).join(' · '),
-            }))} />
-        {resource && <>
-            <Typography.Text>{resource.repository || 'Local Git repository'}</Typography.Text>
-            <Typography.Text code>{resource.commit}</Typography.Text>
-            <Space wrap>
-                <Button disabled={busy} onClick={() => void operate('install')}>Install dependencies</Button>
-                <Button disabled={busy || !resource.repository} onClick={() => void operate('pull')}>Git pull</Button>
-                <Button disabled={busy || !resource.repository} onClick={() => void operate('push')}>Git push</Button>
-                <Button disabled={busy} onClick={() => void reload()}>Refresh</Button>
-            </Space>
-            {resource.kind !== 'agent' && <>
-                <PublishButtons disabled={busy || !resource.version} onPublish={bump => void operate('publish', bump)} />
-                {!resource.version && <p role="status">Set a major.minor.patch version in apm.yml to publish.</p>}
-            </>}
-            <Select aria-label="Resource file" value={path} onChange={setPath} disabled={busy}
-                options={resource.files.map(file => ({ value: file, label: file }))} />
-            {resource.kind === 'agent' && path === 'agent.json' && <p>Identity metadata is managed in the agent editor.</p>}
-            <Input.TextArea aria-label="Resource source" disabled={busy || !loaded || (resource.kind === 'agent' && path === 'agent.json')} value={content}
-                onChange={event => change(event.target.value)} autoSize={{ minRows: 12, maxRows: 35 }}
-                style={{ fontFamily: 'monospace' }} />
-        </>}
+const tabs = [
+    { key: 'agent', label: 'Agents' },
+    { key: 'skill', label: 'Skills' },
+    { key: 'mcp', label: 'MCP' },
+] as const;
+
+const plurals = { agent: 'agents', skill: 'skills', mcp: 'MCP modules' };
+
+interface CardProps {
+    kind: ResourceKind;
+    id: string;
+    name: string;
+    description?: string;
+    details?: string;
+    publishedVersion?: string;
+    onEdit: () => void;
+    onDelete?: () => void;
+    deleteDisabled?: boolean;
+    checkingDeletion?: boolean;
+}
+
+const ResourceCard: React.FC<CardProps> = ({
+    kind, id, name, description, details, publishedVersion, onEdit, onDelete, deleteDisabled, checkingDeletion,
+}) => {
+    const [expanded, setExpanded] = useState(false);
+    return <div className={styles.row} data-testid={`${kind}-card`}>
+        <div className={styles.main}>
+            <div className={styles.titleRow}>
+                {description && <IconButton
+                    label={`${expanded ? 'Hide' : 'Show'} description of ${name}`}
+                    icon={expanded ? <DownOutlined /> : <RightOutlined />}
+                    aria-expanded={expanded}
+                    data-testid={`${kind}-description-toggle`} onClick={() => setExpanded(!expanded)}
+                />}
+                <span className={styles.name} data-testid={`${kind}-name-text`}>{name}</span>
+            </div>
+            {details && <span className={styles.meta} data-testid={`${kind}-meta`}>{details}</span>}
+            <span className={styles.meta}>{publishedVersion ? `Published v${publishedVersion}` : 'Unpublished'}</span>
+            {expanded && description && <p className={styles.description} data-testid={`${kind}-description-text`}>{description}</p>}
+            {id !== name && <span aria-label="Agent ID" className={styles.id}>{id}</span>}
+        </div>
+        <span className={styles.actions}>
+            <IconButton
+                label={`Edit ${name}`}
+                icon={<EditOutlined />}
+                disabled={checkingDeletion} data-testid={`edit-${kind}`} onClick={onEdit}
+            />
+            {onDelete && <IconButton
+                label={`Delete ${name}`}
+                tooltip={DELETE_HELP}
+                danger icon={<DeleteOutlined />}
+                disabled={deleteDisabled} loading={checkingDeletion} aria-busy={checkingDeletion}
+                data-testid={`delete-${kind}`} onClick={onDelete}
+            />}
+        </span>
     </div>;
 };
+
+const AgenticResourcesPanel: React.FC = () => {
+    const confirm = useConfirmation();
+    const client = useResourceClient();
+    const { agents, loading: agentsLoading, error: agentsError, reload: reloadAgents, remove } = useAgents();
+    const { push } = useCentralStack();
+    const bars = useToolBarsOptional();
+    const { harnessLabelOf } = useAgentHarnessOptions();
+    const [kind, setKind] = useState<ResourceKind>('agent');
+    const [creating, setCreating] = useState(false);
+    const [projects, setProjects] = useState<AgenticResourceDto[] | null>(null);
+    const [projectsLoading, setProjectsLoading] = useState(false);
+    const [projectsError, setProjectsError] = useState<string | null>(null);
+    const [refreshingAgents, setRefreshingAgents] = useState(false);
+    const [checkingDeletion, setCheckingDeletion] = useState<string | null>(null);
+    const checking = useRef(false);
+    const latestRead = useRef(0);
+
+    const reloadProjects = useCallback(async () => {
+        if (!client) return [];
+        const read = ++latestRead.current;
+        setProjectsLoading(true);
+        try {
+            const list = await client.agenticResources();
+            if (read === latestRead.current) {
+                setProjects(list);
+                setProjectsError(null);
+            }
+            return list;
+        } catch (cause) {
+            if (read === latestRead.current) setProjectsError(cause instanceof Error ? cause.message : String(cause));
+            throw cause;
+        } finally {
+            if (read === latestRead.current) setProjectsLoading(false);
+        }
+    }, [client]);
+    useEffect(() => {
+        if (kind !== 'agent') void reloadProjects().catch(() => {});
+    }, [kind, reloadProjects]);
+
+    const edit = (kind: ResourceKind, name: string, content: React.ReactNode) => push({
+        id: `${kind}-editor`, host: bars?.activeCentralTab() ?? undefined,
+        title: `Edit ${resourceLabels[kind]} “${name}”`, closeLabel: 'Close', content,
+    });
+    const editAgent = (agent: AgentDto) => edit('agent', agent.name, <AgentEditorPanel key={agent.id} agentId={agent.id} />);
+    const editProject = (project: AgenticResourceDto) => {
+        if (client) edit(project.kind, project.name,
+            <ProjectEditorPanel key={project.name} client={client} project={project} reloadProjects={reloadProjects} />);
+    };
+    const confirmDelete = async (agent: AgentDto) => {
+        if (!client || checking.current) return;
+        checking.current = true;
+        setCheckingDeletion(agent.id);
+        try {
+            const status = await client.deletionStatus(agent.id);
+            confirm({
+                title: `Delete ${agent.name}?`,
+                description: <div>
+                    <p>{DELETE_HELP}</p>
+                    {status.noRemote && <Alert type="warning" title="This repository has no remote. Its local history will be deleted." />}
+                    {status.dirty && <Alert type="warning" title="This repository has uncommitted changes." />}
+                    {status.unpushed && <Alert type="warning" title="This repository has local commits or tags that have not been pushed." />}
+                    {status.remoteUnavailable && <Alert type="warning" title="The remote could not be checked." />}
+                </div>,
+                onConfirm: () => remove(agent.id, status.confirmation),
+            });
+        } catch (cause) { message.error(String(cause)); }
+        finally {
+            checking.current = false;
+            setCheckingDeletion(null);
+        }
+    };
+
+    const isAgents = kind === 'agent';
+    const loading = isAgents ? agentsLoading : projectsLoading || !projects;
+    const error = isAgents ? agentsError : projectsError;
+    const refreshing = isAgents ? agentsLoading || refreshingAgents : projectsLoading;
+    const reload = async () => {
+        if (refreshing) return;
+        if (isAgents) {
+            setRefreshingAgents(true);
+            try { await reloadAgents(); }
+            finally { setRefreshingAgents(false); }
+        } else {
+            await reloadProjects().catch(() => {});
+        }
+    };
+    const rows = isAgents ? agents.map(agent => <ResourceCard key={agent.id} id={agent.id} name={agent.name} kind="agent"
+        description={agent.description} publishedVersion={agent.published?.version}
+        details={agent.harnesses?.length ? agent.harnesses.map(harnessLabelOf).join(' · ')
+            : `${harnessLabelOf(agent.harness)} · ${agent.model || 'default model'}`}
+        onEdit={() => editAgent(agent)} onDelete={() => void confirmDelete(agent)}
+        deleteDisabled={checkingDeletion !== null} checkingDeletion={checkingDeletion === agent.id} />)
+        : (projects ?? []).filter(project => project.kind === kind).map(project => <ResourceCard key={project.name}
+            id={project.name} name={project.name} kind={kind} description={project.description}
+            publishedVersion={project.publishedVersion} onEdit={() => editProject(project)} />);
+
+    const content = <>
+        <div className={styles.header}>
+            <IconButton
+                label={`Refresh ${plurals[kind]}`}
+                icon={<ReloadOutlined />}
+                loading={refreshing} disabled={!client || refreshing} aria-busy={refreshing} onClick={() => void reload()}
+            />
+            {isAgents && <Button size="small" type="primary" icon={<PlusOutlined />} onClick={() => setCreating(true)}
+                disabled={!client} data-testid="new-agent">New agent</Button>}
+        </div>
+        {!client ? <Alert type="info" showIcon title="Agentic resource manager unavailable" /> : (
+            <AsyncList loading={loading && !rows.length} error={error} errorTitle={`The ${plurals[kind]} could not be read`}
+                onRetry={reload} retrying={refreshing}
+                empty={!rows.length && (isAgents
+                    ? 'Add an agent from its Git repository or create a local agent.'
+                    : `No ${plurals[kind]} in the store.`)}>
+                <div className={styles.list}>{rows}</div>
+            </AsyncList>
+        )}
+    </>;
+
+    return <div className={styles.panel} data-testid="agentic-resources-panel">
+        <Tabs size="small" activeKey={kind} onChange={key => setKind(key as ResourceKind)}
+            items={tabs.map(tab => ({ ...tab, children: tab.key === kind ? content : undefined }))} />
+        <AgentCreationModal open={creating} onClose={() => setCreating(false)} onCreated={editAgent} />
+    </div>;
+};
+
 export default AgenticResourcesPanel;

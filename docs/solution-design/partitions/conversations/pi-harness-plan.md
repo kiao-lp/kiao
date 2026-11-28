@@ -10,12 +10,12 @@ Proposal dated 18 October 2026. The accepted execution-profile contract is recor
 [decision 00054](../../decisions/00054-pi-execution-profiles.md); this page describes the wider
 integration proposal rather than claiming every capability is implemented.
 
-Integrate **Pi (Harness)** into conversations and hybridflow through worker's common engine port,
-using an RPC adapter.
+Integrate the **Pi harness** into conversations and board playback through worker's
+`HarnessDriver` port, using an RPC adapter.
 
 | Element | Responsibility |
 | --- | --- |
-| Pi installation | Provide an engine version; several versions may coexist. |
+| Pi installation | Provide a specific Pi version. Several versions may coexist. |
 | Execution profile | Select the installation and carry API connections, secret references, available models and extensions. |
 | hybridflow agent | Reference a profile, select a model and provide standing instructions. |
 | Free conversation | Select a profile and model directly, without a board agent. |
@@ -30,7 +30,7 @@ produces an explicit refusal.
 
 Conversations and chains share one execution lifecycle and monitoring mechanisms. Native Pi
 sessions provide resumption, branching and compaction; changing profiles creates a separate
-session with the context passed to it. Available capabilities depend on the engine and model:
+session with the context passed to it. Available capabilities depend on the harness and model:
 reasoning, steering, queued messages, tools and user interactions. MCP, skills and extensions
 integrate with the resources KIAO already provides.
 

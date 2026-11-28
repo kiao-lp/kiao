@@ -44,7 +44,7 @@ const Probe: React.FC = () => {
     return <div data-testid="show-keys">{keys.join(',')}</div>;
 };
 
-const Harness: React.FC<{ tabs: ToolBarTab[] }> = ({ tabs }) => (
+const ShowMenuFixture: React.FC<{ tabs: ToolBarTab[] }> = ({ tabs }) => (
     <ToolBarsProvider>
         {tabs.map(t => <ToolBarTabRegistration key={t.id} tab={t} />)}
         <Probe />
@@ -57,12 +57,12 @@ beforeEach(() => {
 
 describe('the Show menu', () => {
     it('lists every registered tab in alphabetical order', () => {
-        render(<Harness tabs={[tab('git'), tab('claude')]} />);
+        render(<ShowMenuFixture tabs={[tab('git'), tab('claude')]} />);
         expect(screen.getByTestId('show-keys').textContent).toBe('show-claude,show-git');
     });
 
     it('sorts by title, not by id', () => {
-        render(<Harness tabs={[
+        render(<ShowMenuFixture tabs={[
             tab('zebra', { title: 'Apple' }),
             tab('apple', { title: 'Zebra' }),
         ]} />);
@@ -72,7 +72,7 @@ describe('the Show menu', () => {
 
     // The document stays where it is pinned, so there is nothing to choose for it.
     it('leaves the pinned tab out', () => {
-        render(<Harness tabs={[tab('git'), tab('document', { defaultBar: 'center', pinned: true })]} />);
+        render(<ShowMenuFixture tabs={[tab('git'), tab('document', { defaultBar: 'center', pinned: true })]} />);
         expect(screen.getByTestId('show-keys').textContent)
             .toBe('show-git');
     });

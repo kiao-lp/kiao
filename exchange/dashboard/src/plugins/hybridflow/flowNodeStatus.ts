@@ -51,10 +51,10 @@ export const STATUS_LABELS: Record<FlowNodeStatus, string> = {
 
 const KNOWN = Object.keys(STATUS_LABELS) as FlowNodeStatus[];
 
-/** Starting requires ready; reset terminal states explicitly. */
-export const canPlay = (status: FlowNodeStatus): boolean => status === READY;
+export const canPlay = (status: FlowNodeStatus, type?: FlowNodeType): boolean =>
+    status === READY || status === DONE || (status === INTERRUPTED && type === 'ai');
 
-export const canWorkOn = (status: FlowNodeStatus): boolean => status === TODO || status === RUNNING;
+export const canWorkOn = (status: FlowNodeStatus): boolean => status === TODO || status === RUNNING || status === DONE;
 
 export const taskInputsReadOnly = (type: FlowNodeType, status: FlowNodeStatus): boolean =>
     type === 'ai' && status !== DRAFT && status !== READY;

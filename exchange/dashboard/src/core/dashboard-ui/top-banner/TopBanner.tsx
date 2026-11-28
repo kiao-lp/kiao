@@ -24,29 +24,24 @@ export const TopBanner: React.FC<TopBannerProps> = ({ additionalToolsItems }) =>
 
     return (
         <Footer className="cms-top-banner" data-zoom-controls>
-            <Flex gap="small" align="center" justify="space-between" style={{ width: '100%' }}>
-                <Flex align="center" gap="small" style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ flex: 1, minWidth: 0, maxWidth: 320 }}>
-                        <FileSearchInput
-                            onSearch={search}
-                            onClear={clearSearch}
-                            error={searchError}
-                            showingResults={searchResults !== null}
-                        />
-                    </div>
-                </Flex>
+            <ToolsDropdown extraItems={additionalToolsItems} />
+            <div className="cms-top-banner-search">
+                <FileSearchInput
+                    onSearch={search}
+                    onClear={clearSearch}
+                    error={searchError}
+                    showingResults={searchResults !== null}
+                />
+            </div>
 
-                <Flex align="center" gap="small" style={{ flexShrink: 0 }}>
-                    {/* Nothing while nothing is selected — see ui-foundation/zoom. */}
-                    <ZoomSlider />
-                    <CompanionSwitch />
-                    <LanguageSwitch />
-                    <Flex align="center" gap={2} role="group" aria-label="Layout visibility">
-                        <BarToggle bar="left" />
-                        <SecondCentralAreaToggle />
-                        <BarToggle bar="right" />
-                    </Flex>
-                    <ToolsDropdown extraItems={additionalToolsItems} />
+            <Flex className="cms-top-banner-controls" align="center" justify="end" wrap="wrap" gap="small">
+                <ZoomSlider />
+                <CompanionSwitch />
+                <LanguageSwitch />
+                <Flex align="center" gap={2} role="group" aria-label="Layout visibility">
+                    <BarToggle bar="left" />
+                    <SecondCentralAreaToggle />
+                    <BarToggle bar="right" />
                 </Flex>
             </Flex>
         </Footer>

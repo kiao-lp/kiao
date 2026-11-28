@@ -61,8 +61,8 @@ describe('useImagePaste', () => {
         expect(result.current.modalProps.image).toBeNull();
     });
 
-    // DB-held content: link from the store root; dialog still defaults to the board folder.
-    it('links from the store root for content held nowhere', async () => {
+    // The dialog still defaults to the board folder for a task description.
+    it('writes a DCMS link for a preview with no document folder', async () => {
         const insert = vi.fn();
         const { result } = renderHook(() => useImagePaste('boards/major', 'major', insert, true));
 
@@ -74,8 +74,8 @@ describe('useImagePaste', () => {
         expect(insert).toHaveBeenCalledWith('![shot.png](/boards/major/shot.png)');
     });
 
-    // Outside the document folder, the link is written from the store root.
-    it('links an image saved outside that folder from the store root', async () => {
+    // Outside the document folder, the link is written from the DCMS root.
+    it('links an image saved outside that folder from the DCMS root', async () => {
         const insert = vi.fn();
         const { result } = renderHook(() => useImagePaste('/backlog', 'board.md', insert));
 
@@ -96,8 +96,7 @@ describe('useImagePaste', () => {
         expect(insert).toHaveBeenCalledWith('![image](data:image/png;base64,AAAA)');
     });
 
-    // Store root `/` must not produce `//shot.png`.
-    it('reads the store root as no folder at all', async () => {
+    it('saves beside a document at the DCMS root when the folder is "/"', async () => {
         const insert = vi.fn();
         const { result } = renderHook(() => useImagePaste('/', 'board.md', insert));
 

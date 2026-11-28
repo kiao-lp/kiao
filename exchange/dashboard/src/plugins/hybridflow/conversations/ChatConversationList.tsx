@@ -1,17 +1,17 @@
 // the registry's, kept fresh by the `conversation` frames every open socket receives — and the only That map is why an option can.
 
 import React, { useState } from 'react';
-import { Button, Input, Popconfirm, Select } from 'antd';
-import { Tooltip } from '@kiao-dashboard-core';
+import { Select } from 'antd';
+import { CommitInput, IconButton, Tooltip } from '@kiao-dashboard-core';
 import {
-    DeleteOutlined, EditOutlined, InboxOutlined, PushpinFilled, PushpinOutlined,
+    EditOutlined, PushpinFilled, PushpinOutlined, SettingOutlined,
 } from '@ant-design/icons';
 import type { HarnessConversation } from 'kiao-worker';
 import { useChatSocketContext } from './ChatSocket-ctx';
 import type { ConversationRuntime } from './chatConversationReducer';
 
 /** How a folder reads in a sentence. */
-const folderLabel = (folder: string): string => folder || 'the store root';
+const folderLabel = (folder: string): string => folder || 'the DCMS root';
 
 /** How a conversation reads on hover: what it is called, where it runs, how long it has been going. */
 const conversationTitle = (conversation: HarnessConversation): string =>
@@ -32,70 +32,57 @@ const ChatConversationDot: React.FC<{ running: boolean }> = ({ running }) => (
     />
 );
 
-/** What can be done to one conversation. */
 const ChatConversationActions: React.FC<{
-    conversation: HarnessConversation;
+    conversation: HarnessConversation | null;
     onStartRename: () => void;
     onTogglePin: () => void;
-    onArchive: () => void;
-    onDelete: () => void;
-}> = ({ conversation, onStartRename, onTogglePin, onArchive, onDelete }) => (
+    onManage: () => void;
+}> = ({ conversation, onStartRename, onTogglePin, onManage }) => (
     // The actions never select the conversation they sit beside.
     <span className="chat-conversation-actions" onClick={e => e.stopPropagation()}>
-        <Button size="small" type="text" icon={<EditOutlined />} aria-label="Rename" onClick={onStartRename} />
-
-        <Tooltip title={conversation.pinned
-            ? 'Unpin — put it back in the list'
-            : 'Pin — give it a column of its own, beside the list'}>
-            <Button
-                size="small"
-                type="text"
+        {conversation && <>
+            <IconButton label="Rename" icon={<EditOutlined />} onClick={onStartRename} />
+            <IconButton
+                label={conversation.pinned ? 'Unpin' : 'Pin'}
+                tooltip={conversation.pinned
+                    ? 'Unpin — put it back in the list'
+                    : 'Pin — give it a column of its own, beside the list'}
                 icon={conversation.pinned ? <PushpinFilled /> : <PushpinOutlined />}
-                aria-label={conversation.pinned ? 'Unpin' : 'Pin'}
                 aria-pressed={conversation.pinned}
                 onClick={onTogglePin}
             />
-        </Tooltip>
-        <Tooltip title="Archive — hides it here; the conversation and its transcript stay on the server">
-            <Button size="small" type="text" icon={<InboxOutlined />} aria-label="Archive" onClick={onArchive} />
-        </Tooltip>
-
-        <Popconfirm
-            title="Delete this conversation?"
-            description="Its transcript goes with it."
-            okText="Delete"
-            okButtonProps={{ danger: true }}
-            placement="topRight"
-            onConfirm={onDelete}
-        >
-            <Button size="small" type="text" danger icon={<DeleteOutlined />} aria-label="Delete" />
-        </Popconfirm>
+        </>}
+        <IconButton
+            label="Manage conversations"
+            tooltip
+            icon={<SettingOutlined />}
+            aria-haspopup="dialog"
+            onClick={onManage}
+        />
     </span>
 );
 
 /** The box a title is retyped in, in place of whatever was showing it. */
 const HarnessConversationRename: React.FC<{
     title: string;
-    onDone: (title: string) => void;
-    onCancel: () => void;
-}> = ({ title, onDone, onCancel }) => {
-    const [draft, setDraft] = useState(title);
-    const finish = () => onDone(draft.trim());
-
-    return (
-        <Input
-            className="chat-conversation-rename"
-            size="small"
-            value={draft}
-            autoFocus
-            onClick={e => e.stopPropagation()}
-            onChange={e => setDraft(e.target.value)}
-            onPressEnter={finish}
-            onBlur={finish}
-            onKeyDown={e => { if (e.key === 'Escape') onCancel(); }}
-        />
-    );
-};
+    onRename: (title: string) => void;
+    onClose: () => void;
+}> = ({ title, onRename, onClose }) => (
+    <CommitInput
+        className="chat-conversation-rename"
+        aria-label="Conversation name"
+        value={title}
+        autoFocus
+        preserveDraft
+        onClick={event => event.stopPropagation()}
+        onCommit={value => {
+            onClose();
+            const next = value.trim();
+            if (next !== title) onRename(next);
+        }}
+        onCancel={onClose}
+    />
+);
 
 export const ChatConversationRow: React.FC<{
     conversation: HarnessConversation;
@@ -105,9 +92,8 @@ export const ChatConversationRow: React.FC<{
     onSelect: () => void;
     onRename: (title: string) => void;
     onTogglePin: () => void;
-    onArchive: () => void;
-    onDelete: () => void;
-}> = ({ conversation, active, header, onSelect, onRename, onTogglePin, onArchive, onDelete }) => {
+    onManage: () => void;
+}> = ({ conversation, active, header, onSelect, onRename, onTogglePin, onManage }) => {
     const { runtimes } = useChatSocketContext();
     const [renaming, setRenaming] = useState(false);
 
@@ -121,11 +107,8 @@ export const ChatConversationRow: React.FC<{
             {renaming ? (
                 <HarnessConversationRename
                     title={conversation.title}
-                    onDone={title => {
-                        setRenaming(false);
-                        if (title !== conversation.title) onRename(title);
-                    }}
-                    onCancel={() => setRenaming(false)}
+                    onRename={onRename}
+                    onClose={() => setRenaming(false)}
                 />
             ) : (
                 <span className="chat-conversation-title">{conversation.title}</span>
@@ -134,8 +117,7 @@ export const ChatConversationRow: React.FC<{
                 conversation={conversation}
                 onStartRename={() => setRenaming(true)}
                 onTogglePin={onTogglePin}
-                onArchive={onArchive}
-                onDelete={onDelete}
+                onManage={onManage}
             />
         </div>
     );
@@ -149,9 +131,8 @@ export const ChatConversationList: React.FC<{
     onSelect: (id: string) => void;
     onRename: (id: string, title: string) => void;
     onTogglePin: (id: string) => void;
-    onArchive: (id: string) => void;
-    onDelete: (id: string) => void;
-}> = ({ conversations, activeId, loading, onSelect, onRename, onTogglePin, onArchive, onDelete }) => {
+    onManage: () => void;
+}> = ({ conversations, activeId, loading, onSelect, onRename, onTogglePin, onManage }) => {
     const { runtimes } = useChatSocketContext();
     const [renaming, setRenaming] = useState(false);
 
@@ -176,12 +157,10 @@ export const ChatConversationList: React.FC<{
         <div className="chat-conversation-list">
             {renaming && active ? (
                 <HarnessConversationRename
+                    key={active.id}
                     title={active.title}
-                    onDone={title => {
-                        setRenaming(false);
-                        if (title !== active.title) onRename(active.id, title);
-                    }}
-                    onCancel={() => setRenaming(false)}
+                    onRename={title => onRename(active.id, title)}
+                    onClose={() => setRenaming(false)}
                 />
             ) : (
                 <Select
@@ -209,15 +188,12 @@ export const ChatConversationList: React.FC<{
                     </span>
                 </Tooltip>
             )}
-            {active && (
-                <ChatConversationActions
-                    conversation={active}
-                    onStartRename={() => setRenaming(true)}
-                    onTogglePin={() => onTogglePin(active.id)}
-                    onArchive={() => onArchive(active.id)}
-                    onDelete={() => onDelete(active.id)}
-                />
-            )}
+            <ChatConversationActions
+                conversation={active}
+                onStartRename={() => setRenaming(true)}
+                onTogglePin={() => active && onTogglePin(active.id)}
+                onManage={onManage}
+            />
         </div>
     );
 };

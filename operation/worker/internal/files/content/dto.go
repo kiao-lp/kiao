@@ -30,7 +30,7 @@ type StagingDto struct {
 	Path string `json:"path"`
 }
 
-// Extracted lists the store-relative paths of the files an unzip wrote, in archive order.
+// Extracted lists the unzipped files in archive order, using paths from the DCMS root.
 type UnzipResultDto struct {
 	Extracted []string `json:"extracted"`
 }
@@ -67,9 +67,9 @@ type DiskUsageDto struct {
 	UsableSpace int64 `json:"usableSpace"`
 }
 
-// RootPath is the absolute host path; prepend it to store-relative paths for local tools.
+// StoreInfoDto exposes the absolute host path of the DCMS root to clients.
 type StoreInfoDto struct {
-	RootPath string `json:"rootPath"`
+	DCMSRoot string `json:"rootPath"`
 }
 
 // /listRecursive reports the scope of a deletion. Truncated means a cap or an excluded

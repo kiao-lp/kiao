@@ -92,7 +92,7 @@ describe('the selection a drag is started from', () => {
 });
 
 describe('a dropped file, written as a link', () => {
-    it('is its name over its path from the store root', () => {
+    it('is its name over its path from the DCMS root', () => {
         expect(markdownLinkOf({ path: 'units/abc/cadre.md', isDirectory: false }))
             .toBe('[cadre.md](/units/abc/cadre.md)');
     });

@@ -10,3 +10,12 @@
 .ui-copy-button:hover {
     background: var(--accent-bg, #f0f0f0);
 }
+
+.ui-copy-status {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}

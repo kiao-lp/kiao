@@ -49,8 +49,10 @@ func (s *Store) ImportAgent(ctx context.Context, remote string, newDraft func(pr
 		return nil, err
 	}
 	destination := filepath.Join(root, name)
-	if _, err = os.Lstat(destination); !os.IsNotExist(err) {
-		return nil, entities.Conflictf("repository %s already exists", name)
+	if _, err = os.Lstat(destination); err == nil {
+		return nil, entities.Conflictf("Repository %q already exists on the resource manager's machine.", name)
+	} else if !os.IsNotExist(err) {
+		return nil, err
 	}
 	staging, err := os.MkdirTemp(root, ".clone-*")
 	if err != nil {
@@ -72,10 +74,11 @@ func (s *Store) ImportAgent(ctx context.Context, remote string, newDraft func(pr
 		}
 		agent, err = newDraft(name)
 	} else {
-		agent, err = s.read(ctx, staging, "", "")
+		agent, err = readDraftMetadata(staging)
 		if err != nil {
-			return nil, entities.Invalidf("invalid agent package: %s", err)
+			return nil, entities.Invalidf("Invalid agent package. %s", err)
 		}
+		loadDraftDefinition(staging, definitionFile(staging), agent)
 	}
 	if err != nil {
 		return nil, err
@@ -126,7 +129,7 @@ func (s *Store) checkoutAgentBranch(ctx context.Context, dir string) error {
 
 func (s *Store) restoreImportedAgent(ctx context.Context, dir string, agent *entities.Agent) error {
 	if agent.DraftError != "" {
-		return entities.Invalidf("invalid agent package: %s", agent.DraftError)
+		return entities.Invalidf("Invalid agent package. %s", agent.DraftError)
 	}
 	if err := clearManagedSkillProjections(dir); err != nil {
 		return err

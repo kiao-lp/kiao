@@ -12,6 +12,5 @@ export {
 export { useBoxSelection } from './useBoxSelection';
 export { useArrowKeyMove } from './useArrowKeyMove';
 export { useMouseOverViewport } from '@kiao-dashboard-core';
-export { useWheelZoom } from './useWheelZoom';
 export { useKeyboardZoom } from './useKeyboardZoom';
 export { useMapFileDrop, useNoteFileDrop } from './useDroppedFiles';

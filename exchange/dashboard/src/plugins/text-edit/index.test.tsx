@@ -10,7 +10,10 @@ const file = (path: string) => ({
 });
 
 describe('TextEditor plugin', () => {
-    it.each(['notes.txt', 'events.jsonl', 'article.cls', 'rows.csv', 'report.xlsx.index.csv', 'rows.tsv'])('handles %s files', (path) => {
+    it.each([
+        'notes.txt', 'events.jsonl', 'article.cls', 'rows.csv', 'report.xlsx.index.csv', 'rows.tsv',
+        'bin/deploy.fish', 'deploy.csh', 'deploy.tcsh', 'Deploy.CMD', 'deploy.bat',
+    ])('handles %s files', (path) => {
         expect(plugin.fileConfigFor(file(path))).not.toBeNull();
     });
 
@@ -22,11 +25,12 @@ describe('TextEditor plugin', () => {
 
     // The rename modal splits a name on these, and this one has no name apart from its extension.
     it('keeps the declaration out of the renameable extensions', () => {
-        expect(plugin.fileExtensions).toEqual(['.txt', '.jsonl', '.cls', '.csv', '.tsv']);
+        expect(plugin.fileExtensions).not.toContain('.kiao-files');
     });
 
     it('ignores unsupported file extensions', () => {
         expect(plugin.fileConfigFor(file('notes.json'))).toBeNull();
+        expect(plugin.fileConfigFor(file('deploy.ps1'))).toBeNull();
     });
 
     // The extension is dropped from the title, as for `.txt`: a tabular file is one per name.

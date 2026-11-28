@@ -1,8 +1,9 @@
 import React from 'react';
+import { Modal } from 'antd';
 import { formatLocalDateTime } from '@kiao-dashboard-kit/date-time';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, act, waitFor, within } from 'src/test/render';
-import type { HarnessPermissionMode, HarnessChainRun } from 'kiao-worker';
+import type { HarnessPermissionMode, HarnessChainRun, HarnessConversationDetail } from 'kiao-worker';
 import type { PermissionRequest } from './chatMessages';
 import type { AgentDto } from '../agentic-resources/types';
 
@@ -17,11 +18,13 @@ const state = vi.hoisted(() => ({
     // because a deployment may withdraw `bypassPermissions` while a conversation created before it
     permissionModes: permissionModes(),
     hasHarnesses: true,
-    // Whether it has a *second* one. harness, and because the lists a second engine publishes are its own: `opus` is a Claude model
+    // Codex has its own model, effort and permission options.
     hasCodex: false,
     agents: [] as AgentDto[],
     claudeEnabled: true,
+    claudeCanCompact: false,
     harnessesLoading: false,
+    transcript: null as HarnessConversationDetail | null,
     startHarnessLogin: vi.fn(),
     claudeEntry: null as null | {
         models: { value: string; label: string }[];
@@ -34,13 +37,17 @@ const state = vi.hoisted(() => ({
     droppedListeners: new Set<(conversationId: string, prompt: string, attachments: string[]) => void>(),
     runs: [] as HarnessChainRun[],
     stopRun: vi.fn(),
-    resumeRun: vi.fn(() => Promise.resolve()),
     auth: { loggedIn: true, loginEnabled: true } as { loggedIn: boolean; loginEnabled: boolean } | null,
     codexAuth: vi.fn(),
+    remove: vi.fn(),
     showTab: vi.fn(),
 }));
 
 vi.mock('@kiao-dashboard-core', async () => ({
+    AsyncList: (await import('src/core/ui-foundation/feedback/AsyncList')).AsyncList,
+    CopyTextButton: (await import('src/core/ui-foundation/clipboard/CopyButton')).CopyTextButton,
+    IconButton: (await import('src/core/ui-foundation/toolbar/IconButton')).IconButton,
+    ConfirmationDialog: (await import('src/core/ui-foundation/forms/ConfirmationDialog')).ConfirmationDialog,
     useStickToBottom: (await import('src/core/ui-foundation/scrolling/useStickToBottom')).useStickToBottom,
     // one's: here the handlers only have to be handlers.
     markdownLinkDropHandlers: () => ({}),
@@ -51,6 +58,7 @@ vi.mock('@kiao-dashboard-core', async () => ({
     ConfiguredMarkdown: ({ children }: { children: string }) => <div>{children}</div>,
     zoomable: {},
     Tooltip: (await import('antd')).Tooltip,
+    InProgressFeedback: (await import('src/core/ui-foundation/feedback/InProgressFeedback')).InProgressFeedback,
     VoiceInputButton: ({ value, onChange }: { value?: string; onChange: (next: string) => void }) => (
         <button type="button" data-testid="voice-input" onClick={() => onChange(value ? `${value} dictated` : 'dictated')}>
             Dictate
@@ -64,7 +72,7 @@ vi.mock('./ChatShow-ctx', () => ({
 
 vi.mock('./ChatChainRuns-ctx', () => ({
     useChatChainRuns: () => ({
-        runs: state.runs, play: vi.fn(), stop: state.stopRun, resume: state.resumeRun,
+        runs: state.runs, play: vi.fn(), stop: state.stopRun, resume: vi.fn(),
         restart: vi.fn(), forget: vi.fn(),
     }),
 }));
@@ -83,17 +91,19 @@ vi.mock('./ChatSocket-ctx', () => ({
 vi.mock('./useChatConversations', () => ({
     useChatConversations: () => ({
         conversations: state.conversations,
+        allConversations: state.conversations,
         // The invariant the panel keeps: a pinned conversation has a column of its own, so the main column is never on one.
         activeId: (state.conversations.find(entry => !entry.pinned)?.id as string) ?? null,
         setActiveId: vi.fn(), loading: false,
         create: state.create, show: state.show, fork: state.fork,
-        patch: state.patch, remove: vi.fn(), refresh: vi.fn(),
+        patch: state.patch, remove: state.remove, refresh: vi.fn(), listFailed: false,
     }),
 }));
 
 vi.mock('./useChatConversation', () => ({
-    useChatConversation: () => ({
-        conversation: null, messages: state.messages, running: state.running,
+    useChatConversation: (id: string | null) => ({
+        conversation: state.transcript?.id === id ? state.transcript : null,
+        messages: state.messages, running: state.running,
         permissionRequests: state.permissionRequests,
         questionRequests: state.questionRequests,
         lastError: state.lastError,
@@ -111,6 +121,7 @@ vi.mock('../useHarnessOptions', () => {
         activeModels: state.claudeEntry?.models.map(model => model.value) ?? ['haiku'],
         efforts: state.claudeEntry?.efforts ?? [{ value: 'low', label: 'Low' }],
         permissionModes: state.permissionModes,
+        capabilities: { compact: state.claudeCanCompact },
             });
     const codex = () => ({
         value: 'codex', label: 'Codex',
@@ -130,7 +141,8 @@ vi.mock('../useHarnessOptions', () => {
             models: claude().models,
             efforts: claude().efforts,
             permissionModes: state.permissionModes,
-            optionsFor: (harness: string) => harnesses().find(entry => entry.value === harness) ?? claude(),
+            optionsFor: (harness: string) => harnesses().find(entry => entry.value === harness)
+                ?? { value: '', label: '', models: [], efforts: [], permissionModes: [] },
             loading: state.harnessesLoading,
         }),
     };
@@ -175,6 +187,13 @@ const confirmFork = () =>
 /** The box of the main column, whichever of its two jobs it is doing. */
 const messageBox = () => screen.getByLabelText(/^Message for/) as HTMLTextAreaElement;
 
+const responseTokenLimit = () => screen.getByLabelText(/^Response token limit:/, { selector: 'button' });
+const chooseResponseTokenLimit = async (option: string) => {
+    fireEvent.click(responseTokenLimit());
+    const grid = await screen.findByRole('grid');
+    fireEvent.click(within(grid).getByLabelText(option, { selector: 'button' }));
+};
+
 beforeEach(() => {
     vi.clearAllMocks();
     state.socketState = 'open';
@@ -190,14 +209,17 @@ beforeEach(() => {
     state.running = false;
     state.runs = [];
     state.messages = [];
+    state.transcript = null;
     state.fork.mockImplementation(() => Promise.resolve({}));
     state.conversations = [];
     state.toShow = null;
     state.auth = { loggedIn: true, loginEnabled: true };
     state.codexAuth.mockResolvedValue({ loggedIn: true, loginEnabled: true });
     state.claudeEnabled = true;
+    state.claudeCanCompact = false;
     state.harnessesLoading = false;
     state.patch.mockImplementation(() => Promise.resolve({}));
+    state.remove.mockReset().mockResolvedValue(undefined);
     state.permissionModes = permissionModes();
     // coordinate the drag reads; only the pointer id has to be put back.
     vi.stubGlobal('PointerEvent', class extends MouseEvent {
@@ -214,6 +236,58 @@ beforeEach(() => {
         disconnect() { }
     });
     Element.prototype.scrollIntoView = vi.fn();
+});
+
+it('keeps the failed part of a deletion batch selected for retry', async () => {
+    state.conversations = [
+        activeConversation({ id: 'first', title: 'First conversation' }),
+        activeConversation({ id: 'second', title: 'Second conversation' }),
+    ];
+    state.remove.mockRejectedValueOnce(new Error('service restarting'));
+    render(<ChatPromptContent />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Manage conversations' }));
+    const manager = within(screen.getByRole('dialog'));
+    const first = manager.getByRole('checkbox', { name: /^First conversation/ });
+    const second = manager.getByRole('checkbox', { name: /^Second conversation/ });
+    fireEvent.click(first);
+    fireEvent.click(second);
+    fireEvent.click(manager.getByRole('button', { name: 'Delete' }));
+    expect(state.remove).not.toHaveBeenCalled();
+
+    const confirmationTitle = await screen.findByText('Delete 2 conversations?');
+    const confirmation = within(confirmationTitle.closest<HTMLElement>('[role="dialog"]')!);
+    fireEvent.click(confirmation.getByRole('button', { name: 'Delete' }));
+    await manager.findByText('1 conversation deleted. 1 conversation could not be deleted.');
+
+    expect(state.remove.mock.calls).toEqual([['first'], ['second']]);
+    expect(first).toBeChecked();
+    expect(second).not.toBeChecked();
+});
+
+describe('sending a message in the conversation of a suspended run', () => {
+    afterEach(() => { act(() => Modal.destroyAll()); });
+
+    it.each([true, false])('sends the message after the resume choice %s', async carryOn => {
+        state.conversations = [activeConversation()];
+        state.runs = [{
+            id: 'run-1', name: 'Review', state: 'suspended', chat: 'conv-1', path: 'board',
+            rootFlowNodeId: 'task-1', flowNodeId: 'task-1', startedAt: 1,
+        }];
+        render(<ChatPromptContent />);
+
+        fireEvent.change(messageBox(), { target: { value: 'Continue the review' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+        expect(state.send).not.toHaveBeenCalled();
+        fireEvent.click(await screen.findByRole('button', { name: carryOn ? 'Yes, carry on' : 'No, this message only' }));
+
+        await waitFor(() => expect(state.send).toHaveBeenCalledExactlyOnceWith('Continue the review', {
+            effort: 'low', permissionMode: 'manual', thinking: true, attachments: [],
+            ...(carryOn ? { resumeRunId: 'run-1' } : {}),
+        }));
+        if (carryOn) expect(state.stopRun).not.toHaveBeenCalled();
+        else expect(state.stopRun).toHaveBeenCalledWith('run-1');
+    });
 });
 
 describe('ChatPromptContent — refusals the user has to be told about', () => {
@@ -321,6 +395,88 @@ describe('ChatPromptContent — saying something into a running turn', () => {  
 
         expect(messageBox()).toHaveValue('stop at ten');
         expect(screen.getByText(/already ended/i)).toBeInTheDocument();
+    });
+});
+
+describe('ChatPromptContent — response token limit', () => {
+    beforeEach(() => {
+        state.conversations = [activeConversation({ sessionId: 'native-session-1' })];
+    });
+
+    it('offers None and Fibonacci values multiplied by eight in a 4 by 4 grid', async () => {
+        render(<ChatPromptContent />);
+
+        expect(responseTokenLimit()).toHaveAccessibleName('Response token limit: None');
+        fireEvent.click(responseTokenLimit());
+        const rows = within(await screen.findByRole('grid')).getAllByRole('row');
+
+        expect(rows).toHaveLength(4);
+        for (const row of rows) expect(within(row).getAllByRole('gridcell')).toHaveLength(4);
+        expect(rows.map(row => within(row).getAllByRole('button').map(button => button.getAttribute('aria-label'))))
+            .toEqual([
+                ['None', '8', '16', '24'],
+                ['40', '64', '104', '168'],
+                ['272', '440', '712', '1152'],
+                ['1864', '3016', '4880', '7896'],
+            ]);
+    });
+
+    it('moves focus across the grid with arrows and returns it on Escape', async () => {
+        render(<ChatPromptContent />);
+
+        const trigger = responseTokenLimit();
+        fireEvent.click(trigger);
+        const grid = await screen.findByRole('grid');
+        const option = (name: string) => within(grid).getByLabelText(name, { selector: 'button' });
+        const none = option('None');
+        await waitFor(() => expect(none).toHaveFocus());
+
+        const below = option('40');
+        fireEvent.keyDown(none, { key: 'ArrowDown' });
+        expect(below).toHaveFocus();
+        const next = option('64');
+        fireEvent.keyDown(below, { key: 'ArrowRight' });
+        expect(next).toHaveFocus();
+        expect(Array.from(grid.querySelectorAll('button[tabindex="0"]'))).toEqual([next]);
+
+        fireEvent.keyDown(next, { key: 'Escape' });
+        expect(trigger).toHaveFocus();
+        expect(trigger).toHaveAccessibleName('Response token limit: None');
+    });
+
+    it('sends the selected limit separately from the text and omits it after choosing None', async () => {
+        render(<ChatPromptContent />);
+
+        await chooseResponseTokenLimit('40');
+        expect(responseTokenLimit()).toHaveAccessibleName('Response token limit: 40 tokens');
+        expect(responseTokenLimit()).toHaveTextContent(/^40$/);
+        fireEvent.change(messageBox(), { target: { value: 'Review this draft' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+        const turnOptions = { effort: 'low', permissionMode: 'manual', thinking: true, attachments: [] };
+        expect(state.send.mock.calls[0]).toStrictEqual(['Review this draft', { ...turnOptions, responseTokenLimit: '40' }]);
+
+        await chooseResponseTokenLimit('None');
+        expect(responseTokenLimit()).toHaveAccessibleName('Response token limit: None');
+        fireEvent.change(messageBox(), { target: { value: 'Keep going' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+        expect(state.send.mock.calls[1]).toStrictEqual(['Keep going', turnOptions]);
+    });
+
+    it('omits the limit from Compact and disables the picker during a running turn', async () => {
+        state.claudeCanCompact = true;
+        const { rerender } = render(<ChatPromptContent />);
+
+        await chooseResponseTokenLimit('40');
+        fireEvent.click(screen.getByRole('button', { name: 'Compact' }));
+        expect(state.send.mock.calls[0]).toStrictEqual(['/compact', {
+            effort: 'low', permissionMode: 'manual', thinking: true,
+        }]);
+
+        state.running = true;
+        rerender(<ChatPromptContent />);
+        expect(responseTokenLimit()).toBeDisabled();
     });
 });
 
@@ -693,6 +849,7 @@ describe('ChatPromptContent — choosing a published agent', () => {
         openNew();
         expect(screen.queryByRole('table')).not.toBeInTheDocument();
         const dialog = within(screen.getByRole('dialog'));
+        expect(dialog.getByRole('status', { name: 'Loading agent and model options' })).toBeVisible();
         expect(dialog.queryByRole('button', { name: 'Create conversation' })).not.toBeInTheDocument();
         expect(dialog.queryByRole('button', { name: 'Cancel' })).not.toBeInTheDocument();
         expect(screen.queryByRole('combobox', { name: /model|execution profile/i })).not.toBeInTheDocument();
@@ -702,22 +859,30 @@ describe('ChatPromptContent — choosing a published agent', () => {
         expect(screen.queryByText('Draft agent', { exact: true })).not.toBeInTheDocument();
 
         await waitFor(() => expect(state.create).toHaveBeenCalledWith({
-            folder: 'units', agentId: 'reviewer', harness: 'claude', model: 'haiku', permissionMode: 'manual',
+            folder: 'units', agentId: 'reviewer', harness: 'claude', model: 'haiku',
         }));
     });
 
-    it('sends a draft after the agent has been chosen and the conversation exists', async () => {
+    it.each([
+        { limit: undefined, label: 'None' },
+        { limit: '40', label: '40 tokens' },
+    ])('sends a draft with $label after the agent has been chosen', async ({ limit, label }) => {
         state.create.mockImplementationOnce(async () => {
             const created = activeConversation({ id: 'conv-new' });
             state.conversations = [created];
             return { id: 'conv-new' };
         });
         render(<ChatPromptContent />);
+        if (limit) await chooseResponseTokenLimit(limit);
         fireEvent.change(messageBox(), { target: { value: 'Read this draft' } });
         fireEvent.click(screen.getByRole('button', { name: 'Send' }));
         expect(state.create).not.toHaveBeenCalled();
         await pickAgent('Reviewer');
-        await waitFor(() => expect(state.send).toHaveBeenCalledWith('Read this draft', { attachments: [] }));
+        await waitFor(() => expect(state.send.mock.calls[0]).toStrictEqual(['Read this draft', {
+            attachments: [],
+            ...(limit ? { responseTokenLimit: limit } : {}),
+        }]));
+        expect(responseTokenLimit()).toHaveAccessibleName(`Response token limit: ${label}`);
     });
 
     it('offers to continue an older transcript with an agent', async () => {
@@ -735,7 +900,8 @@ describe('ChatPromptContent — choosing a published agent', () => {
         state.conversations = [activeConversation({ effort: 'xhigh' })];
         render(<ChatPromptContent />);
 
-        expect(screen.getByTestId('conversation-agent-version')).toHaveTextContent('Reviewer · v1.0.0 · claude · haiku');
+        expect(screen.getByTestId('conversation-details').querySelector('summary'))
+            .toHaveTextContent('Reviewer · v1.0.0 · Claude · Haiku');
         expect(screen.getByTitle('xhigh')).toBeInTheDocument();
         expect(screen.queryByRole('combobox', { name: /model|execution profile/i })).not.toBeInTheDocument();
         fireEvent.change(messageBox(), { target: { value: 'Carry on' } });
@@ -762,7 +928,7 @@ describe('ChatPromptContent — Codex host sign-in', () => {
         openNew();
         await pickAgent('Coder');
         await waitFor(() => expect(state.create).toHaveBeenCalledWith({
-            folder: 'units', agentId: 'coder', harness: 'codex', model: 'gpt-5', permissionMode: 'bypassPermissions',
+            folder: 'units', agentId: 'coder', harness: 'codex', model: 'gpt-5',
         }));
     });
 
@@ -802,45 +968,60 @@ describe('ChatPromptContent — Codex host sign-in', () => {
 
 });
 
-describe('ChatPromptContent — where each chat is kept', () => {
-    const conversation = (overrides: Record<string, unknown> = {}) => ({
-        id: 'conv-a', title: 'Alpha', folder: 'units/demo', messageCount: 2, pinned: false,
-        ...overrides,
-    });
-
-    const storageLines = () => [...document.querySelectorAll('.chat-conversation-storage')];
-
-    it('heads the selected chat with its storage path, inside the scroll', () => {
-        state.conversations = [conversation()];
+describe('ChatPromptContent — conversation details', () => {
+    it.each(['claude', 'codex', 'muse', 'pi'])('renders %s details at the beginning of the transcript', harness => {
+        state.hasCodex = true;
+        const active = activeConversation({
+            harness, sessionId: 'native-session-7', forkedFrom: 'conv-source', forkedFromMessage: 'msg-source',
+        });
+        state.conversations = [active];
         state.messages = [{ id: 'msg-1', role: 'user', content: 'Hello' }];
+        state.transcript = {
+            ...active,
+            permissionMode: 'manual',
+            locations: {
+                conversationDirectory: '/worker-state/conversations/conv-1',
+                metadataFile: '/worker-state/conversations/conv-1/meta.json',
+                transcriptFile: '/worker-state/conversations/conv-1/transcript.jsonl',
+                turnTracesDirectory: '/worker-state/conversations/conv-1/turns',
+            },
+            messages: [{ id: 'msg-1', role: 'user', text: 'Hello', turnId: 'turn-1', at: '' }],
+        };
 
         const { container } = render(<ChatPromptContent />);
 
-        const lines = storageLines();
-        expect(lines).toHaveLength(1);
-        expect(lines[0]).toHaveTextContent('.kiao-config/conversations/conv-a');
-        expect(container.querySelector('.chat-messages-area')!.firstElementChild).toBe(lines[0]);
+        const details = screen.getByTestId('conversation-details');
+        expect(container.querySelector('.chat-messages-area')!.firstElementChild).toBe(details);
+        expect(details).not.toHaveAttribute('open');
+        details.setAttribute('open', '');
+        const panel = within(details);
+        expect(panel.getAllByRole('heading').map(heading => heading.textContent)).toEqual([
+            'Agent', 'Execution defaults', 'Conversation', 'Files on the worker',
+        ]);
+        for (const value of [harness, 'native-session-7', 'turn-1', 'conv-source', 'msg-source',
+            '/worker-state/conversations/conv-1/transcript.jsonl']) {
+            expect(panel.getByText(value, { exact: true })).toBeVisible();
+        }
     });
 
-    it('shows nothing where no conversation is selected', () => {
-        state.conversations = [];
-
+    it('keeps the start hint in the empty pane', () => {
         render(<ChatPromptContent />);
 
-        expect(storageLines()).toHaveLength(0);
+        expect(screen.queryByTestId('conversation-details')).not.toBeInTheDocument();
+        expect(screen.getByText(/Choose an agent with New conversation/)).toBeVisible();
     });
 
-    it('names its own storage in every pinned column', () => {
+    it('shows each column’s conversation ID, including older conversations without an agent snapshot', () => {
         state.conversations = [
-            conversation({ id: 'conv-a', pinned: true }),
-            conversation({ id: 'conv-b' }),
+            activeConversation({ id: 'conv-a', pinned: true, agentVersion: undefined }),
+            activeConversation({ id: 'conv-b' }),
         ];
 
         render(<ChatPromptContent />);
 
-        expect(storageLines().map(line => line.textContent)).toEqual([
-            '.kiao-config/conversations/conv-a',
-            '.kiao-config/conversations/conv-b',
-        ]);
+        const [pinned, main] = screen.getAllByTestId('conversation-details');
+        expect(pinned).toHaveTextContent('Agent snapshot unavailable');
+        expect(pinned).toHaveTextContent('Conversation IDconv-a');
+        expect(main).toHaveTextContent('Conversation IDconv-b');
     });
 });

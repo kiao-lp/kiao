@@ -19,8 +19,7 @@ import (
 // DeletedSentinel replaces references to deleted paths.
 const DeletedSentinel = "///deleted///"
 
-// LinkFixer updates store-root references after rename or delete. Only paths with a leading
-// slash qualify; bare paths and document-relative markdown links are left alone.
+// LinkFixer updates raw and percent-encoded DCMS links after a rename or delete.
 // RE2 lacks lookaround, so token boundaries are checked outside the regex.
 type LinkFixer struct {
 	storage    *pkgFilesystem.Storage
@@ -61,9 +60,9 @@ func stripLeadingSlash(p string) string {
 	return p
 }
 
-// escapedInStoredLink follows storedLinkOf: encodeURIComponent per segment, plus parentheses
-// that would delimit markdown destinations. Slashes stay raw; non-ASCII bytes are escaped.
-func escapedInStoredLink(b byte) bool {
+// escapedInDCMSLink follows Dashboard's encodedDcmsLinkOf with encodeURIComponent per
+// segment and escaped parentheses. Slashes stay raw and non-ASCII bytes are escaped.
+func escapedInDCMSLink(b byte) bool {
 	switch {
 	case b >= 'a' && b <= 'z', b >= 'A' && b <= 'Z', b >= '0' && b <= '9':
 		return false
@@ -76,7 +75,7 @@ func escapedInStoredLink(b byte) bool {
 }
 
 // mayBeEscapedInLink accepts escapes for all bytes outside RFC 3986's unreserved set,
-// except slash. This is deliberately broader than escapedInStoredLink.
+// except slash. It accepts the additional escapes produced by other URI encoders.
 func mayBeEscapedInLink(b byte) bool {
 	switch {
 	case b >= 'a' && b <= 'z', b >= 'A' && b <= 'Z', b >= '0' && b <= '9':
@@ -104,7 +103,7 @@ func percentEscape(s string) string {
 func encodeLinkPath(p string) string {
 	var b strings.Builder
 	for i := 0; i < len(p); i++ {
-		if !escapedInStoredLink(p[i]) {
+		if !escapedInDCMSLink(p[i]) {
 			b.WriteByte(p[i])
 			continue
 		}

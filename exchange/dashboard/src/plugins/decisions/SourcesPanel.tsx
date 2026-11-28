@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Button, Input, Popconfirm, Spin } from 'antd';
+import { Button, Input } from 'antd';
 import { DeleteOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
-import { holdsDraggedFiles, readDraggedFiles } from '@kiao-dashboard-core';
+import { AsyncList, IconButton, holdsDraggedFiles, readDraggedFiles, useConfirmation } from '@kiao-dashboard-core';
 import { useDecisions } from './Decisions-ctx';
 import { displayNameOf, folderNameOf } from './decisionsFile';
 import styles from './Decisions.module.css';
@@ -9,6 +9,7 @@ import styles from './Decisions.module.css';
 const parentOf = (path: string): string => path.split('/').slice(0, -1).join('/');
 
 export const SourcesPanel: React.FC = () => {
+    const confirm = useConfirmation();
     const { sources, sourcesLoading, addSourcePaths, updateSource, removeSource, ensureLoaded, reload } = useDecisions();
     const [dropping, setDropping] = useState(false);
     const [draft, setDraft] = useState('');
@@ -46,7 +47,7 @@ export const SourcesPanel: React.FC = () => {
                 Folders holding decision files. Drop a folder from the file tree, or type its path.
                 The list lives in <code>kiao-user-config/decisions.json</code>.
             </div>
-            {sourcesLoading && sources.length === 0 && <div className={styles.center}><Spin /></div>}
+            <AsyncList loading={sourcesLoading && !sources.length} />
             {sources.map((source, index) => (
                 <div key={index} className={styles.sourceRow} data-testid="decision-source">
                     <div className={styles.sourceFields}>
@@ -73,23 +74,17 @@ export const SourcesPanel: React.FC = () => {
                         </label>
                         <span className={styles.fieldName}>Shown as: {displayNameOf(source)}</span>
                     </div>
-                    <Popconfirm
-                        title="Delete this source?"
-                        description="Its decisions leave the table. The folder stays in the store."
-                        okText="Delete"
-                        okButtonProps={{ danger: true }}
-                        cancelText="Cancel"
-                        onConfirm={() => removeSource(index)}
-                    >
-                        <Button
-                            size="small"
-                            type="text"
-                            danger
-                            icon={<DeleteOutlined />}
-                            aria-label={`Delete source ${displayNameOf(source)}`}
-                            data-testid="delete-source"
-                        />
-                    </Popconfirm>
+                    <IconButton
+                        label={`Delete source ${displayNameOf(source)}`}
+                        danger
+                        icon={<DeleteOutlined />}
+                        data-testid="delete-source"
+                        onClick={() => confirm({
+                            title: `Delete source “${displayNameOf(source)}”?`,
+                            description: 'Its decisions leave the table. The folder stays in the store.',
+                            onConfirm: () => removeSource(index),
+                        })}
+                    />
                 </div>
             ))}
             <div className={styles.sourceRow}>
@@ -110,11 +105,9 @@ export const SourcesPanel: React.FC = () => {
                 <Button size="small" icon={<PlusOutlined />} data-testid="add-source" onClick={addDraft}>
                     Add
                 </Button>
-                <Button
-                    size="small"
-                    type="text"
+                <IconButton
+                    label="Read the file again"
                     icon={<ReloadOutlined spin={sourcesLoading} />}
-                    aria-label="Read the file again"
                     onClick={reload}
                 />
             </div>

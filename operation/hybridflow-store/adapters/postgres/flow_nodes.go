@@ -10,10 +10,10 @@ import (
 	"kiao/hybridflow-store/core/entities"
 )
 
-// The cards. Everything here is a statement about one row or about a named set of rows: nothing
-// reads a board to write a card.
+// The flow nodes. Everything here is a statement about one row or about a named set of rows: nothing
+// reads a board to write a flow node.
 
-// flowNodeColumns is the select list: the card, its task and its tags in one row.
+// flowNodeColumns is the select list: the flow node, its task and its tags in one row.
 //
 // The **task is a LEFT JOIN** and not an inner one, because two of the four kinds have none: a
 // Shutdown and a Scheduler come back with every one of `k`'s columns NULL, and that is how the
@@ -21,24 +21,28 @@ import (
 // the answer to "is this a task at all?" is the first thing scanned and not inferred from a
 // coalesced value that an empty task would give too.
 //
-// The tags stay a correlated subquery rather than a second join with a GROUP BY, so that one card
+// The tags stay a correlated subquery rather than a second join with a GROUP BY, so that one flow node
 // and a whole board are read by the same SQL — a GROUP BY over every column of both tables is a
 // great deal of work to say "and its tags".
 const flowNodeColumns = `t.id, t.board_id, t.title, t.type, coalesce(t.note, ''), coalesce(t.value::text, '{}'), coalesce(t.value_type, ''), t.output_type, coalesce(t.output::text, ''),
-	t.status, coalesce(t.scheduled_at, ''), coalesce(t.duration, ''), t.spot_x, t.spot_y,
-	coalesce(t.run_id, ''), t.claimed_at,
-	coalesce(t.class_version_id::text, ''),
-	cv.flow_node_class_id::text, cc.title, cv.version_number,
+	t.role_id, t.role_kind, t.role_people, t.role_description,
+	t.status, coalesce(t.scheduled_at, ''), coalesce(t.duration, ''),
+	coalesce(t.pull_request_id, ''), coalesce(t.pull_request_status, ''),
+	coalesce(t.commit_id, ''), coalesce(t.commit_status, ''),
+	t.limiter_max_passes, t.limiter_remaining_passes, t.spot_x, t.spot_y, t.size_w, t.size_h,
+	coalesce(t.run_id, ''), t.claimed_at, t.completion,
 	coalesce(t.workflow_id::text, ''),
 	t.created_at, t.updated_at, t.revision, t.archived,
-	k.flow_node_id, k.body, k.criteria, k.complexity,
+	k.flow_node_id, k.body, coalesce(k.multi_part_template, false), k.criteria, k.complexity,
 	coalesce(k.agent, ''), coalesce(k.harness, ''), coalesce(k.profile_id, ''), coalesce(k.model, ''), coalesce(k.effort, ''),
 	coalesce(k.permission, ''), coalesce(k.folder, ''), coalesce(k.runner, ''), k.settings_extra,
 	coalesce(k.conversation_id, ''), k.on_success_mode, k.on_success_compact,
 	(SELECT coalesce(array_agg(g.tag ORDER BY g.ordinal), '{}')
 	   FROM flow_node_tag g WHERE g.flow_node_id = t.id),
 	(SELECT coalesce(array_agg(s.successor_id::text ORDER BY s.ordinal), '{}')
-	   FROM flow_node_successor s WHERE s.flow_node_id = t.id)`
+	   FROM flow_node_successor s WHERE s.flow_node_id = t.id),
+	(SELECT coalesce(jsonb_agg(jsonb_build_object('condition', r.condition, 'flowNode', r.successor_id)
+	   ORDER BY r.ordinal), '[]') FROM flow_node_route r WHERE r.flow_node_id = t.id)`
 
 // criterionJSON is one success criterion as the task row holds it: the pair the editor added,
 // under the keys the wire uses.
@@ -58,7 +62,7 @@ func encodeCriteria(criteria []entities.SuccessCriterion) ([]byte, error) {
 }
 
 // decodeCriteria reads the criteria a task row holds, forgivingly: anything unreadable is no
-// criteria rather than a card that will not open.
+// criteria rather than a flow node that will not open.
 func decodeCriteria(raw []byte) []entities.SuccessCriterion {
 	var held []criterionJSON
 	decodeInto(raw, &held)
@@ -69,12 +73,7 @@ func decodeCriteria(raw []byte) []entities.SuccessCriterion {
 	return entities.ReadSuccessCriteria(said)
 }
 
-// flowNodeFrom is the one FROM every read of a card uses. `k` is the task, which may not be
-// there; `cv` is the class version the card was instantiated from, and `cc` its class — both
-// absent for a card made by hand.
-const flowNodeFrom = ` FROM flow_node t LEFT JOIN task k ON k.flow_node_id = t.id
-	LEFT JOIN flow_node_class_version cv ON cv.id = t.class_version_id
-	LEFT JOIN flow_node_class cc ON cc.id = cv.flow_node_class_id`
+const flowNodeFrom = ` FROM flow_node t LEFT JOIN task k ON k.flow_node_id = t.id`
 
 func scanFlowNode(row pgx.Row) (*entities.FlowNode, error) {
 	var (
@@ -89,25 +88,25 @@ func scanFlowNode(row pgx.Row) (*entities.FlowNode, error) {
 		compact    *bool
 		spotX      *int
 		spotY      *int
+		sizeW      *int
+		sizeH      *int
 		claimedAt  *time.Time
 		tags       []string
 		nexts      []string
 	)
-	var (
-		classID    *string
-		classTitle *string
-		versionNum *int
-	)
 	err := row.Scan(&flowNode.ID, &flowNode.BoardID, &flowNode.Title, &flowNode.Type, &flowNode.Note, &flowNode.Value, &flowNode.ValueType, &flowNode.OutputType, &flowNode.Output,
-		&flowNode.Status, &flowNode.ScheduledAt, &flowNode.Duration, &spotX, &spotY,
-		&flowNode.RunID, &claimedAt,
-		&flowNode.ClassVersionID, &classID, &classTitle, &versionNum,
+		&flowNode.RoleID, &flowNode.RoleKind, &flowNode.People, &flowNode.Description,
+		&flowNode.Status, &flowNode.ScheduledAt, &flowNode.Duration,
+		&flowNode.PullRequestID, &flowNode.PullRequestStatus,
+		&flowNode.CommitID, &flowNode.CommitStatus,
+		&flowNode.MaxPasses, &flowNode.RemainingPasses, &spotX, &spotY, &sizeW, &sizeH,
+		&flowNode.RunID, &claimedAt, &flowNode.Completion,
 		&flowNode.WorkflowID,
 		&flowNode.CreatedAt, &flowNode.UpdatedAt, &flowNode.Revision, &flowNode.Archived,
-		&taskID, &body, &criteria, &complexity,
+		&taskID, &body, &task.MultiPartTemplate, &criteria, &complexity,
 		&task.Settings.Agent, &task.Settings.Harness, &task.Settings.ProfileID, &task.Settings.Model, &task.Settings.Effort,
 		&task.Settings.Permission, &task.Settings.Folder, &task.Settings.Runner, &extra,
-		&task.ConversationID, &mode, &compact, &tags, &nexts)
+		&task.ConversationID, &mode, &compact, &tags, &nexts, &flowNode.Routes)
 	if err != nil {
 		return nil, err
 	}
@@ -124,19 +123,17 @@ func scanFlowNode(row pgx.Row) (*entities.FlowNode, error) {
 	if spotX != nil && spotY != nil {
 		flowNode.Spot = &entities.Spot{X: *spotX, Y: *spotY}
 	}
+	if sizeW != nil {
+		flowNode.Size = &entities.Size{W: *sizeW}
+		if sizeH != nil {
+			flowNode.Size.H = *sizeH
+		}
+	}
 	if claimedAt != nil {
 		flowNode.ClaimedAt = *claimedAt
 	}
-	// Resolved at the read, so a class renamed after its instances were made is still named
-	// right on them. Absent where the flow node names none, or where the version has gone.
-	if flowNode.ClassVersionID != "" && classID != nil && classTitle != nil && versionNum != nil {
-		flowNode.ClassRef = &entities.ClassRef{
-			ClassID: *classID, ClassTitle: *classTitle,
-			VersionID: flowNode.ClassVersionID, VersionNumber: *versionNum,
-		}
-	}
 	flowNode.Tags = tags
-	if flowNode.Type == entities.FlowNodeGateway {
+	if flowNode.Type.Splits() {
 		flowNode.Nexts = nexts
 	} else if len(nexts) > 0 {
 		flowNode.Next = nexts[0]
@@ -155,66 +152,86 @@ func stringOr(value *string) string {
 
 func (s *BoardStore) CreateFlowNodes(ctx context.Context, flowNodes []*entities.FlowNode, actor string) error {
 	return inTx(ctx, s.pool, actor, func(tx pgx.Tx) error {
-		// A pasted chain names a card of its own batch, which is not there yet when the card naming
-		// it goes in. The chain's foreign key is declared DEFERRABLE for exactly this, and this is
-		// the one place that asks for the deferral: the batch is checked when it commits, as a
-		// whole, so a paste does not depend on the order its cards happen to arrive in.
-		if _, err := tx.Exec(ctx, `SET CONSTRAINTS ALL DEFERRED`); err != nil {
-			return translate(err, "the cards")
-		}
-		for _, flowNode := range flowNodes {
-			var spotX, spotY *int
-			if flowNode.Spot != nil {
-				spotX, spotY = &flowNode.Spot.X, &flowNode.Spot.Y
-			}
-			valueJSON := flowNode.Value
-			if valueJSON == "" {
-				valueJSON = "{}"
-			}
-			_, err := tx.Exec(ctx, `
-				INSERT INTO flow_node (id, board_id, title, type, note, value, value_type, status, scheduled_at,
-					spot_x, spot_y, class_version_id, workflow_id,
-					created_at, updated_at, revision, duration, archived, output_type)
-				VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, nullif($9, ''), $10, $11,
-                    nullif($12, '')::uuid, nullif($13, '')::uuid, $14, $15, $16, nullif($17, ''), $18, $19)`,
-				flowNode.ID, flowNode.BoardID, flowNode.Title, string(flowNode.Type), flowNode.Note, valueJSON, flowNode.ValueType,
-				string(flowNode.Status), flowNode.ScheduledAt, spotX, spotY,
-				flowNode.ClassVersionID, flowNode.WorkflowID,
-				flowNode.CreatedAt, flowNode.UpdatedAt, flowNode.Revision, flowNode.Duration, flowNode.Archived, flowNode.OutputType)
-			if err != nil {
-				return translate(err, fmt.Sprintf("card %q", flowNode.Title))
-			}
-			if err := writeTask(ctx, tx, flowNode); err != nil {
-				return err
-			}
-			if err := writeTags(ctx, tx, flowNode.ID, flowNode.Tags); err != nil {
-				return err
-			}
-			if err := writeSuccessors(ctx, tx, flowNode.ID, flowNode.Successors()); err != nil {
-				return err
-			}
-		}
-		return nil
+		return insertFlowNodes(ctx, tx, flowNodes)
 	})
+}
+
+func insertFlowNodes(ctx context.Context, tx pgx.Tx, flowNodes []*entities.FlowNode) error {
+	// A pasted chain names a flow node of its own batch, which is not there yet when the flow node naming
+	// it goes in. The chain's foreign key is declared DEFERRABLE for exactly this, and this is
+	// the one place that asks for the deferral: the batch is checked when it commits, as a
+	// whole, so a paste does not depend on the order its flow nodes happen to arrive in.
+	if _, err := tx.Exec(ctx, `SET CONSTRAINTS ALL DEFERRED`); err != nil {
+		return translate(err, "the flow nodes")
+	}
+	for _, flowNode := range flowNodes {
+		var spotX, spotY *int
+		if flowNode.Spot != nil {
+			spotX, spotY = &flowNode.Spot.X, &flowNode.Spot.Y
+		}
+		var sizeW, sizeH *int
+		if flowNode.Size != nil {
+			sizeW = &flowNode.Size.W
+			if flowNode.Size.H > 0 {
+				sizeH = &flowNode.Size.H
+			}
+		}
+		valueJSON := flowNode.Value
+		if valueJSON == "" {
+			valueJSON = "{}"
+		}
+		_, err := tx.Exec(ctx, `
+			INSERT INTO flow_node (id, board_id, title, type, note, value, value_type, status, scheduled_at,
+				spot_x, spot_y, size_w, size_h, workflow_id,
+				created_at, updated_at, revision, duration, archived, output_type, pull_request_id, pull_request_status,
+				commit_id, commit_status, limiter_max_passes, limiter_remaining_passes, role_id, role_kind, role_people, role_description)
+			VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, nullif($9, ''), $10, $11, $12, $13,
+                    nullif($14, '')::uuid, $15, $16, $17, nullif($18, ''), $19, $20,
+                    nullif($21, ''), nullif($22, ''), nullif($23, ''), nullif($24, ''), $25, $26, $27, $28, coalesce($29::text[], '{}'), $30)`,
+			flowNode.ID, flowNode.BoardID, flowNode.Title, string(flowNode.Type), flowNode.Note, valueJSON, flowNode.ValueType,
+			string(flowNode.Status), flowNode.ScheduledAt, spotX, spotY, sizeW, sizeH,
+			flowNode.WorkflowID,
+			flowNode.CreatedAt, flowNode.UpdatedAt, flowNode.Revision, flowNode.Duration, flowNode.Archived, flowNode.OutputType,
+			flowNode.PullRequestID, flowNode.PullRequestStatus, flowNode.CommitID, flowNode.CommitStatus,
+			flowNode.MaxPasses, flowNode.RemainingPasses, flowNode.RoleID, flowNode.RoleKind, flowNode.People, flowNode.Description)
+		if err != nil {
+			return translate(err, fmt.Sprintf("flow node %q", flowNode.Title))
+		}
+		if err := writeTask(ctx, tx, flowNode); err != nil {
+			return err
+		}
+		if err := writeTags(ctx, tx, flowNode.ID, flowNode.Tags); err != nil {
+			return err
+		}
+		if err := writeSuccessors(ctx, tx, flowNode.ID, flowNode.Successors()); err != nil {
+			return err
+		}
+		if len(flowNode.Routes) > 0 {
+			if err := writeRoutes(ctx, tx, flowNode.ID, flowNode.Routes); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func (s *BoardStore) FindFlowNode(ctx context.Context, id string) (*entities.FlowNode, error) {
 	row := s.pool.QueryRow(ctx, `SELECT `+flowNodeColumns+flowNodeFrom+` WHERE t.id::text = $1`, id)
 	flowNode, err := scanFlowNode(row)
 	if err != nil {
-		return nil, translate(err, fmt.Sprintf("card %s", id))
+		return nil, translate(err, fmt.Sprintf("flow node %s", id))
 	}
 	return flowNode, nil
 }
 
 func (s *BoardStore) ListFlowNodes(ctx context.Context, boardID string) ([]entities.FlowNode, error) {
-	// By id: a board is a set of cards, and the editor lays them out by their spots. The id is
+	// By id: a board is a set of flow nodes, and the editor lays them out by their spots. The id is
 	// what makes the order total and stable.
 	rows, err := s.pool.Query(ctx, `SELECT `+flowNodeColumns+flowNodeFrom+`
 		WHERE t.board_id::text = $1
 		ORDER BY t.id`, boardID)
 	if err != nil {
-		return nil, translate(err, "the cards")
+		return nil, translate(err, "the flow nodes")
 	}
 	defer rows.Close()
 	out := []entities.FlowNode{}
@@ -228,7 +245,7 @@ func (s *BoardStore) ListFlowNodes(ctx context.Context, boardID string) ([]entit
 	return out, rows.Err()
 }
 
-// flowNodeAssignments is the card's own half of the patch as SQL. The tags and the task are not in
+// flowNodeAssignments is the flow node's own half of the patch as SQL. The tags and the task are not in
 // it — they are rows of other tables — so they are written separately, inside the same transaction.
 func flowNodeAssignments(patch entities.FlowNodePatch) *assignments {
 	set := newAssignments()
@@ -247,6 +264,18 @@ func flowNodeAssignments(patch entities.FlowNodePatch) *assignments {
 	}
 	if patch.ValueType != nil {
 		set.add("value_type", *patch.ValueType)
+	}
+	if patch.RoleID != nil {
+		set.add("role_id", *patch.RoleID)
+	}
+	if patch.RoleKind != nil {
+		set.add("role_kind", *patch.RoleKind)
+	}
+	if patch.People != nil {
+		set.addExpr("role_people = coalesce(%s::text[], '{}')", *patch.People)
+	}
+	if patch.Description != nil {
+		set.add("role_description", *patch.Description)
 	}
 	if patch.ClearOutput {
 		set.raw("output = NULL")
@@ -272,8 +301,23 @@ func flowNodeAssignments(patch entities.FlowNodePatch) *assignments {
 	if patch.Duration != nil {
 		set.addExpr("duration = nullif(%s, '')", *patch.Duration)
 	}
-	if patch.ClassVersionID != nil {
-		set.addExpr("class_version_id = nullif(%s, '')::uuid", *patch.ClassVersionID)
+	if patch.PullRequestID != nil {
+		set.addExpr("pull_request_id = nullif(%s, '')", *patch.PullRequestID)
+	}
+	if patch.PullRequestStatus != nil {
+		set.addExpr("pull_request_status = nullif(%s, '')", *patch.PullRequestStatus)
+	}
+	if patch.CommitID != nil {
+		set.addExpr("commit_id = nullif(%s, '')", *patch.CommitID)
+	}
+	if patch.CommitStatus != nil {
+		set.addExpr("commit_status = nullif(%s, '')", *patch.CommitStatus)
+	}
+	if patch.MaxPasses != nil {
+		set.add("limiter_max_passes", *patch.MaxPasses)
+	}
+	if patch.RemainingPasses != nil {
+		set.add("limiter_remaining_passes", *patch.RemainingPasses)
 	}
 	if patch.WorkflowID != nil {
 		set.addExpr("workflow_id = nullif(%s, '')::uuid", *patch.WorkflowID)
@@ -285,15 +329,26 @@ func flowNodeAssignments(patch entities.FlowNodePatch) *assignments {
 	if patch.ClearSpot {
 		set.raw("spot_x = NULL, spot_y = NULL")
 	}
+	if patch.Size != nil {
+		set.add("size_w", patch.Size.W)
+		if patch.Size.H > 0 {
+			set.add("size_h", patch.Size.H)
+		} else {
+			set.raw("size_h = NULL")
+		}
+	}
 	return set
 }
 
 // taskAssignments is the task's half of the same patch. The service has already dropped these for a
-// card that is not one, so anything here is going onto a row that exists or is about to.
+// flow node that is not one, so anything here is going onto a row that exists or is about to.
 func taskAssignments(patch entities.FlowNodePatch) (*assignments, error) {
 	set := newAssignments()
 	if patch.Body != nil {
 		set.add("body", *patch.Body)
+	}
+	if patch.MultiPartTemplate != nil {
+		set.add("multi_part_template", *patch.MultiPartTemplate)
 	}
 	if patch.Criteria != nil {
 		encoded, err := encodeCriteria(*patch.Criteria)
@@ -339,24 +394,21 @@ func taskAssignments(patch entities.FlowNodePatch) (*assignments, error) {
 	return set, nil
 }
 
-// PatchFlowNode writes a card and its task as one change.
+// PatchFlowNode writes a flow node and its task as one change.
 //
-// **The revision is the card's, task included.** The conditional update is on `flow_node` alone —
-// the task carries no revision, because a task and its flow node are one card to everything that
-// reads a board — and both writes are in one transaction, so a patch refused for a stale revision
-// takes the task's half back with it. A patch that touches only the task stamps the card all the
-// same, exactly as a tags-only patch does: nothing else would tell a client the card moved.
+// The conditional update checks the revision on flow_node. Task, tag and connection changes
+// share the transaction and advance that revision so watchers receive one change event.
 func (s *BoardStore) PatchFlowNode(ctx context.Context, id string, patch entities.FlowNodePatch, expected *int64, actor string) (*entities.FlowNode, error) {
 	set := flowNodeAssignments(patch)
 	task, err := taskAssignments(patch)
 	if err != nil {
 		return nil, err
 	}
-	if set.empty() && task.empty() && patch.Tags == nil && patch.Nexts == nil && patch.Next == nil {
+	if set.empty() && task.empty() && patch.Tags == nil && patch.Nexts == nil && patch.Next == nil && patch.Routes == nil {
 		return nil, entities.Invalidf("the patch changes nothing")
 	}
 	if set.empty() {
-		// The tags, the branches or the task alone: the card itself still has to be stamped, or
+		// The tags, the branches or the task alone: the flow node itself still has to be stamped, or
 		// nothing tells a client it changed — none of those tables has a revision of its own.
 		set.raw("title = title")
 	}
@@ -367,7 +419,7 @@ func (s *BoardStore) PatchFlowNode(ctx context.Context, id string, patch entitie
 				return err
 			}
 		}
-		// **The card's own row first.** It is the conditional write, so a card that has gone or has
+		// **The flow node's own row first.** It is the conditional write, so a flow node that has gone or has
 		// moved under the caller is answered as what it is — a 404 or a 409 — rather than as a
 		// foreign key refusing a task for a flow node that is not there.
 		if err := s.stampFlowNodeIn(ctx, tx, id, set, expected); err != nil {
@@ -379,9 +431,9 @@ func (s *BoardStore) PatchFlowNode(ctx context.Context, id string, patch entitie
 				return err
 			}
 			nexts := changed.Successors()
-			if changed.Type == entities.FlowNodeGateway && patch.Nexts != nil {
+			if changed.Type.Splits() && patch.Nexts != nil {
 				nexts = *patch.Nexts
-			} else if changed.Type != entities.FlowNodeGateway && patch.Next != nil {
+			} else if !changed.Type.Splits() && patch.Next != nil {
 				nexts = nil
 				if *patch.Next != "" {
 					nexts = []string{*patch.Next}
@@ -393,7 +445,16 @@ func (s *BoardStore) PatchFlowNode(ctx context.Context, id string, patch entitie
 				return err
 			}
 		}
-		// Then the type's consequence: a card that has just become an AI or a Human one is given an
+		if patch.Routes != nil {
+			if err := writeRoutes(ctx, tx, id, *patch.Routes); err != nil {
+				return err
+			}
+		} else if patch.Type != nil && *patch.Type != entities.FlowNodeExclusiveGateway {
+			if err := writeRoutes(ctx, tx, id, nil); err != nil {
+				return err
+			}
+		}
+		// Then the type's consequence: a flow node that has just become an AI or a Human one is given an
 		// empty task for the assignments below to land on, and one that has just become a Shutdown
 		// or a Scheduler gives its task up in the same transaction.
 		if patch.Type != nil {
@@ -404,7 +465,7 @@ func (s *BoardStore) PatchFlowNode(ctx context.Context, id string, patch entitie
 		if !task.empty() {
 			sql, args := task.update("task", "flow_node_id::text = ", id, nil)
 			if _, err := tx.Exec(ctx, sql, args...); err != nil {
-				return translate(err, fmt.Sprintf("the task of card %s", id))
+				return translate(err, fmt.Sprintf("the task of flow node %s", id))
 			}
 		}
 		found, err := readFlowNodeIn(ctx, tx, id)
@@ -414,22 +475,22 @@ func (s *BoardStore) PatchFlowNode(ctx context.Context, id string, patch entitie
 	return flowNode, err
 }
 
-// retypeTask keeps the task row in step with the card's kind: one exists for an AI or a Human card
-// and none for the other two. `ON CONFLICT DO NOTHING` because a card retyped between the two kinds
+// retypeTask keeps the task row in step with the flow node's kind: one exists for an AI or a Human flow node
+// and none for the other two. `ON CONFLICT DO NOTHING` because a flow node retyped between the two kinds
 // of task keeps the task it had — the description and the folder are still the same work — while a
-// card coming back from Shutdown gets a fresh, empty one.
+// flow node coming back from Shutdown gets a fresh, empty one.
 func retypeTask(ctx context.Context, tx pgx.Tx, id string, flowNodeType entities.FlowNodeType) error {
 	statement := `DELETE FROM task WHERE flow_node_id::text = $1`
 	if flowNodeType.IsTask() {
 		statement = `INSERT INTO task (flow_node_id) VALUES ($1::uuid) ON CONFLICT DO NOTHING`
 	}
 	if _, err := tx.Exec(ctx, statement, id); err != nil {
-		return translate(err, fmt.Sprintf("the task of card %s", id))
+		return translate(err, fmt.Sprintf("the task of flow node %s", id))
 	}
 	return nil
 }
 
-// writeTask files the task of a card that has one, and nothing at all for a card that has not.
+// writeTask files the task of a flow node that has one, and nothing at all for a flow node that has not.
 func writeTask(ctx context.Context, tx pgx.Tx, flowNode *entities.FlowNode) error {
 	if flowNode.Task == nil {
 		return nil
@@ -449,21 +510,22 @@ func writeTask(ctx context.Context, tx pgx.Tx, flowNode *entities.FlowNode) erro
 	settings := flowNode.Task.Settings
 	_, err = tx.Exec(ctx, `
 		INSERT INTO task (flow_node_id, body, criteria, complexity, agent, model, effort,
-			permission, folder, runner, settings_extra, conversation_id, on_success_mode, on_success_compact, harness, profile_id)
+			permission, folder, runner, settings_extra, conversation_id, on_success_mode, on_success_compact, harness, profile_id, multi_part_template)
 		VALUES ($1, $2, $3, $4, nullif($5, ''), nullif($6, ''), nullif($7, ''), nullif($8, ''),
-			nullif($9, ''), nullif($10, ''), $11, nullif($12, ''), $13, $14, nullif($15, ''), nullif($16, ''))`,
+			nullif($9, ''), nullif($10, ''), $11, nullif($12, ''), $13, $14, nullif($15, ''), nullif($16, ''), $17)`,
 		flowNode.ID, flowNode.Task.Body, criteria, complexity,
 		settings.Agent, settings.Model, settings.Effort, settings.Permission, settings.Folder,
 		settings.Runner,
 		extra, flowNode.Task.ConversationID,
-		string(flowNode.Task.Transition.Mode), flowNode.Task.Transition.Compact, settings.Harness, settings.ProfileID)
+		string(flowNode.Task.Transition.Mode), flowNode.Task.Transition.Compact, settings.Harness, settings.ProfileID,
+		flowNode.Task.MultiPartTemplate)
 	if err != nil {
-		return translate(err, fmt.Sprintf("the task of card %q", flowNode.Title))
+		return translate(err, fmt.Sprintf("the task of flow node %q", flowNode.Title))
 	}
 	return nil
 }
 
-// stampFlowNodeIn writes the card's own row, conditionally where a revision was given.
+// stampFlowNodeIn writes the flow node's own row, conditionally where a revision was given.
 func (s *BoardStore) stampFlowNodeIn(ctx context.Context, tx pgx.Tx, id string, set *assignments, expected *int64) error {
 	sql, args := set.update("flow_node", "id::text = ", id, expected)
 	// **The row count is the answer.** A revision-checked update either matches its row or matches
@@ -471,7 +533,7 @@ func (s *BoardStore) stampFlowNodeIn(ctx context.Context, tx pgx.Tx, id string, 
 	// and "it is gone" come back as the two different things they are.
 	tag, err := tx.Exec(ctx, sql, args...)
 	if err != nil {
-		return translate(err, fmt.Sprintf("card %s", id))
+		return translate(err, fmt.Sprintf("flow node %s", id))
 	}
 	if tag.RowsAffected() == 0 {
 		return whyNoRows(ctx, s.pool, "flow_node", "id::text = ", id, expected)
@@ -479,12 +541,12 @@ func (s *BoardStore) stampFlowNodeIn(ctx context.Context, tx pgx.Tx, id string, 
 	return nil
 }
 
-// readFlowNodeIn reads a card back inside the transaction that wrote it, so what comes out is what
+// readFlowNodeIn reads a flow node back inside the transaction that wrote it, so what comes out is what
 // was written. RETURNING cannot do it: the tag subquery and the task's join both name `t`.
 func readFlowNodeIn(ctx context.Context, tx pgx.Tx, id string) (*entities.FlowNode, error) {
 	flowNode, err := scanFlowNode(tx.QueryRow(ctx, `SELECT `+flowNodeColumns+flowNodeFrom+` WHERE t.id::text = $1`, id))
 	if err != nil {
-		return nil, translate(err, fmt.Sprintf("card %s", id))
+		return nil, translate(err, fmt.Sprintf("flow node %s", id))
 	}
 	return flowNode, nil
 }
@@ -492,14 +554,14 @@ func readFlowNodeIn(ctx context.Context, tx pgx.Tx, id string) (*entities.FlowNo
 func (s *BoardStore) DeleteFlowNodes(ctx context.Context, ids []string, actor string) error {
 	return inTx(ctx, s.pool, actor, func(tx pgx.Tx) error {
 		if _, err := tx.Exec(ctx, `UPDATE flow_node SET value_type = '' WHERE value_type = ANY($1)`, ids); err != nil {
-			return translate(err, "the cards")
+			return translate(err, "the flow nodes")
 		}
 		tag, err := tx.Exec(ctx, `DELETE FROM flow_node WHERE id::text = ANY($1)`, ids)
 		if err != nil {
-			return translate(err, "the cards")
+			return translate(err, "the flow nodes")
 		}
 		if tag.RowsAffected() == 0 {
-			return entities.NotFoundf("none of those cards")
+			return entities.NotFoundf("none of those flow nodes")
 		}
 		return nil
 	})
@@ -507,59 +569,92 @@ func (s *BoardStore) DeleteFlowNodes(ctx context.Context, ids []string, actor st
 
 // ── the claim ─────────────────────────────────────────────────────────────────
 
-// ClaimFlowNode is the one invariant this adapter enforces rather than the service: **a flow node
-// is played by one run**. It is a single conditional update, so two runs reaching for one card at
-// the same instant are two statements of which exactly one matches a row.
-func (s *BoardStore) ClaimFlowNode(ctx context.Context, id, runID string, status entities.FlowNodeStatus, actor string) (*entities.FlowNode, error) {
+// ClaimFlowNode locks the flow node while checking ownership and detaching a completed AI flow node's chat.
+func (s *BoardStore) ClaimFlowNode(ctx context.Context, id, runID string, status entities.FlowNodeStatus, actor string, afterPredecessor ...bool) (*entities.FlowNode, error) {
 	var flowNode *entities.FlowNode
 	err := inTx(ctx, s.pool, actor, func(tx pgx.Tx) error {
-		// Free and ready, **or already this run's**: a run coming back to its own card after a wait
-		// is not a second claimant. `claimed_at` is left as it was in that case, so the card still
-		// says when the play took it rather than when it last retried.
-		tag, err := tx.Exec(ctx, `
-			UPDATE flow_node
-			   SET run_id = $2,
-			       claimed_at = coalesce(claimed_at, now()),
-			       output = CASE WHEN run_id = $2 THEN output ELSE NULL END,
-			       status = $3
-			 WHERE id::text = $1
-			   AND ((run_id IS NULL AND status = 'ready') OR run_id = $2)`,
-			id, runID, string(status))
-		if err != nil {
-			return translate(err, fmt.Sprintf("card %s", id))
+		var kind entities.FlowNodeType
+		var previous entities.FlowNodeStatus
+		var heldBy string
+		var completion int64
+		if err := tx.QueryRow(ctx, `SELECT type, status, coalesce(run_id, ''), completion
+			FROM flow_node WHERE id::text = $1 FOR UPDATE`, id).Scan(&kind, &previous, &heldBy, &completion); err != nil {
+			return translate(err, fmt.Sprintf("flow node %s", id))
 		}
-		if tag.RowsAffected() == 0 {
-			// Absent, or held, or standing somewhere other than ready — and the client is told
-			// which, because "somebody else is playing it" and "it is not there" are different
-			// things to see on a board.
-			held, err := readFlowNodeIn(ctx, tx, id)
-			if err != nil {
-				return entities.NotFoundf("card %s", id)
-			}
-			if held.RunID != "" {
-				return fmt.Errorf("%w: run %s has it", entities.ErrFlowNodeHeld, held.RunID)
-			}
-			return fmt.Errorf("%w: the card stands at %q", entities.ErrInvalid, held.Status)
+		if kind == entities.FlowNodeLimiter {
+			return entities.Invalidf("a limiter is played through its pass operation")
 		}
+		if heldBy != "" && heldBy != runID {
+			return fmt.Errorf("%w: run %s has it", entities.ErrFlowNodeHeld, heldBy)
+		}
+		if !previous.CanClaim(kind, heldBy == runID) {
+			return entities.Invalidf("the flow node stands at %q", previous)
+		}
+		if kind == entities.FlowNodeGateway && heldBy != runID {
+			replaying := previous == entities.StatusDone && len(afterPredecessor) > 0 && afterPredecessor[0]
+			var waiting bool
+			if err := tx.QueryRow(ctx, `SELECT EXISTS (
+				SELECT 1 FROM flow_node_successor link JOIN flow_node input ON input.id = link.flow_node_id
+				WHERE link.successor_id::text = $1 AND NOT input.archived
+				  AND (input.status <> 'done' OR ($2 AND input.completion <= $3))
+			)`, id, replaying, completion).Scan(&waiting); err != nil {
+				return err
+			}
+			if waiting {
+				return entities.ErrGatewayWaiting
+			}
+		}
+		if _, err := tx.Exec(ctx, `UPDATE flow_node
+			SET run_id = $2, claimed_at = coalesce(claimed_at, now()),
+			    output = CASE WHEN run_id = $2 THEN output ELSE NULL END, status = $3
+			WHERE id::text = $1`, id, runID, string(status)); err != nil {
+			return translate(err, fmt.Sprintf("flow node %s", id))
+		}
+		if previous == entities.StatusDone && kind == entities.FlowNodeAI {
+			if _, err := tx.Exec(ctx, `UPDATE task SET conversation_id = NULL
+				WHERE flow_node_id::text = $1 AND conversation_id IS NOT NULL`, id); err != nil {
+				return translate(err, fmt.Sprintf("flow node %s chat", id))
+			}
+		}
+		var err error
 		flowNode, err = readFlowNodeIn(ctx, tx, id)
 		return err
 	})
 	return flowNode, err
 }
 
-// ReleaseFlowNode hands the card back, and refuses a release by a run that does not hold it: a run
-// that was stopped and whose turn came back late must not mark a card somebody else is now playing.
-func (s *BoardStore) ReleaseFlowNode(ctx context.Context, id, runID string, status entities.FlowNodeStatus, output, actor string) (*entities.FlowNode, error) {
+// ReleaseFlowNode hands the flow node back, and refuses a release by a run that does not hold it: a run
+// that was stopped and whose turn came back late must not mark a flow node somebody else is now playing.
+func (s *BoardStore) ReleaseFlowNode(ctx context.Context, id, runID, actor string, result entities.PlayResult) (*entities.FlowNode, error) {
 	var flowNode *entities.FlowNode
 	err := inTx(ctx, s.pool, actor, func(tx pgx.Tx) error {
+		var workflowID string
+		if update := result.Workflow; update != nil {
+			workflowID = update.ID
+			// Lock the workflow before the flow node, matching workflow deletion's lock order.
+			// The merge rolls back if the guarded flow node update below fails.
+			tag, err := tx.Exec(ctx, `
+				UPDATE workflow SET runtime_values = runtime_values || $2::jsonb
+				WHERE id::text = $1`, workflowID, update.Values)
+			if err != nil {
+				return translate(err, fmt.Sprintf("workflow %s", workflowID))
+			}
+			if tag.RowsAffected() == 0 {
+				return entities.Conflictf("workflow %s no longer exists", workflowID)
+			}
+		}
 		tag, err := tx.Exec(ctx, `
 			UPDATE flow_node SET run_id = NULL, claimed_at = NULL, status = $3, output = nullif($4, '')::jsonb
-			WHERE id::text = $1 AND run_id = $2`, id, runID, string(status), output)
+			WHERE id::text = $1 AND run_id = $2 AND ($5 = '' OR workflow_id::text = $5)`,
+			id, runID, string(result.Status), result.Output, workflowID)
 		if err != nil {
-			return translate(err, fmt.Sprintf("card %s", id))
+			return translate(err, fmt.Sprintf("flow node %s", id))
 		}
 		if tag.RowsAffected() == 0 {
-			return entities.Conflictf("card %s is not held by run %s", id, runID)
+			if workflowID != "" {
+				return entities.Conflictf("flow node %s is no longer held by run %s in workflow %s", id, runID, workflowID)
+			}
+			return entities.Conflictf("flow node %s is not held by run %s", id, runID)
 		}
 		flowNode, err = readFlowNodeIn(ctx, tx, id)
 		return err
@@ -567,7 +662,7 @@ func (s *BoardStore) ReleaseFlowNode(ctx context.Context, id, runID string, stat
 	return flowNode, err
 }
 
-// ReleaseRun frees every card a run still holds. What a restart calls.
+// ReleaseRun frees every flow node a run still holds. What a restart calls.
 func (s *BoardStore) ReleaseRun(ctx context.Context, runID string, status entities.FlowNodeStatus, actor string) (int, error) {
 	var settled int
 	err := inTx(ctx, s.pool, actor, func(tx pgx.Tx) error {
@@ -575,7 +670,7 @@ func (s *BoardStore) ReleaseRun(ctx context.Context, runID string, status entiti
 			UPDATE flow_node SET run_id = NULL, claimed_at = NULL, status = $2
 			WHERE run_id = $1`, runID, string(status))
 		if err != nil {
-			return translate(err, fmt.Sprintf("the cards held by run %s", runID))
+			return translate(err, fmt.Sprintf("the flow nodes held by run %s", runID))
 		}
 		settled = int(tag.RowsAffected())
 		return nil
@@ -587,7 +682,7 @@ func (s *BoardStore) HeldFlowNodes(ctx context.Context, runID string) ([]entitie
 	rows, err := s.pool.Query(ctx, `SELECT `+flowNodeColumns+flowNodeFrom+` WHERE t.run_id = $1
 		ORDER BY t.claimed_at`, runID)
 	if err != nil {
-		return nil, translate(err, "the held cards")
+		return nil, translate(err, "the held flow nodes")
 	}
 	defer rows.Close()
 	out := []entities.FlowNode{}
@@ -601,14 +696,17 @@ func (s *BoardStore) HeldFlowNodes(ctx context.Context, runID string) ([]entitie
 	return out, rows.Err()
 }
 
-// writeSuccessors replaces the ordered connections of one card.
+// Keep retained links so a reorder or an added link preserves their routes.
 func writeSuccessors(ctx context.Context, tx pgx.Tx, flowNodeID string, nexts []string) error {
-	if _, err := tx.Exec(ctx, `DELETE FROM flow_node_successor WHERE flow_node_id::text = $1`, flowNodeID); err != nil {
+	if _, err := tx.Exec(ctx, `DELETE FROM flow_node_successor WHERE flow_node_id::text = $1
+		AND NOT (successor_id::text = ANY(coalesce($2::text[], '{}')))`, flowNodeID, nexts); err != nil {
 		return translate(err, "the branches")
 	}
 	for i, next := range nexts {
 		_, err := tx.Exec(ctx,
-			`INSERT INTO flow_node_successor (flow_node_id, successor_id, ordinal) VALUES ($1::uuid, $2::uuid, $3)`,
+			`INSERT INTO flow_node_successor (flow_node_id, successor_id, ordinal) VALUES ($1::uuid, $2::uuid, $3)
+			 ON CONFLICT (flow_node_id, successor_id) DO UPDATE SET ordinal = excluded.ordinal
+			 WHERE flow_node_successor.ordinal <> excluded.ordinal`,
 			flowNodeID, next, i)
 		if err != nil {
 			return translate(err, fmt.Sprintf("branch %q", next))
@@ -617,7 +715,25 @@ func writeSuccessors(ctx context.Context, tx pgx.Tx, flowNodeID string, nexts []
 	return nil
 }
 
-// writeTags replaces a card's tags. Delete and insert rather than a difference: a tag list is a
+func writeRoutes(ctx context.Context, tx pgx.Tx, id string, routes []entities.Route) error {
+	if _, err := tx.Exec(ctx, `DELETE FROM flow_node_route WHERE flow_node_id = $1::uuid`, id); err != nil {
+		return translate(err, "the routes")
+	}
+	for i, route := range routes {
+		result, err := tx.Exec(ctx, `INSERT INTO flow_node_route (flow_node_id, ordinal, condition, successor_id)
+			SELECT id, $2, $3, $4::uuid FROM flow_node WHERE id = $1::uuid AND type = 'exclusive-gateway'`,
+			id, i, route.Condition, route.FlowNode)
+		if err != nil {
+			return translate(err, fmt.Sprintf("route %d", i+1))
+		}
+		if result.RowsAffected() == 0 {
+			return entities.Invalidf("only an exclusive gateway can have routes")
+		}
+	}
+	return nil
+}
+
+// writeTags replaces a flow node's tags. Delete and insert rather than a difference: a tag list is a
 // handful of words rewritten whole by the one editor that touches it, and working out which two
 // changed would be more code than rewriting three rows.
 func writeTags(ctx context.Context, tx pgx.Tx, flowNodeID string, tags []string) error {

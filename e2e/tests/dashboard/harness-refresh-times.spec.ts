@@ -60,7 +60,7 @@ test('quota gauges mark current time and refresh datetimes stay local across sur
                 body: 'Resume the interrupted task.', settings: { agent: 'muse' },
                 spot: { x: 40, y: 40 }, status: 'waiting-refresh', run: run.id,
                 createdAt: reset, updatedAt: reset, revision: 1 }],
-            flowNodeClasses: [], workflows: [], workflowClasses: [], cursor: 0,
+            workflows: [], cursor: 0,
         } });
         if (path.endsWith('/changes')) return route.fulfill({ status: 503 });
         return route.fulfill({ json: { boards: [], agents: [], runners: [] } });

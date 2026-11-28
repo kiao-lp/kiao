@@ -1,5 +1,6 @@
 import type { AgentVersionDto } from '../agentic-resources/types';
 import type { AgentSelection } from '../flowNodeSettings';
+import type { RoleFields } from '../flowNodeRole';
 /** operation/hybridflow-store wire contracts. */
 
 export interface BoardSummary {
@@ -10,6 +11,12 @@ export interface BoardSummary {
     updatedAt: string;
     revision: number;
     archived: boolean;
+    folderId?: string;
+}
+
+export interface FolderDto {
+    id: string;
+    name: string;
 }
 
 export interface SettingsDto extends AgentSelection {
@@ -31,9 +38,20 @@ export interface SuccessDto {
     compact?: boolean;
 }
 
+export interface GatewayRoute {
+    condition: string;
+    flowNode: string;
+}
+
 export interface SpotDto {
     x: number;
     y: number;
+}
+
+/** Resized dimensions; an absent height keeps the card's natural one. */
+export interface SizeDto {
+    w: number;
+    h?: number;
 }
 
 export interface CriterionDto {
@@ -41,7 +59,7 @@ export interface CriterionDto {
     text: string;
 }
 
-export interface FlowNodeDto {
+export interface FlowNodeDto extends RoleFields {
     id: string;
     title: string;
     type: string;
@@ -51,21 +69,29 @@ export interface FlowNodeDto {
     valueType?: string;
     outputType?: string;
     body?: string;
+    multiPartTemplate?: boolean;
     criteria?: CriterionDto[];
     complexity?: number;
     settings?: SettingsDto;
     at?: string;
 
     duration?: string;
+    pullRequestId?: string;
+    pullRequestStatus?: string;
+    commitId?: string;
+    commitStatus?: string;
+    maxPasses?: number;
+    remainingPasses?: number;
     spot?: SpotDto;
+    size?: SizeDto;
     status: string;
-    /** Hides the card everywhere without deleting it. */
+    /** Marks the flow node as archived. */
     archived?: boolean;
     chat?: string;
     onSuccess?: SuccessDto;
+    routes?: GatewayRoute[];
     run?: string;
 
-    classVersion?: ClassRefDto;
     workflow?: string;
     createdAt: string;
     updatedAt: string;
@@ -73,143 +99,18 @@ export interface FlowNodeDto {
     output?: unknown;
 }
 
-export interface ClassVersionDto {
-    id: string;
-    number: number;
-    body?: string;
-    criteria?: CriterionDto[];
-
-    template?: boolean;
-    /** draft or published; only drafts are editable. */
-    status: string;
-    createdAt: string;
-    updatedAt: string;
-    revision: number;
-}
-
-/** Reusable card; body and criteria belong to its versions. */
-export interface FlowNodeClassDto {
-    id: string;
-    title: string;
-
-    instantiable?: boolean;
-    type: string;
-    tags?: string[];
-    at?: string;
-
-    duration?: string;
-    spot?: SpotDto;
-    /** Successor class (never a version or node), plus AI instance chat handling. */
-    onSuccess?: SuccessDto;
-    /** AI-only tool permission mode. */
-    permission?: string;
-    /** AI-only runner id; absent means wherever Play is pressed. */
-    runner?: string;
-    selection?: AgentSelection;
-    note?: string;
-    versions: ClassVersionDto[];
-    workflowClass?: string;
-    createdAt: string;
-    updatedAt: string;
-    revision: number;
-}
-
-export interface NewFlowNodeClassDto {
-    id?: string;
-    title: string;
-
-    instantiable?: boolean;
-    type?: string;
-    tags?: string[];
-    body?: string;
-    criteria?: CriterionDto[];
-    template?: boolean;
-    at?: string;
-
-    duration?: string;
-    spot?: SpotDto;
-    permission?: string;
-    runner?: string;
-    selection?: AgentSelection;
-    note?: string;
-    onSuccess?: SuccessDto;
-
-    published?: boolean;
-
-    workflowClass?: string;
-}
-
-/** Updates supplied class fields only; body changes require a new version. */
-export interface FlowNodeClassPatchDto {
-    title?: string;
-    instantiable?: boolean;
-    type?: string;
-    tags?: string[];
-    at?: string;
-
-    duration?: string;
-    onSuccess?: SuccessDto;
-    permission?: string;
-    runner?: string;
-    selection?: AgentSelection;
-    note?: string;
-    spot?: SpotDto;
-    clearSpot?: boolean;
-    workflowClass?: string;
-}
-
-export interface NewClassVersionDto {
-    body?: string;
-    criteria?: CriterionDto[];
-    template?: boolean;
-
-    from?: string;
-}
-
-export interface ClassVersionPatchDto {
-    body?: string;
-    criteria?: CriterionDto[];
-    template?: boolean;
-    status?: string;
-}
-
-/** Instantiated body overrides keyed by class id, replacing version bodies. */
-export type InstantiateBodies = Record<string, string>;
-
-export interface ClassRefDto {
-    classId: string;
-    classTitle: string;
-    versionId: string;
-    versionNumber: number;
-}
-
-export interface ListedClassDto extends FlowNodeClassDto {
-    boardSlug: string;
-    boardName: string;
-}
-
-export interface ListedWorkflowClassDto extends WorkflowClassDto {
-    boardSlug: string;
-    boardName: string;
-}
-
-export interface InstantiateWorkflowResult {
+export interface WorkflowWithFlowNodesDto {
     workflow: WorkflowDto;
     flowNodes: FlowNodeDto[];
 }
 
-/** Workflow membership is stored on the member cards. */
+/** Member flow nodes store the workflow ID. */
 export interface WorkflowDto {
     id: string;
     name: string;
-    createdAt: string;
-    updatedAt: string;
-    revision: number;
-}
-
-export interface WorkflowClassDto {
-    id: string;
-    name: string;
+    values?: Record<string, unknown>;
+    workflowFolder?: string;
+    files?: string[];
     createdAt: string;
     updatedAt: string;
     revision: number;
@@ -219,33 +120,27 @@ export interface NewWorkflowDto {
     id?: string;
     name?: string;
     flowNodes?: string[];
+    workflowFolder?: string;
+    files?: string[];
 }
 
 export interface WorkflowPatchDto {
     name?: string;
-}
-
-export interface NewWorkflowClassDto {
-    id?: string;
-    name?: string;
-    classes?: string[];
-}
-
-export interface WorkflowClassPatchDto {
-    name?: string;
+    setValues?: Record<string, unknown>;
+    removeValues?: string[];
+    workflowFolder?: string;
+    files?: string[];
 }
 
 export interface BoardDetailDto {
     board: BoardSummary;
     flowNodes: FlowNodeDto[];
-    flowNodeClasses: FlowNodeClassDto[];
     workflows: WorkflowDto[];
-    workflowClasses: WorkflowClassDto[];
     /** Read sequence; send as since to watch without a gap after this snapshot. */
     cursor: number;
 }
 
-export interface FlowNodePatchDto {
+export interface FlowNodePatchDto extends RoleFields {
     title?: string;
     note?: string;
     value?: unknown;
@@ -255,6 +150,7 @@ export interface FlowNodePatchDto {
     type?: string;
     tags?: string[];
     body?: string;
+    multiPartTemplate?: boolean;
     criteria?: CriterionDto[];
     complexity?: number;
     clearComplexity?: boolean;
@@ -262,19 +158,26 @@ export interface FlowNodePatchDto {
     at?: string;
 
     duration?: string;
+    pullRequestId?: string;
+    pullRequestStatus?: string;
+    commitId?: string;
+    commitStatus?: string;
+    maxPasses?: number;
+    resetPasses?: boolean;
     status?: string;
-    /** Flip the boolean hide without deleting the card. */
+    /** Set whether the flow node is archived. */
     archived?: boolean;
     onSuccess?: SuccessDto;
+    routes?: GatewayRoute[];
     chat?: string;
     spot?: SpotDto;
     clearSpot?: boolean;
-    classVersion?: string;
+    size?: SizeDto;
     workflow?: string;
 }
 
 /** The service honours client-minted ids for optimistic creation and pasted chains. */
-export interface NewFlowNodeDto {
+export interface NewFlowNodeDto extends RoleFields {
     id?: string;
     title: string;
     type?: string;
@@ -284,33 +187,40 @@ export interface NewFlowNodeDto {
     valueType?: string;
     outputType?: string;
     body?: string;
+    multiPartTemplate?: boolean;
     criteria?: CriterionDto[];
     complexity?: number;
     settings?: SettingsDto;
     at?: string;
 
     duration?: string;
+    pullRequestId?: string;
+    pullRequestStatus?: string;
+    commitId?: string;
+    commitStatus?: string;
+    maxPasses?: number;
+    remainingPasses?: number;
     spot?: SpotDto;
+    size?: SizeDto;
     status?: string;
 
     archived?: boolean;
     chat?: string;
     onSuccess?: SuccessDto;
+    routes?: GatewayRoute[];
     workflow?: string;
 }
 
 export interface ChangeDto {
     seq: number;
     at: string;
-    scope: 'board' | 'flowNode' | 'flowNodeClass' | 'workflow' | 'workflowClass' | 'agent' | 'runner';
+    scope: 'board' | 'flowNode' | 'workflow' | 'agent' | 'runner';
     kind: 'created' | 'updated' | 'deleted';
     board?: string;
     flowNode?: string;
-    flowNodeClass?: string;
     agent?: string;
     runner?: string;
     workflow?: string;
-    workflowClass?: string;
     actor?: string;
     revision?: number;
 }

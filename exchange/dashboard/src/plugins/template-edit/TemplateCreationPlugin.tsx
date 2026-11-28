@@ -1,7 +1,7 @@
 import React, { useCallback } from 'react';
 import { FileTextOutlined } from '@ant-design/icons';
 import { useWorkerClient, useRenameTarget, useRefreshFileList, useCreationCommand } from '@kiao-dashboard-core';
-import { serializeTempMd } from '@kiao-dashboard-kit/template-lang';
+import { serializeTempMd, TEMPLATE_EXTENSION } from '@kiao-dashboard-kit/template-lang';
 
 export const TemplateCreationPlugin: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
     const client = useWorkerClient();
@@ -10,15 +10,11 @@ export const TemplateCreationPlugin: React.FC<{ children?: React.ReactNode }> = 
 
     const createTemplate = useCallback(async (currentPath: string) => {
         const dir = currentPath.endsWith('/') ? currentPath : `${currentPath}/`;
-        const newFilePath = `${dir}New Template.temp.md`;
+        const newFilePath = `${dir}New Template${TEMPLATE_EXTENSION}`;
         await client.update(newFilePath, serializeTempMd({
-            index: "",
-            name: "New Template",
-            rootTemplate: {
-                id: "root",
-                textTemplate: ""
-            },
-            subTemplates: []
+            name: 'New Template',
+            rootTemplate: { id: 'root', textTemplate: '' },
+            subTemplates: [],
         }));
         refreshFileList();
         setTimeout(() => {

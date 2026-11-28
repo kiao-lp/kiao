@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
-    arrowEnds, arrowEndsBetween, boxesInRect, canvasSize, CARD_WIDTH, cardWidthOf, chainRuns,
+    arrowEnds, arrowEndsBetween, boxesInRect, canvasSize, CARD_WIDTH, cardSizeOf, cardWidthOf, chainRuns,
     CHAIN_STEP, edgeOf, edgeOfDiamond, edgeOfEllipse, nominalHeightOf,
-    NOMINAL_CARD_HEIGHT, NOMINAL_EVENT_HEIGHT, NOMINAL_GATEWAY_HEIGHT, pasteSpots, ROW_STEP,
+    MIN_SIZE, NOMINAL_CARD_HEIGHT, NOMINAL_EVENT_HEIGHT, NOMINAL_GATEWAY_HEIGHT, pasteSpots, ROW_STEP,
     shapeAnchor, spotsToPlace, symbolKindOf, SYMBOL_WIDTH,
 } from './boardSpots';
 import { noSuccess } from './flowNodeSuccess';
@@ -20,16 +20,18 @@ const flowNode = (id: string, over: Partial<FlowNode> = {}): FlowNode => ({
     valueType: '',
     tags: [],
     body: '',
+    multiPartTemplate: false,
     criteria: [],
     complexity: null,
     settings: {},
     at: '',
     spot: null,
+    size: null,
     status: 'ready',
     archived: false,
     chat: '',
     onSuccess: noSuccess(),
-    classVersion: null,
+
     workflow: '',
     ...over,
 });
@@ -151,6 +153,23 @@ describe('the shapes the nodes are drawn as', () => {
         expect(nominalHeightOf('human')).toBe(NOMINAL_CARD_HEIGHT);
         expect(nominalHeightOf('shutdown')).toBe(NOMINAL_EVENT_HEIGHT);
         expect(nominalHeightOf('gateway')).toBe(NOMINAL_GATEWAY_HEIGHT);
+    });
+
+    it('keeps a resized card above its own kind\'s minimum', () => {
+        expect(cardSizeOf('human', { w: 50, h: 10 })).toEqual({ w: MIN_SIZE.human.w, h: MIN_SIZE.human.h });
+        expect(cardSizeOf('note', { w: 50, h: 10 })).toEqual({ w: MIN_SIZE.note.w, h: MIN_SIZE.note.h });
+        expect(cardSizeOf('gateway', { w: 20, h: 20 })).toEqual({ w: MIN_SIZE.gateway.w, h: MIN_SIZE.gateway.h });
+    });
+
+    it('keeps a symbol at least as wide as its shape, and wider when somebody drags it', () => {
+        expect(MIN_SIZE.gateway.w).toBeGreaterThan(SYMBOL_WIDTH / 2);
+        expect(cardSizeOf('gateway', { w: 300 }).w).toBe(300);
+        expect(cardSizeOf('gateway', { w: 300 })).toEqual({ w: 300, h: null });
+    });
+
+    it('falls back to the kind\'s default width without a stored size', () => {
+        expect(cardSizeOf('human', null)).toEqual({ w: CARD_WIDTH, h: null });
+        expect(cardSizeOf('scheduler', undefined)).toEqual({ w: SYMBOL_WIDTH, h: null });
     });
 });
 

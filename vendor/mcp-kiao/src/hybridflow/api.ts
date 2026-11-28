@@ -6,31 +6,22 @@ import type {
     BoardAgent,
     BoardAgentPatch,
     BoardChanges,
-    BoardClassVersion,
-    BoardClassVersionPatch,
     BoardFlowNode,
-    BoardFlowNodeClass,
-    BoardFlowNodeClassPatch,
     BoardFlowNodePatch,
-    BoardInstantiateRequest,
-    BoardListedClass,
-    BoardListedWorkflowClass,
     BoardPatch,
     BoardRunner,
     BoardRunnerPatch,
+    BoardSpot,
     BoardUsageTotals,
     BoardWhole,
     BoardWorkflow,
-    BoardWorkflowClass,
-    BoardWorkflowClassPatch,
+    BoardWorkflowClipboard,
     BoardWorkflowPatch,
+    BoardWorkflowWithFlowNodes,
     NewBoardAgent,
-    NewBoardClassVersion,
     NewBoardFlowNode,
-    NewBoardFlowNodeClass,
     NewBoardRunner,
     NewBoardWorkflow,
-    NewBoardWorkflowClass,
 } from './model.js';
 
 /**
@@ -62,7 +53,7 @@ export class HybridflowApi {
         return this.files.createBoard(trimmed);
     }
 
-    /** Read one board whole — its cards, its classes, its workflows — and the cursor it was read at. */
+    /** Read one board whole — its cards and workflows — and the cursor it was read at. */
     async getBoard(handle: string): Promise<BoardWhole> {
         return this.files.getBoard(HybridflowApi.handle(handle));
     }
@@ -136,98 +127,6 @@ export class HybridflowApi {
         return this.files.getFlowNodeUsage(HybridflowApi.handle(handle), HybridflowApi.id(id, 'Card'));
     }
 
-    /** File a class from a task: the card's title, kind and answers become the class's. */
-    async convertFlowNodeToClass(handle: string, id: string): Promise<BoardFlowNodeClass> {
-        return this.files.convertFlowNodeToClass(HybridflowApi.handle(handle), HybridflowApi.id(id, 'Card'));
-    }
-
-    /** Every node class of every board: what the instantiate menu lists. */
-    async listFlowNodeClasses(): Promise<{ flowNodeClasses: BoardListedClass[] }> {
-        return this.files.listFlowNodeClasses();
-    }
-
-    /** File a node class on a board, with its first version's words beside it. */
-    async createFlowNodeClass(handle: string, flowNodeClass: NewBoardFlowNodeClass): Promise<BoardFlowNodeClass> {
-        const title = flowNodeClass.title?.trim();
-        if (!title) throw new Error('A class needs a title.');
-        return this.files.createFlowNodeClass(
-            HybridflowApi.handle(handle), { ...flowNodeClass, title },
-        );
-    }
-
-    /** Read one node class, with its succession beneath it. */
-    async getFlowNodeClass(handle: string, id: string): Promise<BoardFlowNodeClass> {
-        return this.files.getFlowNodeClass(HybridflowApi.handle(handle), HybridflowApi.id(id, 'Class'));
-    }
-
-    /** Change a class's own fields — never its versions': a new description is a new version. */
-    async patchFlowNodeClass(
-        handle: string, id: string, patch: BoardFlowNodeClassPatch, ifMatch?: number,
-    ): Promise<BoardFlowNodeClass> {
-        if (!patch || Object.keys(patch).length === 0) {
-            throw new Error('class_patch names the fields it changes — send at least one.');
-        }
-        return this.files.patchFlowNodeClass(
-            HybridflowApi.handle(handle), HybridflowApi.id(id, 'Class'), patch, ifMatch,
-        );
-    }
-
-    /** Remove classes and their versions. */
-    async deleteFlowNodeClasses(handle: string, flowNodeClasses: string[]): Promise<{ deleted: string[] }> {
-        const ids = HybridflowApi.ids(flowNodeClasses, 'class_delete needs at least one class id.');
-        await this.files.deleteFlowNodeClasses(HybridflowApi.handle(handle), ids);
-        return { deleted: ids };
-    }
-
-    /** Link a class to the class after it; an empty target takes the link off. */
-    async chainFlowNodeClass(handle: string, id: string, flowNode: string): Promise<BoardFlowNodeClass> {
-        return this.files.chainFlowNodeClass(
-            HybridflowApi.handle(handle), HybridflowApi.id(id, 'Class'), flowNode.trim(),
-        );
-    }
-
-    /** File one version under its class — blank, or copied from the version `from` names. */
-    async createClassVersion(
-        handle: string, classId: string, version: NewBoardClassVersion,
-    ): Promise<BoardClassVersion> {
-        return this.files.createClassVersion(
-            HybridflowApi.handle(handle), HybridflowApi.id(classId, 'Class'), version,
-        );
-    }
-
-    /** Change what a draft says, or publish it. A published version is refused whatever is sent. */
-    async patchClassVersion(
-        handle: string, classId: string, versionId: string, patch: BoardClassVersionPatch, ifMatch?: number,
-    ): Promise<BoardClassVersion> {
-        if (!patch || Object.keys(patch).length === 0) {
-            throw new Error('class_patch_version names the fields it changes — send at least one.');
-        }
-        return this.files.patchClassVersion(
-            HybridflowApi.handle(handle),
-            HybridflowApi.id(classId, 'Class'),
-            HybridflowApi.id(versionId, 'Version'),
-            patch, ifMatch,
-        );
-    }
-
-    /** Delete one class version. */
-    async deleteClassVersion(handle: string, classId: string, versionId: string): Promise<{ deleted: string }> {
-        const trimmed = HybridflowApi.id(versionId, 'Version');
-        await this.files.deleteClassVersion(
-            HybridflowApi.handle(handle), HybridflowApi.id(classId, 'Class'), trimmed,
-        );
-        return { deleted: trimmed };
-    }
-
-    /** Make flow nodes from a class and all its successors, on the board the handle names. */
-    async instantiateFlowNodeClass(
-        handle: string, classId: string, request: BoardInstantiateRequest,
-    ): Promise<{ flowNodes: BoardFlowNode[] }> {
-        return this.files.instantiateFlowNodeClass(
-            HybridflowApi.handle(handle), HybridflowApi.id(classId, 'Class'), request,
-        );
-    }
-
     /** File a workflow on a board and group its cards in it. */
     async createWorkflow(handle: string, workflow: NewBoardWorkflow): Promise<BoardWorkflow> {
         return this.files.createWorkflow(HybridflowApi.handle(handle), workflow);
@@ -236,6 +135,14 @@ export class HybridflowApi {
     /** Read one workflow. */
     async getWorkflow(handle: string, id: string): Promise<BoardWorkflow> {
         return this.files.getWorkflow(HybridflowApi.handle(handle), HybridflowApi.id(id, 'Workflow'));
+    }
+
+    async copyWorkflow(handle: string, id: string): Promise<BoardWorkflowClipboard> {
+        return this.files.copyWorkflow(HybridflowApi.handle(handle), HybridflowApi.id(id, 'Workflow'));
+    }
+
+    async pasteWorkflow(handle: string, clipboard: BoardWorkflowClipboard, spot?: BoardSpot): Promise<BoardWorkflowWithFlowNodes> {
+        return this.files.pasteWorkflow(HybridflowApi.handle(handle), clipboard, spot);
     }
 
     /** Rename a workflow. Its members are untouched. */
@@ -255,49 +162,6 @@ export class HybridflowApi {
         const ids = HybridflowApi.ids(workflows, 'workflow_delete needs at least one workflow id.');
         await this.files.deleteWorkflows(HybridflowApi.handle(handle), ids);
         return { deleted: ids };
-    }
-
-    /** Every workflow class of every board. */
-    async listWorkflowClasses(): Promise<{ workflowClasses: BoardListedWorkflowClass[] }> {
-        return this.files.listWorkflowClasses();
-    }
-
-    /** File a workflow class on a board and group its classes in it. */
-    async createWorkflowClass(handle: string, workflowClass: NewBoardWorkflowClass): Promise<BoardWorkflowClass> {
-        return this.files.createWorkflowClass(HybridflowApi.handle(handle), workflowClass);
-    }
-
-    /** Read one workflow class. */
-    async getWorkflowClass(handle: string, id: string): Promise<BoardWorkflowClass> {
-        return this.files.getWorkflowClass(HybridflowApi.handle(handle), HybridflowApi.id(id, 'Workflow class'));
-    }
-
-    /** Rename a workflow class. Its members are untouched. */
-    async patchWorkflowClass(
-        handle: string, id: string, patch: BoardWorkflowClassPatch, ifMatch?: number,
-    ): Promise<BoardWorkflowClass> {
-        if (!patch || Object.keys(patch).length === 0) {
-            throw new Error('workflow_class_patch names the fields it changes — send at least one.');
-        }
-        return this.files.patchWorkflowClass(
-            HybridflowApi.handle(handle), HybridflowApi.id(id, 'Workflow class'), patch, ifMatch,
-        );
-    }
-
-    /** Remove workflow classes. Their classes are ungrouped and left where they are. */
-    async deleteWorkflowClasses(handle: string, workflowClasses: string[]): Promise<{ deleted: string[] }> {
-        const ids = HybridflowApi.ids(workflowClasses, 'workflow_class_delete needs at least one workflow class id.');
-        await this.files.deleteWorkflowClasses(HybridflowApi.handle(handle), ids);
-        return { deleted: ids };
-    }
-
-    /** Make a workflow from a workflow class, on the board the handle names. */
-    async instantiateWorkflowClass(
-        handle: string, id: string, request: BoardInstantiateRequest,
-    ): Promise<{ workflow: BoardWorkflow; flowNodes: BoardFlowNode[] }> {
-        return this.files.instantiateWorkflowClass(
-            HybridflowApi.handle(handle), HybridflowApi.id(id, 'Workflow class'), request,
-        );
     }
 
     /** Every managed agent, by name. Read before naming one on a card. */

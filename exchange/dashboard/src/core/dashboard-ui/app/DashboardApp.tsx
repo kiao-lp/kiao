@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { BrowserRouter } from "react-router-dom";
 import { ConfigProvider } from 'antd';
+import { ConfirmationProvider } from '../../ui-foundation/forms/ConfirmationDialog';
 import { BranchesOutlined } from '@ant-design/icons';
 import { PointedElementContextProvider } from 'react-advanced-interactions';
 import { kiaoAntTheme } from 'kiao-style';
@@ -135,7 +136,11 @@ export const PluginProviders: React.FC<{ children: React.ReactNode }> = ({ child
 const ThemeWrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { theme } = useTheme();
   const antdTheme = kiaoAntTheme(theme);
-  return <ConfigProvider theme={antdTheme} popupMatchSelectWidth={false}>{children}</ConfigProvider>;
+  return (
+    <ConfigProvider theme={antdTheme} popupMatchSelectWidth={false}>
+      <ConfirmationProvider>{children}</ConfirmationProvider>
+    </ConfigProvider>
+  );
 };
 
 type ProviderComponent = React.FC<{ children: React.ReactNode }>;

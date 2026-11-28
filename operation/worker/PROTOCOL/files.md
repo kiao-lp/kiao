@@ -27,7 +27,7 @@ document:
 | POST | `/staging` | — | `StagingDto` |
 | DELETE | `/staging` | `path` | — |
 | POST | `/unzip` | `path`, `deleteArchive?` | `UnzipResultDto` |
-| GET | `/fileOptimizations` | `path` (default: the root) | `FileOptimizationsDto` |
+| GET | `/fileOptimizations` | `path` (default: the DCMS root) | `FileOptimizationsDto` |
 | POST | `/deduplicate` | `{ paths: string[], target: string }` | `DeduplicateResultDto` |
 | GET | `/diskUsage` | — | `DiskUsageDto` |
 | GET | `/storeInfo` | — | `StoreInfoDto` |
@@ -47,27 +47,26 @@ with the limit spelled out. `/update` answers `500`, which is what it answers to
 purpose: a client reads `404` or `500` from `/update` as "the file is not there yet" and retries the
 write as an `/upload` — and that call is the one that comes back `413` naming the number.
 
-`/storeInfo` answers where the store is on the machine serving it: `rootPath` is the storage root
-as an absolute host path, resolved from whatever the deployment configured. It is the prefix that
-turns a root-relative path — everything else on the wire — into one a terminal, an editor or an
-agent sitting beside the service would recognise, and it is constant for the life of the process, so
-a client asks once. It is not a path the file endpoints accept: they are root-relative and stay so.
+`GET /storeInfo` returns `rootPath`, the absolute host path of the DCMS root. The value is
+constant for the life of the worker process, so clients can cache it to construct paths for
+tools running on that host. File requests take paths relative to the DCMS root. `FileDto.path`
+uses the slashless form, and a DCMS link to the same file starts with `/`.
 
 `/delete` (and each path of `/deleteBatch`) removes **a whole entry**: a file with its subsidiaries
-and its `.config.json` settings sidecar, or a directory with everything under it. Deleting something
-that is not there succeeds — the caller asked for it gone, and it is. The one refusal is the storage
-root itself, which an empty path, `/` or `.` all resolve to: `400`, since a recursive delete there
-would take the store with it.
+and its `.config.json` settings sidecar, or a directory with everything under it. Deleting a
+missing entry succeeds. The worker rejects deletion of the DCMS root with `400`. An empty path,
+`/` or `.` all designate that directory.
 
 A `/deleteBatch` therefore never needs a path per descendant: a folder covers what is under it for
 the removal *and* for the link fix, since a path token carries its child suffix and an operation on
-`folder` rewrites every reference to `folder/a/b.md`. A batch that names both anyway still gets one
+`folder` rewrites DCMS links to `/folder/a/b.md`. A batch that names both anyway still gets one
 report per requested path, in order — the covered ones empty, because what was rewritten for them is
 reported under the ancestor that did it.
 
-Link fixes rewrite store-root references with a leading slash, including references to descendants
-of a renamed or deleted folder. Bare paths and document-relative Markdown links are left alone.
-The pass honours `[refactor]` exclusions in `.kiao-files` and the configured text extensions.
+Link fixes match raw and percent-encoded DCMS links at token boundaries, including links to
+descendants of a renamed or deleted folder. A `#` immediately after a matching filename keeps
+that link outside the match. The pass honours `[refactor]` exclusions in `.kiao-files` and
+the configured text extensions.
 
 `/listRecursive` answers what removing the requested paths would take with it: each of them, then
 everything under it, depth-first and name-ordered. `path` repeats, so a whole selection is one round

@@ -14,7 +14,7 @@ export * from './lib/layout-operations';
 export * from './lib/svg-export';
 export { ArchDiaSvgRenderer, CONTENT_PADDING, computeContentBox, getNormalizedPositions } from './components/ArchDiaSvgRenderer';
 export type { ArchDiaSvgRendererProps, ContentBox, DisplayOptions } from './components/ArchDiaSvgRenderer';
-export * from './components/ArchDiaToolbar';
+export type { DiagramView as ArchDiaView } from '@kiao-dashboard-core';
 export * from './lib/render-svg-string';
 export * from './lib/archdia-theme';
 export * from './lib/archdia-styles';

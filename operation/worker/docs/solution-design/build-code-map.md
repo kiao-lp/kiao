@@ -10,7 +10,7 @@ document:
 
 ## Build and checks
 
-Requires Go 1.27.3+. The module and its entry point remain at the worker root.
+Requires Go 1.27.3+. The module and its entry point are in `operation/worker/`.
 
 ```bash
 ./build.sh                 # static linux/amd64 worker
@@ -82,7 +82,7 @@ Import-gate JSON and PDF themes stay beside their synchronization code, under
 | Package | Owns |
 | --- | --- |
 | `hybridflow-runner/harnesses` | Driver contracts, capabilities, harness selection and shared event/profile models. |
-| `harnesses/{claude,codex,muse,pi}` | Each engine's protocol, execution, options, credentials and quota handling. |
+| `harnesses/{claude,codex,muse,pi}` | Drivers for each harness's execution protocol, options, credentials and quota. |
 | `harnesses/login` | The parked device-login process shared by Codex and Muse. |
 | `harnesses/faults` | Turn refusals, failure classification and quota reset interpretation. |
 | `harnesses/prompt` | Shared prompt instructions and commands. |
@@ -107,7 +107,7 @@ are relative to `hybridflow-runner/`.
 turn-stop notifications in the opposite direction. Assembly wires both.
 Within playback, `chain_runner.go` owns lifecycle requests and registry membership,
 `chain_state.go` owns shared state transitions and `chain_run.go` keeps the execution loop
-and its local cursor. Card execution, successor rules, gateways, retries, conversations and
+and its local cursor. Flow node execution, successor rules, gateways, retries, conversations and
 board operations have separate files. [Playing a board](./playing-board.md) maps their
 responsibilities and synchronization rules.
 The Pi bridge, qualification script and protocol fixtures live in `harnesses/pi/`.

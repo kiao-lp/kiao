@@ -1,9 +1,11 @@
 package filesystem
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -12,11 +14,10 @@ import (
 )
 
 type releaseManifest struct {
-	path     string
-	original []byte
-	document *yaml.Node
-	node     *yaml.Node
-	version  entities.ReleaseVersion
+	document    *yaml.Node
+	node        *yaml.Node
+	version     entities.ReleaseVersion
+	description string
 }
 
 func readReleaseManifest(dir string) (*releaseManifest, error) {
@@ -40,7 +41,8 @@ func readReleaseManifest(dir string) (*releaseManifest, error) {
 	if !ok {
 		return nil, entities.Invalidf("%s must declare a major.minor.patch version", manifestFile)
 	}
-	manifest := &releaseManifest{path: path, original: data, document: document, version: version}
+	description, _ := fields["description"].(string)
+	manifest := &releaseManifest{document: document, version: version, description: strings.TrimSpace(description)}
 	mapping := document.Content[0]
 	for i := 0; i < len(mapping.Content); i += 2 {
 		if key := mapping.Content[i]; key.ShortTag() == "!!str" && key.Value == "version" {
@@ -53,58 +55,171 @@ func readReleaseManifest(dir string) (*releaseManifest, error) {
 	return manifest, nil
 }
 
-func (s *Store) releaseTags(ctx context.Context, dir string) ([]entities.ReleaseVersion, error) {
-	output, err := s.git(ctx, dir, "tag", "--list", "v*")
+type releaseTag struct {
+	version entities.ReleaseVersion
+	object  string
+}
+
+func (s *Store) releaseTags(ctx context.Context, dir string) ([]releaseTag, error) {
+	output, err := s.git(ctx, dir, "for-each-ref", "--format=%(refname:strip=2) %(objectname)", "refs/tags/v*")
 	if err != nil {
 		return nil, err
 	}
-	var versions []entities.ReleaseVersion
-	for _, tag := range strings.Fields(string(output)) {
-		if version, ok := entities.ParseReleaseVersion(strings.TrimPrefix(tag, "v")); ok {
-			versions = append(versions, version)
+	var tags []releaseTag
+	for line := range strings.SplitSeq(string(output), "\n") {
+		name, object, _ := strings.Cut(line, " ")
+		if version, ok := entities.ParseReleaseVersion(strings.TrimPrefix(name, "v")); ok {
+			tags = append(tags, releaseTag{version: version, object: object})
 		}
 	}
-	slices.SortFunc(versions, entities.ReleaseVersion.Compare)
-	return versions, nil
+	slices.SortFunc(tags, func(a, b releaseTag) int { return a.version.Compare(b.version) })
+	return tags, nil
 }
 
-func (m *releaseManifest) base(tags []entities.ReleaseVersion) entities.ReleaseVersion {
-	if len(tags) > 0 && tags[len(tags)-1].Compare(m.version) > 0 {
-		return tags[len(tags)-1]
+func (m *releaseManifest) base(tags []releaseTag) entities.ReleaseVersion {
+	if len(tags) > 0 && tags[len(tags)-1].version.Compare(m.version) > 0 {
+		return tags[len(tags)-1].version
 	}
 	return m.version
 }
 
-func (s *Store) commitRelease(ctx context.Context, dir string, manifest *releaseManifest, version entities.ReleaseVersion, message string, prepare func() error) (err error) {
+func (s *Store) commitRelease(ctx context.Context, dir string, manifest *releaseManifest, version entities.ReleaseVersion, message string, prepare func(string) error) error {
+	work, err := os.MkdirTemp("", "kiao-apm-release-*")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(work)
+	dir, err = filepath.Abs(dir)
+	if err != nil {
+		return err
+	}
+	head, headErr := s.git(ctx, dir, "rev-parse", "--verify", "HEAD")
+	base := head
+	identity := []string{"-c", "user.name=KIAO", "-c", "user.email=kiao@localhost"}
+	if headErr != nil {
+		if _, err := s.git(ctx, dir, "symbolic-ref", "--quiet", "HEAD"); err != nil {
+			return headErr
+		}
+		empty, err := s.git(ctx, dir, "mktree")
+		if err != nil {
+			return err
+		}
+		base, err = s.git(ctx, dir, append(slices.Clone(identity), "commit-tree", strings.TrimSpace(string(empty)), "-m", "Empty publication base")...)
+		if err != nil {
+			return err
+		}
+	}
+	indexName, err := s.git(ctx, dir, "rev-parse", "--path-format=absolute", "--git-path", "index")
+	if err != nil {
+		return err
+	}
+	indexPath := strings.TrimSpace(string(indexName))
+	index, err := os.ReadFile(indexPath)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	stage := filepath.Join(work, "source")
+	if _, err = s.git(ctx, dir, "worktree", "add", "--detach", "--no-checkout", "--", stage, strings.TrimSpace(string(base))); err != nil {
+		return err
+	}
+	defer s.git(context.WithoutCancel(ctx), dir, "worktree", "remove", "--force", "--", stage)
+	stageIndex, err := s.git(ctx, stage, "rev-parse", "--path-format=absolute", "--git-path", "index")
+	if err != nil {
+		return err
+	}
+	stageIndexPath := strings.TrimSpace(string(stageIndex))
+
+	// Use the draft's index to retain explicitly staged files. All writes go to the linked worktree's index.
+	snapshot := func() (string, error) {
+		if index == nil {
+			if _, err := s.git(ctx, stage, "read-tree", "--empty"); err != nil {
+				return "", err
+			}
+		} else {
+			if err := os.WriteFile(stageIndexPath, index, 0600); err != nil {
+				return "", err
+			}
+		}
+		if _, err := s.git(ctx, stage, "--work-tree="+dir, "add", "--all"); err != nil {
+			return "", err
+		}
+		tree, err := s.git(ctx, stage, "write-tree")
+		return strings.TrimSpace(string(tree)), err
+	}
+	before, err := snapshot()
+	if err != nil {
+		return err
+	}
+	if _, err = s.git(ctx, stage, "checkout-index", "--all"); err != nil {
+		return err
+	}
 	manifest.node.SetString(version.String())
 	data, err := yaml.Marshal(manifest.document)
 	if err != nil {
 		return err
 	}
-	if err = atomicWrite(manifest.path, data); err != nil {
+	if err = atomicWrite(filepath.Join(stage, manifestFile), data); err != nil {
 		return err
 	}
-	committed := false
-	defer func() {
-		if !committed {
-			err = errors.Join(err, atomicWrite(manifest.path, manifest.original))
-		}
-	}()
-	if err = prepare(); err != nil {
+	if err = s.clearReleaseSkillProjections(ctx, stage); err != nil {
 		return err
 	}
-	if _, err = s.git(ctx, dir, "add", "--all"); err != nil {
+	if err = prepare(stage); err != nil {
+		return err
+	}
+	if _, err = s.git(ctx, stage, "add", "--all"); err != nil {
+		return err
+	}
+	tree, err := s.git(ctx, stage, "write-tree")
+	if err != nil {
+		return err
+	}
+	releaseTree := strings.TrimSpace(string(tree))
+	diff, err := s.git(ctx, stage, "diff", "--binary", "--no-ext-diff", "--no-textconv", "--no-renames", before, releaseTree, "--")
+	if err != nil {
+		return err
+	}
+	patch := filepath.Join(work, "release.patch")
+	if err = os.WriteFile(patch, diff, 0600); err != nil {
+		return err
+	}
+	current, err := snapshot()
+	if err != nil {
+		return err
+	}
+	currentHead, currentHeadErr := s.git(ctx, dir, "rev-parse", "--verify", "HEAD")
+	currentIndex, err := os.ReadFile(indexPath)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	if current != before || (currentHeadErr == nil) != (headErr == nil) ||
+		!bytes.Equal(currentHead, head) || !bytes.Equal(currentIndex, index) {
+		return entities.Conflictf("the Git draft changed during publication preparation; retry with the current draft")
+	}
+	if _, err = s.git(ctx, dir, "apply", "--whitespace=nowarn", "--", patch); err != nil {
 		return err
 	}
 	tag := "v" + version.String()
 	if strings.TrimSpace(message) == "" {
 		message = "feat: publish " + tag
 	}
-	identity := []string{"-c", "user.name=KIAO", "-c", "user.email=kiao@localhost"}
-	if _, err = s.git(ctx, dir, append(identity, "commit", "-m", message)...); err != nil {
-		return err
+	rollback := func(err error) error {
+		_, restoreErr := s.git(context.WithoutCancel(ctx), dir, "apply", "--reverse", "--whitespace=nowarn", "--", patch)
+		if index == nil {
+			removeErr := os.Remove(indexPath)
+			if os.IsNotExist(removeErr) {
+				removeErr = nil
+			}
+			return errors.Join(err, restoreErr, removeErr)
+		}
+		return errors.Join(err, restoreErr, atomicWrite(indexPath, index))
 	}
-	committed = true
+	if _, err = s.git(ctx, dir, "read-tree", releaseTree); err != nil {
+		return rollback(err)
+	}
+	if _, err = s.git(ctx, dir, append(identity, "commit", "-m", message)...); err != nil {
+		return rollback(err)
+	}
 	_, err = s.git(ctx, dir, append(identity, "tag", "-a", tag, "-m", tag)...)
 	return err
 }

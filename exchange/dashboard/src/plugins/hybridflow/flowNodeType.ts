@@ -5,23 +5,29 @@ import {
     SettingsChanges, FlowNodeSettings, withSettings,
 } from './flowNodeSettings';
 
-export type FlowNodeType = 'ai' | 'human' | 'shutdown' | 'scheduler' | 'gateway' | 'note' | 'value';
+export type FlowNodeType =
+    'ai' | 'human' | 'start' | 'shutdown' | 'scheduler' | 'bitbucket-pr-status' | 'bitbucket-commit-status'
+    | 'gateway' | 'exclusive-gateway' | 'limiter' | 'note' | 'value' | 'role';
 
 export const FLOW_NODE_TYPE_LABELS: Record<FlowNodeType, string> = {
     ai: 'AI',
     human: 'Human',
+    start: 'Start',
     shutdown: 'Shutdown',
     scheduler: 'Scheduler',
+    'bitbucket-pr-status': 'Bitbucket PR Status',
+    'bitbucket-commit-status': 'Bitbucket Commit Status',
     gateway: 'Parallel gateway',
+    'exclusive-gateway': 'Exclusive gateway',
+    limiter: 'Limiter',
     note: 'Note',
     value: 'Value',
+    role: 'Role',
 };
 
-export const FLOW_NODE_TYPE_ORDER: FlowNodeType[] = ['ai', 'human', 'shutdown', 'scheduler', 'gateway', 'note', 'value'];
-
-/** Gateways and display cards have no reusable description or completion semantics; the service. */
-export const FLOW_NODE_CLASS_TYPE_ORDER: Exclude<FlowNodeType, 'gateway' | 'note' | 'value'>[] = [
-    'ai', 'human', 'shutdown', 'scheduler',
+export const FLOW_NODE_TYPE_ORDER: FlowNodeType[] = [
+    'ai', 'human', 'start', 'shutdown', 'scheduler', 'bitbucket-pr-status', 'bitbucket-commit-status',
+    'gateway', 'exclusive-gateway', 'limiter', 'note', 'value', 'role',
 ];
 
 /** Omitted in files. Without a type or agent/model, legacy documents remain Human. */
@@ -33,7 +39,7 @@ export const NEW_FLOW_NODE_TYPE: FlowNodeType = 'ai';
 /** Automatic tool approval; request only if the agent's harness advertises this mode. */
 export const BYPASS_PERMISSION = 'bypassPermissions';
 
-/** AI without an agent is incomplete and unplayable; never substitute an engine on writes. */
+/** New AI tasks require a selected agent before they can play. */
 export const NO_AGENT = '';
 
 const KNOWN = Object.keys(FLOW_NODE_TYPE_LABELS) as FlowNodeType[];
@@ -49,17 +55,28 @@ export const saysType = (type: FlowNodeType): boolean => type !== FLOW_NODE_TYPE
 
 export const isForAgent = (type: FlowNodeType): boolean => type === 'ai';
 
-/** Executed by the run without an agent turn, prompt or conversation. */
-export const runsItself = (type: FlowNodeType): boolean =>
-    type === 'shutdown' || type === 'scheduler' || type === 'gateway';
+export const joins = (type: FlowNodeType): boolean => type === 'gateway' || type === 'exclusive-gateway';
 
-export const isDisplay = (type: FlowNodeType): boolean => type === 'note' || type === 'value';
+export const splits = (type: FlowNodeType): boolean => joins(type) || type === 'limiter';
+
+export const isBitbucketEvent = (type: FlowNodeType): boolean =>
+    type === 'bitbucket-pr-status' || type === 'bitbucket-commit-status';
+
+export const isWaitingEvent = (type: FlowNodeType): boolean => type === 'scheduler' || isBitbucketEvent(type);
+
+/** The runner executes these nodes directly. */
+export const runsItself = (type: FlowNodeType): boolean =>
+    type === 'start' || type === 'shutdown' || isWaitingEvent(type) || splits(type);
+
+export const isDisplay = (type: FlowNodeType): boolean => type === 'note' || type === 'value' || type === 'role';
 
 /** Tasks own descriptions and folders, stored in a separate task row keyed by flow node. */
 export const isTask = (type: FlowNodeType): boolean => type === 'ai' || type === 'human';
 
-/** Shutdown and display cards cannot have a successor. */
+/** Shutdown and display nodes cannot have a successor. */
 export const chains = (type: FlowNodeType): boolean => type !== 'shutdown' && !isDisplay(type);
+
+export const acceptsPredecessor = (type: FlowNodeType): boolean => type !== 'start' && !isDisplay(type);
 
 /** Transition controls what happens to the AI conversation on completion. */
 export const hasTransition = (type: FlowNodeType): boolean => isForAgent(type);
@@ -90,8 +107,8 @@ export const newFlowNodeSettings = (type: FlowNodeType = NEW_FLOW_NODE_TYPE): Fl
     withSettings({}, typeChanges({}, type));
 
 /**
- * Unknown agent IDs are legacy engine names; use their effort/permission vocabulary.
- * Empty means editor defaults, never a playback fallback: no agent means unplayable.
+ * Legacy settings can name a harness in the agent field. Use it to look up editor options.
+ * An empty result selects editor defaults only.
  */
 export const settingsHarness = (
     settings: FlowNodeSettings, agents: { id: string; harness: string; published?: { harness: string } }[],

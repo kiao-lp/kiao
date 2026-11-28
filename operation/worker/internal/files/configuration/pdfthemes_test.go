@@ -10,7 +10,7 @@ import (
 
 func TestSyncPdfThemesRefreshesDefaultsAndPreservesCustomThemes(t *testing.T) {
 	root := t.TempDir()
-	cfg := &Config{Config: &coreconfig.Config{RootPath: root}}
+	cfg := &Config{Config: &coreconfig.Config{DCMSRoot: root}}
 	dir := filepath.Join(root, filepath.FromSlash(pdfThemesDirRel))
 	SyncPdfThemes(cfg)
 	neutral := filepath.Join(dir, "neutral.json")

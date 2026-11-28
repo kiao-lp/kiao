@@ -26,10 +26,10 @@ test('shows value titles and edits shared JSON drafts in CodeMirror', async ({ p
     };
     const board = {
         board: { id: 'values', slug: 'values', name: 'Values', archived: false, ...stamp },
-        flowNodes: [value], flowNodeClasses: [], workflows: [], workflowClasses: [], cursor: 0,
+        flowNodes: [value], workflows: [], cursor: 0,
     };
 
-    // The harness has no boards backend; keep writes at its HTTP boundary.
+    // The test stack has no boards backend; keep writes at its HTTP boundary.
     await page.route('**/api/{hybridflow,agentic}/**', async route => {
         const path = new URL(route.request().url()).pathname.replace(/^\/api\/(?:hybridflow|agentic)/, '');
         if (path === '/boards/values/flow-nodes/config' && route.request().method() === 'PATCH') {
@@ -42,7 +42,7 @@ test('shows value titles and edits shared JSON drafts in CodeMirror', async ({ p
         } else if (path === '/changes') {
             await route.abort();
         } else {
-            await route.fulfill({ json: { agents: [], runners: [], flowNodeClasses: [], workflowClasses: [] } });
+            await route.fulfill({ json: { agents: [], runners: [] } });
         }
     });
 
@@ -96,7 +96,7 @@ test('types a value by a saved JSON Schema value', async ({ page }) => {
     const nodes: Record<string, Record<string, unknown>> = { [schemaId]: schema, [String(typed.id)]: typed };
     const board = {
         board: { id: 'typed', slug: 'typed', name: 'Typed', archived: false, ...stamp },
-        flowNodes: [schema, typed], flowNodeClasses: [], workflows: [], workflowClasses: [], cursor: 0,
+        flowNodes: [schema, typed], workflows: [], cursor: 0,
     };
     await page.route('**/api/{hybridflow,agentic}/**', async route => {
         const path = new URL(route.request().url()).pathname.replace(/^\/api\/(?:hybridflow|agentic)/, '');
@@ -112,7 +112,7 @@ test('types a value by a saved JSON Schema value', async ({ page }) => {
         } else if (path === '/changes') {
             await route.abort();
         } else {
-            await route.fulfill({ json: { agents: [], runners: [], flowNodeClasses: [], workflowClasses: [] } });
+            await route.fulfill({ json: { agents: [], runners: [] } });
         }
     });
 
@@ -160,7 +160,7 @@ test('selects an AI output schema from another board', async ({ page }) => {
     };
     const board = {
         board: { id: 'tasks', slug: 'tasks', name: 'Tasks', archived: false, ...stamp },
-        flowNodes: [task], flowNodeClasses: [], workflows: [], workflowClasses: [], cursor: 0,
+        flowNodes: [task], workflows: [], cursor: 0,
     };
     await page.route('**/api/{hybridflow,agentic}/**', async route => {
         const path = new URL(route.request().url()).pathname.replace(/^\/api\/(?:hybridflow|agentic)/, '');
@@ -179,7 +179,7 @@ test('selects an AI output schema from another board', async ({ page }) => {
         } else if (path === '/changes') {
             await route.abort();
         } else {
-            await route.fulfill({ json: { agents: [], runners: [], flowNodeClasses: [], workflowClasses: [] } });
+            await route.fulfill({ json: { agents: [], runners: [] } });
         }
     });
     await page.goto('boards/tasks');

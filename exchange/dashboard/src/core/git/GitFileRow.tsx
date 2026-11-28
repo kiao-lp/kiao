@@ -1,5 +1,6 @@
 import React from 'react';
-import { Button, Popconfirm } from 'antd';
+import { IconButton } from '../ui-foundation/toolbar/IconButton';
+import { Popconfirm } from 'antd';
 import { PlusOutlined, MinusOutlined, RollbackOutlined } from '@ant-design/icons';
 import type { GitFile } from 'kiao-worker';
 
@@ -21,11 +22,12 @@ const statusInfo = (file: GitFile, staged: boolean): { letter: string; cls: stri
 export const GitFileRow: React.FC<{
     file: GitFile;
     staged: boolean;
+    disabled: boolean;
     onOpen: (path: string) => void;
     onStage: (path: string) => void;
     onUnstage: (path: string) => void;
     onRevert: (path: string) => void;
-}> = ({ file, staged, onOpen, onStage, onUnstage, onRevert }) => {
+}> = ({ file, staged, disabled, onOpen, onStage, onUnstage, onRevert }) => {
     const slash = file.path.lastIndexOf('/');
     const name = slash >= 0 ? file.path.slice(slash + 1) : file.path;
     const dir = slash >= 0 ? file.path.slice(0, slash) : '';
@@ -38,11 +40,10 @@ export const GitFileRow: React.FC<{
             <span className="git-file-dir">{dir}</span>
             <span className="git-file-actions" onClick={e => e.stopPropagation()}>
                 {staged ? (
-                    <Button
-                        type="text"
-                        size="small"
+                    <IconButton
+                        label="Unstage changes"
                         icon={<MinusOutlined />}
-                        aria-label="Unstage changes"
+                        disabled={disabled}
                         onClick={() => onUnstage(file.path)}
                     />
                 ) : (
@@ -54,18 +55,12 @@ export const GitFileRow: React.FC<{
                             okButtonProps={{ danger: true }}
                             onConfirm={() => onRevert(file.path)}
                         >
-                            <Button
-                                type="text"
-                                size="small"
-                                icon={<RollbackOutlined />}
-                                aria-label="Discard changes"
-                            />
+                            <IconButton label="Discard changes" icon={<RollbackOutlined />} disabled={disabled} />
                         </Popconfirm>
-                        <Button
-                            type="text"
-                            size="small"
+                        <IconButton
+                            label="Stage changes"
                             icon={<PlusOutlined />}
-                            aria-label="Stage changes"
+                            disabled={disabled}
                             onClick={() => onStage(file.path)}
                         />
                     </>

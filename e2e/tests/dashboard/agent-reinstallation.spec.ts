@@ -41,7 +41,7 @@ test('keeps a missing task agent reference and repairs it by reinstalling its Gi
             board: { id: 'missing', slug: 'missing', name: 'Missing agent', archived: false, ...stamp },
             flowNodes: [{ id: 'task', type: 'ai', title: 'Repair the task', body: 'Keep this task.',
                 settings: { agent: agentId, effort: 'high', permission: 'manual', folder: '/' }, spot: { x: 100, y: 100 }, ...stamp }],
-            flowNodeClasses: [], workflows: [], workflowClasses: [], cursor: 0,
+            workflows: [], cursor: 0,
         };
         await page.route('**/api/hybridflow/**', async route => {
             const path = new URL(route.request().url()).pathname.replace('/api/hybridflow', '');

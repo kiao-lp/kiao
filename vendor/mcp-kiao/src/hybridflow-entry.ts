@@ -13,8 +13,9 @@ import { HybridflowApi } from './hybridflow/api.js';
 
 const isEntry = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isEntry) {
-    startServer('kiao-hybridflow', ({ server, files }) =>
-        registerHybridflowTools(server, new HybridflowApi(files)),
+    startServer('kiao-hybridflow',
+        ({ server, files }) => registerHybridflowTools(server, new HybridflowApi(files)),
+        async ({ files }) => { await new HybridflowApi(files).listBoards(); },
     ).catch((err) => {
         process.stderr.write(`[kiao-hybridflow] fatal: ${err instanceof Error ? err.stack ?? err.message : String(err)}\n`);
         process.exit(1);

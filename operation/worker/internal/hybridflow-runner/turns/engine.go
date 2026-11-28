@@ -1,13 +1,16 @@
 package turns
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"kiao/worker/internal/core/access"
+	"kiao/worker/internal/core/equipment"
 	"kiao/worker/internal/core/errors"
 	idgen "kiao/worker/internal/core/ids"
+	"kiao/worker/internal/core/mcp"
 	"kiao/worker/internal/hybridflow-runner/boards"
 	runnerconfig "kiao/worker/internal/hybridflow-runner/config"
 	"kiao/worker/internal/hybridflow-runner/conversations"
@@ -19,6 +22,7 @@ import (
 	turnevents "kiao/worker/internal/hybridflow-runner/turns/events"
 	"os"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -78,7 +82,7 @@ const defaultMaxTurns = 4
 const janitorInterval = 5 * time.Minute
 
 // Bump whenever a frame's shape changes; clients with a different version must reload.
-const HarnessProtocolVersion = 21
+const HarnessProtocolVersion = 23
 
 // ClaudeAutoAllowDelay applies only to manualLive permissions, never questions.
 // The server owns the countdown so it runs without a browser; decideAt tells clients the deadline.
@@ -124,7 +128,7 @@ type Turn struct {
 	ConversationID string
 	TurnID         string
 	Owner          string
-	Folder         string // normalised virtual folder; "" is the store root
+	Folder         string // normalised virtual folder; "" is the DCMS root
 	workDir        string // absolute, symlink-resolved cwd handed to the harness
 	PromptText     string // the user's prompt verbatim, for `sync` and the transcript record
 	Model          string
@@ -170,6 +174,7 @@ type Turn struct {
 	// reservation until Spawn fails or the driver's event stream has fully closed.
 	Driver         harnessapi.HarnessDriver
 	ProcessPending bool
+	processDone    chan struct{}
 	SessionID      string
 	// forkPending is cleared when the harness announces the branched session id; guarded by mu.
 	forkPending bool
@@ -231,6 +236,16 @@ func (job *Turn) Outcome() (interrupted bool, failure string) {
 	return job.interrupted, job.failure
 }
 
+// InterruptedProcessDone is set while an interrupted driver still owns its process slot.
+func (job *Turn) InterruptedProcessDone() <-chan struct{} {
+	job.Mu.Lock()
+	defer job.Mu.Unlock()
+	if job.interrupted && job.ProcessPending {
+		return job.processDone
+	}
+	return nil
+}
+
 // claudePermission retains an HarnessAsk and its replay frame until answered or withdrawn.
 type claudePermission struct {
 	requestID string
@@ -268,9 +283,12 @@ type Command struct {
 	Thinking *bool `json:"thinking"`
 	// Empty PermissionMode keeps the conversation's setting.
 	PermissionMode string `json:"permissionMode"`
+	// ResponseTokenLimit is a decimal string so the client can send the exact budget.
+	ResponseTokenLimit string `json:"responseTokenLimit"`
 	// Attachments are ordered ids from POST /hybridflow-runner/attachments, never client-supplied
 	// host paths: clients must not choose arbitrary files for a turn to read.
 	Attachments []string `json:"attachments"`
+	ResumeRunID string   `json:"resumeRunId"`
 
 	RequestID string `json:"requestId"`
 	Behavior  string `json:"behavior"`
@@ -400,13 +418,13 @@ func (h *Engine) SyncFrame(job *Turn) map[string]any {
 	return frame
 }
 
-// storeRoot resolves --add-dir like the working directory. Resolve per turn because the
-// root symlink may have been repointed. Failure omits the flag; folder validation normally catches it first.
-func (h *Engine) storeRoot() string {
-	root, err := runnerconfig.ResolveFolder(h.cfg.RootPath, "")
+// dcmsRoot resolves the DCMS root for each turn because a symlink may have been repointed.
+// Failure leaves the harness with its working directory alone.
+func (h *Engine) dcmsRoot() string {
+	root, err := h.cfg.ResolveFolder("")
 	if err != nil {
-		harnessapi.LogClaudeWS.Warn("cannot resolve the store root; the turn runs with its folder alone",
-			"root", h.cfg.RootPath, "error", err)
+		harnessapi.LogClaudeWS.Warn("cannot resolve the DCMS root; the turn runs with its folder alone",
+			"root", h.cfg.DCMSRoot, "error", err)
 		return ""
 	}
 	return root.Abs
@@ -423,7 +441,7 @@ type TurnRequest struct {
 	// instructions are managed-agent standing orders in the briefing, recorded separately
 	// from the user's prompt.
 	Instructions string
-	// Runner-only play context: managed agent name, card's harness reference, run, flow node and board.
+	// Runner-only play context: managed agent name, harness reference, run, flow node and board.
 	// Recorded in the transcript; empty for chat turns.
 	ManagedAgent string
 	AgentRef     string
@@ -433,7 +451,8 @@ type TurnRequest struct {
 	// nil keeps the conversation setting; false disables extended thinking for this turn.
 	thinking *bool
 	// attachments are ids from POST /hybridflow-runner/attachments, in the order the user attached them.
-	attachments []string
+	attachments        []string
+	responseTokenLimit string
 	// images are resolved store files named by a flow node's body. The prompt names their paths;
 	// the transcript retains the original markdown rather than attachment records.
 	Images []harnessapi.PromptFile
@@ -448,15 +467,33 @@ func (h *Engine) HandlePrompt(c *turnevents.Client, id access.Identity, msg Comm
 	}
 	// Prompting subscribes, so a client cannot miss its own reply by forgetting to ask for it first.
 	h.subscribe(c, conversationID)
-	h.StartTurnFor(c, id, TurnRequest{
-		ConversationID: conversationID,
-		Prompt:         msg.Prompt,
-		Model:          msg.Model,
-		Effort:         msg.Effort,
-		PermissionMode: msg.PermissionMode,
-		thinking:       msg.Thinking,
-		attachments:    msg.Attachments,
-	})
+	if msg.ResponseTokenLimit != "" && !responseTokenLimitPattern.MatchString(msg.ResponseTokenLimit) {
+		h.EmitFor(conversationID, "", turnevents.ErrorFrame(conversationID, turnevents.ErrCodeBadResponseTokenLimit,
+			"The response token limit must be a positive decimal string of up to 22 digits."))
+		return
+	}
+	req := TurnRequest{
+		ConversationID:     conversationID,
+		Prompt:             msg.Prompt,
+		Model:              msg.Model,
+		Effort:             msg.Effort,
+		PermissionMode:     msg.PermissionMode,
+		thinking:           msg.Thinking,
+		attachments:        msg.Attachments,
+		responseTokenLimit: msg.ResponseTokenLimit,
+	}
+	if runID := strings.TrimSpace(msg.ResumeRunID); runID != "" {
+		refuse := func(message string) {
+			h.EmitTo(c, conversationID, turnevents.ErrorFrame(conversationID, turnevents.ErrCodeResumeFailed, message))
+		}
+		if h.ChainRunner == nil {
+			refuse("This service has no chain runner.")
+		} else if err := h.ChainRunner.ResumeWithPrompt(id, runID, req, refuse); err != nil {
+			refuse(err.Error())
+		}
+		return
+	}
+	h.StartTurnFor(c, id, req)
 }
 
 // startTurnFor validates and spawns; c is nil for in-process callers and used only for logging.
@@ -499,11 +536,11 @@ func (h *Engine) StartTurnFor(c *turnevents.Client, id access.Identity, req Turn
 	if !h.cfg.AllowsPermissionMode(protocol.OrDefault(req.PermissionMode, meta.PermissionMode)) {
 		return refuse(turnevents.ErrCodeBypassDisabled, turnevents.BypassDisabledMessage)
 	}
-	// Sessions belong to their engine and cannot move when that harness is withdrawn.
+	// Native sessions belong to the harness that created them.
 	if !h.Harnesses.Known(meta.Harness) {
 		return refuse(turnevents.ErrCodeUnknownHarness,
 			"This conversation runs on "+protocol.OrDefault(meta.Harness, "a harness")+
-				", which this service no longer offers. Fork it with an available agent to carry on.")
+				", which this service no longer offers. Fork it with an agent on an available harness to continue.")
 	}
 	// Harness support is a separate gate from deployment policy: Codex cannot fulfil manual asks.
 	mode := protocol.OrDefault(req.PermissionMode, protocol.OrDefault(meta.PermissionMode, h.cfg.DefaultPermissionMode()))
@@ -511,7 +548,7 @@ func (h *Engine) StartTurnFor(c *turnevents.Client, id access.Identity, req Turn
 		return refuse(turnevents.ErrCodeModeUnsupported, harnessapi.ModeUnsupportedMessage(h.Harnesses.Label(meta.Harness), mode))
 	}
 	// Re-resolve each turn: renames, deletions or symlinks outside the store must prevent spawning.
-	folder, err := runnerconfig.ResolveFolder(h.cfg.RootPath, meta.Folder)
+	folder, err := h.cfg.ResolveFolder(meta.Folder)
 	if err != nil {
 		return refuse(turnevents.ErrCodeBadFolder, "The conversation's folder is unusable: "+faults.ClientMessage(err))
 	}
@@ -656,13 +693,36 @@ func (h *Engine) startTurn(c *turnevents.Client, id access.Identity, meta conver
 		Resumed:        strings.TrimSpace(meta.SessionID) != "",
 		// ForkPending alone cannot branch: a parent session must also exist.
 		forkPending:    meta.ForkPending && strings.TrimSpace(meta.SessionID) != "",
-		StartedAt:      time.Now(),
 		Settled:        make(chan struct{}),
 		ProcessPending: true,
+		processDone:    make(chan struct{}),
 	}
 	if pi != nil {
 		job.InstallationID = pi.Profile.InstallationID
 	}
+	harness := h.Harnesses.DriverFor(job.HarnessName)
+	renderer, hasMCP := harness.(harnessapi.HarnessMCP)
+	var servers []equipment.MCPServer
+	var mcpFailures []equipment.MCPDiagnostic
+	if hasMCP {
+		if prepared == nil {
+			servers, mcpFailures = h.mcpServers()
+		} else {
+			servers, mcpFailures = prepared.Servers, prepared.MCPDiagnostics
+		}
+		if pi != nil && pi.Profile.MCPServers != nil {
+			servers = slices.DeleteFunc(slices.Clone(servers), func(server equipment.MCPServer) bool {
+				return !slices.Contains(pi.Profile.MCPServers, server.Name)
+			})
+			mcpFailures = slices.DeleteFunc(slices.Clone(mcpFailures), func(failure equipment.MCPDiagnostic) bool {
+				return failure.Server != ".mcp.json" && !slices.Contains(pi.Profile.MCPServers, failure.Server)
+			})
+		}
+		diagnostics := h.DiagnoseMCP(context.Background(), id, job.workDir, job.ConversationID+"/"+job.TurnID+"-mcp-check", servers, mcpFailures)
+		servers, mcpFailures = checkedServers(servers, diagnostics)
+	}
+	runInstructions := req.Instructions + mcpNotice(mcpFailures)
+	job.StartedAt = time.Now()
 	// Capture before publishing the job: applySession clears forkPending asynchronously.
 	// The anchor only has meaning with the fork it cuts.
 	forkSession, forkAnchor := job.forkPending, meta.ForkAnchor
@@ -685,8 +745,12 @@ func (h *Engine) startTurn(c *turnevents.Client, id access.Identity, meta conver
 	if meta.ContextPending && meta.SessionID == "" {
 		job.composedPrompt = h.ForkTranscriptContext(meta.ID) + job.composedPrompt
 	}
-	storeRoot := h.storeRoot()
-	job.systemPrompt = briefing.HarnessBriefingWith(storeRoot, req.Instructions)
+	if req.responseTokenLimit != "" && !bareSlashCommand.MatchString(req.Prompt) {
+		job.composedPrompt += "\n\nFor this turn, use at most " + req.responseTokenLimit +
+			" tokens total in your messages to me. Keep your replies complete within that budget."
+	}
+	dcmsRoot := h.dcmsRoot()
+	job.systemPrompt = briefing.HarnessBriefingWith(dcmsRoot, runInstructions)
 
 	// Write the user record before spawning so sweepInterrupted always has a dangling prompt to close.
 	meta, err := h.store.AppendAndUpdate(meta.ID, conversations.ConversationRecord{
@@ -734,32 +798,34 @@ func (h *Engine) startTurn(c *turnevents.Client, id access.Identity, meta conver
 		return failWith(prefix+": "+err.Error(), err)
 	}
 
-	// Resolve the harness once for MCP rendering and spawning. Query tools at spawn time;
-	// rendering errors fail the turn rather than silently removing tools.
-	// Harnesses without HarnessMCP receive no servers or callback credential.
-	harness := h.Harnesses.DriverFor(job.HarnessName)
-
-	servers := h.mcpServers()
-	if prepared != nil {
-		servers = prepared.Servers
-	}
 	mcpConfig := ""
-	if renderer, ok := harness.(harnessapi.HarnessMCP); ok {
-		mcpConfig, err = renderer.RenderMCP(servers)
+	if hasMCP {
+		relayed, err := mcp.RelayStdio(servers)
 		if err != nil {
 			return fail("The turn could not be given its tools", err)
 		}
-	} else {
-		servers = nil
+		mcpConfig, err = renderer.RenderMCP(relayed)
+		if err != nil {
+			return fail("The turn could not be given its tools", err)
+		}
 	}
 
-	// Mint a caller-bound credential before spawn, only if bundled MCP servers need callbacks.
-	if h.NeedsTurnToken(servers) || (prepared != nil && len(servers) > 0) {
+	if h.NeedsTurnToken(servers) {
 		token, err := h.TurnTokens.Issue(id, job.ConversationID+"/"+job.TurnID)
 		if err != nil {
 			return fail("The turn could not be given its tools", err)
 		}
-		job.mcpToken = token
+		job.Mu.Lock()
+		stopped := job.IsDone || job.Superseded
+		if !stopped {
+			job.mcpToken = token
+		}
+		job.Mu.Unlock()
+		if stopped {
+			h.TurnTokens.Revoke(token)
+			job.releaseProcess()
+			return job, nil
+		}
 	}
 
 	// Open before spawn so failures have a trace too; redact the MCP credential.
@@ -772,11 +838,11 @@ func (h *Engine) startTurn(c *turnevents.Client, id access.Identity, meta conver
 		Conversation: job.ConversationID, Turn: job.TurnID,
 		Harness: harnessapi.ResolvedHarness(job.HarnessName), Owner: job.Owner,
 		ProfileID: job.profileID, Execution: job.execution,
-		Folder: job.Folder, WorkDir: job.workDir, StoreRoot: storeRoot,
+		Folder: job.Folder, WorkDir: job.workDir, DCMSRoot: dcmsRoot,
 		Model: model, Effort: effort, PermissionMode: permissionMode, Thinking: thinking,
 		AllowBypass: h.cfg.BypassEnabled,
 		Session:     meta.SessionID, ForkSession: forkSession, ResumeAt: forkAnchor,
-		MCPServers: turntrace.TraceMCPServers(servers), MCPConfig: mcpConfig, MCPToken: job.mcpToken != "",
+		MCPServers: turntrace.TraceMCPServers(servers), MCPConfig: mcpConfig, MCPToken: job.mcpToken != "", MCPDiagnostics: mcpFailures,
 		PlayedBy: req.ManagedAgent, RunID: req.RunID, FlowNodeID: req.FlowNodeID, Board: req.Board,
 		AgentRef: req.AgentRef, AgentVersion: string(version),
 	})
@@ -796,20 +862,32 @@ func (h *Engine) startTurn(c *turnevents.Client, id access.Identity, meta conver
 			return fail("The task execution could not be recorded", err)
 		}
 	}
+	var unavailable []string
+	for _, failure := range mcpFailures {
+		if failure.Server != ".mcp.json" {
+			unavailable = append(unavailable, failure.Server)
+		}
+	}
 	run := harnessapi.HarnessRun{
 		ProfileID: job.profileID, Pi: pi, Images: nativeImages, Compact: strings.TrimSpace(req.Prompt) == "/compact",
 		Conversation: job.ConversationID, Turn: job.TurnID,
 		Prompt:  job.composedPrompt,
-		WorkDir: job.workDir, StoreRoot: storeRoot,
+		WorkDir: job.workDir, DCMSRoot: dcmsRoot,
 		Model: model, Effort: effort, PermissionMode: permissionMode, Thinking: thinking,
-		Instructions: req.Instructions,
-		AllowBypass:  h.cfg.BypassEnabled,
-		SessionID:    meta.SessionID,
-		ForkSession:  forkSession,
-		ResumeAt:     forkAnchor,
-		MCPConfig:    mcpConfig,
-		MCPToken:     job.mcpToken,
-		Trace:        trace,
+		Instructions:   runInstructions,
+		AllowBypass:    h.cfg.BypassEnabled,
+		SessionID:      meta.SessionID,
+		ForkSession:    forkSession,
+		ResumeAt:       forkAnchor,
+		MCPConfig:      mcpConfig,
+		MCPToken:       job.mcpToken,
+		MCPUnavailable: unavailable,
+		Trace:          trace,
+	}
+	if prepared != nil {
+		if err := prepared.EnsureIntact(); err != nil {
+			return fail("The agent package could not be verified before launch", err)
+		}
 	}
 	driver := harness.Driver()
 	// Relay the driver's user-facing spawn error verbatim.
@@ -854,6 +932,8 @@ func (h *Engine) startTurn(c *turnevents.Client, id access.Identity, meta conver
 
 // bareSlashCommand excludes arguments and prose, even if they start with a slash.
 var bareSlashCommand = regexp.MustCompile(`^\s*/[A-Za-z0-9][A-Za-z0-9_:.-]*\s*$`)
+
+var responseTokenLimitPattern = regexp.MustCompile(`^[1-9][0-9]{0,21}$`)
 
 // promptWithContext adds absolute paths for attachments and linked store images.
 // Bare slash commands bypass notes: commands such as /compact treat appended text as arguments.
@@ -1218,6 +1298,9 @@ func (h *Engine) consume(job *Turn, driver harnessapi.HarnessDriver) {
 
 func (job *Turn) releaseProcess() {
 	job.Mu.Lock()
+	if job.ProcessPending && job.processDone != nil {
+		close(job.processDone)
+	}
 	job.ProcessPending = false
 	job.Mu.Unlock()
 }
@@ -1319,12 +1402,15 @@ func (h *Engine) applySession(job *Turn, sessionID string) {
 	job.Mu.Unlock()
 
 	if (fresh || forking) && h.store != nil {
-		if _, err := h.store.Update(job.ConversationID, func(stored *conversations.ConversationMeta) {
+		meta, err := h.store.Update(job.ConversationID, func(stored *conversations.ConversationMeta) {
 			stored.SessionID, stored.SessionLost = sessionID, false
 			stored.ForkPending, stored.ForkAnchor = false, ""
-		}); err != nil {
+		})
+		if err != nil {
 			turntrace.LogConv.Warn("cannot record the harness's session",
 				"conversation", job.ConversationID, "turn", job.TurnID, "error", err)
+		} else {
+			h.BroadcastRegistry(h.ConversationFrame(meta))
 		}
 	}
 	h.Emit(job, map[string]any{"type": "session", "sessionId": sessionID})
@@ -1401,13 +1487,13 @@ func (h *Engine) applyDone(job *Turn, event harnessapi.HarnessEvent) {
 	job.Mu.Lock()
 	stopped := job.stopRequested
 	job.Mu.Unlock()
+	if stopped && h.ChainRunner != nil {
+		h.ChainRunner.OnTurnStopped(job.ConversationID)
+	}
 	meta, recorded := h.FinishTurn(job, exitCode, stopped)
 	if stopped {
 		h.emitFinal(job, map[string]any{"type": "stopped"})
 		h.announceSettled(meta, recorded)
-		if h.ChainRunner != nil {
-			h.ChainRunner.OnTurnStopped(job.ConversationID)
-		}
 		return
 	}
 	// emit suppresses done after a stopped turn; never send a second settling frame.
@@ -1799,15 +1885,14 @@ func (h *Engine) StopProcess(conversationID, requestedBy string) bool {
 	if driver != nil {
 		driver.Stop()
 	}
+	// Notify before settlement can make a board run available to resume.
+	if h.ChainRunner != nil {
+		h.ChainRunner.OnTurnStopped(conversationID)
+	}
 	meta, recorded := h.FinishTurn(job, -1, true)
 	// emitFinal bypasses superseded but still waits for any frame already being written.
 	h.emitFinal(job, map[string]any{"type": "stopped"})
 	h.announceSettled(meta, recorded)
-	// Pause the chain at its current node rather than advancing after a chat stop.
-	// Notify after settlement, which the runner is waiting on.
-	if h.ChainRunner != nil {
-		h.ChainRunner.OnTurnStopped(conversationID)
-	}
 	return true
 }
 

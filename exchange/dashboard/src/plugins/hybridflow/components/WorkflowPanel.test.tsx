@@ -1,21 +1,13 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { Modal } from 'antd';
+import { cleanup, fireEvent, render, screen, waitFor, within } from 'src/test/render';
 import { WorkflowPanel } from './WorkflowPanel';
-import { SelectedWorkflow } from '../Hybridflow-ctx';
-import { BoardContent, Workflow, WorkflowClass } from '../boardContent';
-
-/** The open workflow: its name in a box of its own, and nothing else — a name is all a rectangle has. */
+import { Workflow } from '../boardContent';
 
 const board = vi.hoisted(() => ({
-    content: null as BoardContent | null,
-    selectedWorkflow: null as SelectedWorkflow | null,
-    selectedWorkflowGroup: null as Workflow | WorkflowClass | null,
+    selectedWorkflowGroup: null as Workflow | null,
     editWorkflow: vi.fn(),
-    editWorkflowClass: vi.fn(),
     removeWorkflows: vi.fn(),
-    removeWorkflowClasses: vi.fn(),
     titleCaret: null as string | null,
     takeTitleCaret: vi.fn(),
 }));
@@ -24,59 +16,45 @@ vi.mock('../Hybridflow-ctx', () => ({
     useHybridflow: () => board,
 }));
 
+vi.mock('@kiao-dashboard-kit/code-editor', () => ({
+    CodeMirrorJsonEditor: ({ value }: { value: string }) => <textarea aria-label="Workflow values (JSON)" value={value} readOnly />,
+}));
+
 const workflowOf = (name: string): Workflow => ({ id: 'w1', name });
 
-const show = (group: Workflow | WorkflowClass, kind: SelectedWorkflow['kind']) => {
-    board.content = { flowNodes: [], flowNodeClasses: [], workflows: [], workflowClasses: [] };
-    board.selectedWorkflow = { kind, id: group.id };
-    board.selectedWorkflowGroup = group;
+const show = (workflow: Workflow) => {
+    board.selectedWorkflowGroup = workflow;
     return render(<WorkflowPanel />);
 };
 
 beforeEach(() => {
     vi.clearAllMocks();
-    board.content = null;
-    board.selectedWorkflow = null;
     board.selectedWorkflowGroup = null;
     board.titleCaret = null;
 });
 
 afterEach(() => {
     cleanup();
-    Modal.destroyAll();
 });
 
 describe('naming a workflow', () => {
     it('renames the open workflow as the name is typed', () => {
-        show(workflowOf('Sprint'), 'workflow');
+        show(workflowOf('Sprint'));
 
         fireEvent.change(screen.getByTestId('workflow-name'), { target: { value: 'Release' } });
 
         expect(board.editWorkflow).toHaveBeenCalledWith('w1', 'Release');
-        expect(board.editWorkflowClass).not.toHaveBeenCalled();
     });
 
-    it('renames the open workflow class through its own call', () => {
-        show({ id: 'wc1', name: 'Shapes' }, 'workflowClass');
-
-        fireEvent.change(screen.getByTestId('workflow-name'), { target: { value: 'Forms' } });
-
-        expect(board.editWorkflowClass).toHaveBeenCalledWith('wc1', 'Forms');
-        expect(board.editWorkflow).not.toHaveBeenCalled();
-    });
-
-    it('says which kind is open', () => {
-        show(workflowOf('Sprint'), 'workflow');
+    it('shows the workflow values', () => {
+        show(workflowOf('Sprint'));
         expect(screen.getByTestId('workflow-panel').textContent).toContain('Workflow');
-        cleanup();
-
-        show({ id: 'wc1', name: 'Shapes' }, 'workflowClass');
-        expect(screen.getByTestId('workflow-panel').textContent).toContain('Workflow class');
+        expect(screen.getByRole('textbox', { name: 'Workflow values (JSON)' })).toHaveValue('{}');
     });
 
     it('takes the focus into the name where the rectangle asked for it', () => {
         board.titleCaret = 'w1';
-        show(workflowOf(''), 'workflow');
+        show(workflowOf(''));
 
         expect(screen.getByTestId('workflow-name')).toHaveFocus();
         expect(board.takeTitleCaret).toHaveBeenCalled();
@@ -90,7 +68,7 @@ describe('naming a workflow', () => {
 
 describe('deleting a workflow', () => {
     it('asks before taking the open workflow off', async () => {
-        show(workflowOf('Sprint'), 'workflow');
+        show(workflowOf('Sprint'));
 
         fireEvent.click(screen.getByTestId('delete-workflow'));
 
@@ -98,13 +76,13 @@ describe('deleting a workflow', () => {
         expect(board.removeWorkflows).not.toHaveBeenCalled();
     });
 
-    it('takes the open workflow class off once the ask is answered', async () => {
-        show({ id: 'wc1', name: 'Shapes' }, 'workflowClass');
+    it('takes the open workflow off once confirmed', async () => {
+        show(workflowOf('Shapes'));
 
         fireEvent.click(screen.getByTestId('delete-workflow'));
-        await waitFor(() => expect(document.body.textContent).toContain('Delete the workflow class “Shapes”?'));
-        fireEvent.click(screen.getByText('Delete workflow class'));
+        const dialog = await screen.findByRole('dialog', { name: 'Delete the workflow “Shapes”?' });
+        fireEvent.click(within(dialog).getByRole('button', { name: 'Delete workflow' }));
 
-        await waitFor(() => expect(board.removeWorkflowClasses).toHaveBeenCalledWith(['wc1']));
+        await waitFor(() => expect(board.removeWorkflows).toHaveBeenCalledWith(['w1']));
     });
 });

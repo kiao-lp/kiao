@@ -16,7 +16,7 @@ your machine's harness CLIs and credentials.
 The installation includes Dashboard, worker, hybridflow-store, the PlantUML renderer,
 the `kiao-mcp` servers and the toolbox. Unlike the [Docker image](kiao-docker.md),
 it does not include PostgreSQL: [boards](#boards) require a boards service or a database
-you provide. Workflow agents come from the shared agentic-resource-manager deployed
+you provide. Agents come from the shared agentic-resource-manager deployed
 beside hybridflow-store. This page details installation, command options and configuration.
 
 Run the build commands from the Kiao source checkout, in the directory containing `bin/`:
@@ -85,7 +85,8 @@ edit markdown.
 
 ## Running an instance
 
-`kiao [folder]` — the folder defaults to the current directory, and must exist.
+`kiao [folder]` serves the given folder as the DCMS root. The folder must exist and defaults
+to the current directory.
 
 | Option | |
 |---|---|
@@ -159,7 +160,7 @@ service over HTTPS, the way a browser does.
 **Who the work is recorded as** is `KIAO_HYBRIDFLOW_ACTOR`, your login name by default. It matters
 because a machine running one folder for one person has no Keycloak session to borrow: the launcher
 presents the deployment's service token and names you beside it, and that name is what the change
-log records. Without it every card you moved would be attributed to the service.
+log records. Without it every flow node you moved would be attributed to the service.
 
 The startup lines say where the boards are and who you are to them:
 
@@ -200,7 +201,7 @@ empty one is enough. The *boards* in it are not — make them from the Boards ta
 is up.
 
 Setting both variables is refused at startup rather than resolved by guessing: they are two
-different places to write a card to, and they look identical from the screen.
+different places to write a flow node to, and they look identical from the screen.
 
 ## Agents
 
@@ -278,14 +279,11 @@ there, a turn is handed exactly those servers and the ones you registered with `
 stop arriving. Register nothing and nothing changes — your own servers reach the Claude tab as
 before.
 
-**Turning the machine off.** A hybridflow flow node can ask for it — a **Shutdown** card, one of the four
-kinds a card is typed — and this is the start that honours it: the machine is the one you are sitting
-at, and the service runs as you. It goes off once that card is marked **done**, and the play ends
-there, a Shutdown naming nothing after it; a card that came back an error leaves the machine on. The
-command is `systemctl poweroff`, which a Debian machine grants a logged-in user over polkit;
-`KIAO_WORKER_SHUTDOWN_COMMAND` in your environment replaces it, and an empty value turns the
-card into the no-op it is everywhere else. The image and a server deployment set nothing, so a board carrying one
-travels to them and the play simply ends there.
+**Turning the machine off.** When a run reaches a **Shutdown** flow node, the installed
+executable marks it **done**, ends the run and turns off the runner machine. A failed step
+earlier in the chain leaves the machine on. The default command is `systemctl poweroff`, which a
+Debian machine grants a logged-in user over polkit. Set `KIAO_WORKER_SHUTDOWN_COMMAND` to use
+another command. An empty command disables shutdown and the runner marks the flow node **error**.
 
 **Diagrams** are a core feature, so the renderer ships with the executable: the install puts a pinned
 `plantuml.jar` in `lib/`, and that is the one used — nothing to find, nothing to install. It is run

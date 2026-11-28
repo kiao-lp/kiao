@@ -10,11 +10,17 @@ Import from `@kiao-dashboard-core`; `@kiao-dashboard-kit/code-editor` remains an
 These components own no file state or layout; their callers supply `value` and `onChange`.
 They follow the foundation's `ThemeProvider`.
 
+- `CodeMirrorEditor` provides the single-document surface, with shared styling, wrapping,
+  search and editor options. Adapters supply language support and document commands.
+- `CodeMirrorTextEditor` uses the surface without gutters or bracket assistance.
 - `CodeMirrorCodeEditor` selects syntax highlighting from `path`, defaulting to JSON
   without one. `extensions` adds CodeMirror behavior to that instance.
 - `CodeMirrorJsonEditor` adds JSON syntax diagnostics and schema completion. Pass a `schema` object or boolean for validation and property/value suggestions. A document `$schema`, when present, selects the schema.
 - `JSON_SCHEMA_META_SCHEMA` selects the bundled Draft 2020-12 meta-schema for editing
   schemas themselves. Draft 4, 6, 7 and 2019-09 declarations also use bundled meta-schemas.
+- Markdown and ArchDia source share the Markdown grammar and fenced-code highlighting.
+  The Markdown adapter adds heading folding, formatting commands and internal link handling.
+  The ArchDia adapter enables built-in completion. Its host owns diagram parsing and persistence.
 
 For a text field, use the same component with `height="auto"`, `minHeight="80px"`,
 `maxHeight="240px"` and `lineNumbers={false}`. It also accepts `placeholder`,
@@ -53,5 +59,4 @@ diagnostics. The default meta-schema applies when a schema document omits `$sche
 `jsonSchemaExtensions(schema)` exposes the same assistance for an existing CodeMirror
 instance with the JSON language. It has no dependency on the JSON Schema file plugin.
 
-`CodeMirrorTextEditor` provides a plain text surface. [TextComparison](comparison.md)
-compares two strings with optional editing and change navigation.
+[TextComparison](comparison.md) uses `MergeView` for two synchronized editor panes and change navigation.

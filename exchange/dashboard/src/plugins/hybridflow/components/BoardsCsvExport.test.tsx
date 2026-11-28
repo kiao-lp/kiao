@@ -1,22 +1,14 @@
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from 'src/test/render';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { Modal, message } from 'antd';
 
-/** The boards list carries the one place archived cards are still read: an icon button offering every. */
-vi.mock('@kiao-dashboard-core', async () => ({
-    useAuthToken: () => 'tok',
-    LayoutContent: ({ children, additionalPanels }: {
-        children: React.ReactNode; additionalPanels?: React.ReactNode;
-    }) => <div>{additionalPanels}{children}</div>,
-    TopBanner: () => null,
-    Tooltip: (await import('antd')).Tooltip,
-}));
 vi.mock('../Hybridflow-ctx', () => ({ useHybridflow: () => ({ handle: null }) }));
 
 import { BoardsPage } from './BoardsPage';
+import { BoardsCatalogProvider } from '../BoardsCatalog-ctx';
 import { FakeHybridflowClient, HybridflowClientProvider } from '../service';
 import { boardOf } from '../test/fixtures';
 import { newFlowNode } from '../boardContent';
@@ -65,13 +57,13 @@ afterEach(() => {
 const renderPage = () => render(
     <MemoryRouter initialEntries={['/boards']}>
         <HybridflowClientProvider client={service.asClient()}>
-            <BoardsPage />
+            <BoardsCatalogProvider><BoardsPage /></BoardsCatalogProvider>
         </HybridflowClientProvider>
     </MemoryRouter>,
 );
 
 describe('BoardsPage archived flow nodes export', () => {
-    it('offers every archived card as one .csv file, live cards left out', async () => {
+    it('offers every archived node as one .csv file, live nodes left out', async () => {
         renderPage();
         await screen.findAllByTestId(/board-row-/);
 
@@ -82,13 +74,13 @@ describe('BoardsPage archived flow nodes export', () => {
         const text = await readFileText(offered.blob!);
         const [header, row] = text.trim().split('\n');
         expect(header).toBe('board,title,agent,model,effort,reports,input_tokens,output_tokens,'
-            + 'cache_read_tokens,cache_write_tokens,reasoning_tokens,cost_usd,node_class,'
+            + 'cache_read_tokens,cache_write_tokens,reasoning_tokens,cost_usd,'
             + 'complexity');
-        expect(row).toBe('board,Away,Scribe,muse-spark,high,1,100,50,0,0,0,1,,');
+        expect(row).toBe('board,Away,Scribe,muse-spark,high,1,100,50,0,0,0,1,');
         expect(text).not.toContain('Live');
     });
 
-    it('says so in the list where no board holds an archived card', async () => {
+    it('says so in the list where no board holds an archived node', async () => {
         service = new FakeHybridflowClient(boardOf([newFlowNode('Live')]));
         renderPage();
         await screen.findAllByTestId(/board-row-/);

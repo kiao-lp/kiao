@@ -10,7 +10,7 @@ const INDEX_NAME = 'Index';
 export const isIndexFile = (file: FileDto) =>
     !file.isDirectory && extractName(file.path).split('.')[0] === INDEX_NAME;
 
-// Whether `path` sits in `folder` or below it. The root folder is "", and everything is below it.
+// Whether `path` sits in `folder` or below it. The DCMS root is represented by "".
 const isWithin = (path: string, folder: string) =>
     folder === '' ? path !== '' : path === folder || path.startsWith(folder + '/');
 

@@ -1,29 +1,33 @@
 import React, { useRef } from 'react';
-import { Button, Switch } from 'antd';
-import { PlusOutlined, ReloadOutlined, TableOutlined, UploadOutlined } from '@ant-design/icons';
+import { IconButton } from '@kiao-dashboard-core';
+import { Dropdown, Switch, Tooltip } from 'antd';
+import { AppstoreOutlined, FolderOutlined, PlusOutlined, ReloadOutlined, TableOutlined, UploadOutlined } from '@ant-design/icons';
+import { useBoardsCatalog } from '../BoardsCatalog-ctx';
 import { useBoardsList } from '../BoardsList-ctx';
-import styles from './BoardsList.module.css';
 
-/** Boards list controls: archived toggle, reload, import, export, new board. */
 export const BoardsControls: React.FC = () => {
-    const {
-        client, loading, load, showArchived, setShowArchived,
-        setCreating, importFile, importing, exportArchivedCsv, exportingCsv,
-    } = useBoardsList();
+    const { client, loading, reload, showArchived, setShowArchived } = useBoardsCatalog();
+    const { openNameDialog, importFile, importing, exportArchivedCsv, exportingCsv } = useBoardsList();
     const fileRef = useRef<HTMLInputElement>(null);
 
     return (
         <>
-            <span aria-label="Show the boards that have been put away" className={styles.when}>
-                <Switch size="small" checked={showArchived} onChange={setShowArchived} /> Archived
-            </span>
-            <Button size="small" icon={<ReloadOutlined />} onClick={() => void load()}
-                disabled={loading || !client} aria-label="Reload the boards" />
-            <Button size="small" icon={<UploadOutlined />}
-                onClick={() => fileRef.current?.click()} disabled={!client} loading={importing}>
-                Import
-            </Button>
-            { }
+            <Tooltip title="Show archived boards">
+                <Switch size="small" checked={showArchived} onChange={setShowArchived}
+                    disabled={!client} aria-label="Show archived boards" />
+            </Tooltip>
+            <IconButton
+                label="Reload the boards"
+                type="default"
+                icon={<ReloadOutlined />} onClick={reload}
+                disabled={loading || !client} loading={loading} aria-busy={loading}
+            />
+            <IconButton
+                label="Import board"
+                tooltip
+                icon={<UploadOutlined />}
+                onClick={() => fileRef.current?.click()} disabled={!client} loading={importing}
+            />
             <input ref={fileRef} type="file" accept=".json,application/json" hidden
                 data-testid="import-board-input"
                 onChange={event => {
@@ -31,15 +35,29 @@ export const BoardsControls: React.FC = () => {
                     event.target.value = '';
                     if (file) void importFile(file);
                 }} />
-            <Button size="small" icon={<TableOutlined />}
+            <IconButton
+                label="Export archived flow nodes"
+                type="default"
+                icon={<TableOutlined />}
                 onClick={() => void exportArchivedCsv()}
                 disabled={!client} loading={exportingCsv}
-                aria-label="Export archived flow nodes"
-                data-testid="export-archived-flow-nodes" />
-            <Button size="small" type="primary" icon={<PlusOutlined />}
-                onClick={() => setCreating(true)} disabled={!client}>
-                New board
-            </Button>
+                data-testid="export-archived-flow-nodes"
+            />
+            <Dropdown trigger={['click']} autoFocus placement="bottomRight" disabled={!client} menu={{
+                items: [
+                    { key: 'board', label: 'New board', icon: <AppstoreOutlined aria-hidden="true" />,
+                        onClick: () => openNameDialog({ kind: 'board' }) },
+                    { key: 'folder', label: 'New folder', icon: <FolderOutlined aria-hidden="true" />,
+                        onClick: () => openNameDialog({ kind: 'folder' }) },
+                ],
+            }}>
+                <IconButton
+                    label="Create board or folder"
+                    tooltip
+                    icon={<PlusOutlined />}
+                    aria-haspopup="menu" disabled={!client}
+                />
+            </Dropdown>
         </>
     );
 };

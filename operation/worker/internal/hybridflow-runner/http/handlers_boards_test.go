@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 // boardStub is a hybridflow-store that records what it was asked and answers what it was told:
@@ -157,27 +158,10 @@ func TestBoardsProxyRefusesWhereNoStoreIsNamed(t *testing.T) {
 		{http.MethodDelete, "/hybridflow-runner/boards/major/flow-nodes", `{"flowNodes":["card-1"]}`},
 		{http.MethodPost, "/hybridflow-runner/boards/major/flow-nodes/card-1/chain", `{"flowNode":"card-2"}`},
 		{http.MethodGet, "/hybridflow-runner/boards/major/flow-nodes/card-1/usage", ""},
-		{http.MethodPost, "/hybridflow-runner/boards/major/flow-nodes/card-1/to-class", ""},
-		{http.MethodGet, "/hybridflow-runner/flow-node-classes", ""},
-		{http.MethodPost, "/hybridflow-runner/boards/major/flow-node-classes", `{"title":"Class"}`},
-		{http.MethodGet, "/hybridflow-runner/boards/major/flow-node-classes/class-1", ""},
-		{http.MethodPatch, "/hybridflow-runner/boards/major/flow-node-classes/class-1", `{"title":"Renamed"}`},
-		{http.MethodDelete, "/hybridflow-runner/boards/major/flow-node-classes", `{"flowNodeClasses":["class-1"]}`},
-		{http.MethodPost, "/hybridflow-runner/boards/major/flow-node-classes/class-1/chain", `{"flowNode":"class-2"}`},
-		{http.MethodPost, "/hybridflow-runner/boards/major/flow-node-classes/class-1/versions", `{"body":"v2"}`},
-		{http.MethodPatch, "/hybridflow-runner/boards/major/flow-node-classes/class-1/versions/ver-1", `{"body":"v2"}`},
-		{http.MethodDelete, "/hybridflow-runner/boards/major/flow-node-classes/class-1/versions/ver-1", ""},
-		{http.MethodPost, "/hybridflow-runner/boards/major/flow-node-classes/class-1/instantiate", `{}`},
 		{http.MethodPost, "/hybridflow-runner/boards/major/workflows", `{"name":"Sprint"}`},
 		{http.MethodGet, "/hybridflow-runner/boards/major/workflows/wf-1", ""},
 		{http.MethodPatch, "/hybridflow-runner/boards/major/workflows/wf-1", `{"name":"Release"}`},
 		{http.MethodDelete, "/hybridflow-runner/boards/major/workflows", `{"workflows":["wf-1"]}`},
-		{http.MethodGet, "/hybridflow-runner/workflow-classes", ""},
-		{http.MethodPost, "/hybridflow-runner/boards/major/workflow-classes", `{"name":"Sprint"}`},
-		{http.MethodGet, "/hybridflow-runner/boards/major/workflow-classes/wc-1", ""},
-		{http.MethodPatch, "/hybridflow-runner/boards/major/workflow-classes/wc-1", `{"name":"Release"}`},
-		{http.MethodDelete, "/hybridflow-runner/boards/major/workflow-classes", `{"workflowClasses":["wc-1"]}`},
-		{http.MethodPost, "/hybridflow-runner/boards/major/workflow-classes/wc-1/instantiate", `{}`},
 		{http.MethodGet, "/hybridflow-runner/agents", ""},
 		{http.MethodPost, "/hybridflow-runner/agents", `{"name":"Reviewer","harness":"claude"}`},
 		{http.MethodGet, "/hybridflow-runner/agents/agent-1", ""},
@@ -214,7 +198,7 @@ func TestBoardsProxyForwardsReadsWritesAndRefusals(t *testing.T) {
 		t.Fatalf("patch status = %d, want 200; body: %s", res.Code, res.Body.String())
 	}
 	if stub.path != "/boards/major/flow-nodes/card-1" {
-		t.Errorf("upstream path = %s, want the card's", stub.path)
+		t.Errorf("upstream path = %s, want the flow node's", stub.path)
 	}
 	if stub.ifMatch != "7" {
 		t.Errorf("upstream If-Match = %q, want the conditional write forwarded", stub.ifMatch)
@@ -279,31 +263,19 @@ func TestBoardsProxyForwardsEverySafeRoute(t *testing.T) {
 		{http.MethodGet, "/hybridflow-runner/boards?archived=1", http.MethodGet, "/boards", ""},
 		{http.MethodPatch, "/hybridflow-runner/boards/major", http.MethodPatch, "/boards/major", `{"name":"Majeur"}`},
 		{http.MethodDelete, "/hybridflow-runner/boards/major", http.MethodDelete, "/boards/major", ""},
+		{http.MethodGet, "/hybridflow-runner/folders/boards", http.MethodGet, "/folders/boards", ""},
+		{http.MethodPost, "/hybridflow-runner/folders/boards", http.MethodPost, "/folders/boards", `{"name":"Planning"}`},
+		{http.MethodPatch, "/hybridflow-runner/folders/boards/folder%201", http.MethodPatch, "/folders/boards/folder%201", `{"name":"Release"}`},
+		{http.MethodDelete, "/hybridflow-runner/folders/boards/folder-1", http.MethodDelete, "/folders/boards/folder-1", ""},
+		{http.MethodGet, "/hybridflow-runner/flow-nodes/card%201/board", http.MethodGet, "/flow-nodes/card%201/board", ""},
 		{http.MethodGet, "/hybridflow-runner/boards/major/flow-nodes/card-1", http.MethodGet, "/boards/major/flow-nodes/card-1", ""},
 		{http.MethodDelete, "/hybridflow-runner/boards/major/flow-nodes", http.MethodDelete, "/boards/major/flow-nodes", `{"flowNodes":["card-1"]}`},
 		{http.MethodPost, "/hybridflow-runner/boards/major/flow-nodes/card-1/chain", http.MethodPost, "/boards/major/flow-nodes/card-1/chain", `{"flowNode":"card-2"}`},
 		{http.MethodGet, "/hybridflow-runner/boards/major/flow-nodes/card-1/usage", http.MethodGet, "/boards/major/flow-nodes/card-1/usage", ""},
-		{http.MethodPost, "/hybridflow-runner/boards/major/flow-nodes/card-1/to-class", http.MethodPost, "/boards/major/flow-nodes/card-1/to-class", ""},
-		{http.MethodGet, "/hybridflow-runner/flow-node-classes", http.MethodGet, "/flow-node-classes", ""},
-		{http.MethodPost, "/hybridflow-runner/boards/major/flow-node-classes", http.MethodPost, "/boards/major/flow-node-classes", `{"title":"Class"}`},
-		{http.MethodGet, "/hybridflow-runner/boards/major/flow-node-classes/class-1", http.MethodGet, "/boards/major/flow-node-classes/class-1", ""},
-		{http.MethodPatch, "/hybridflow-runner/boards/major/flow-node-classes/class-1", http.MethodPatch, "/boards/major/flow-node-classes/class-1", `{"title":"Renamed"}`},
-		{http.MethodDelete, "/hybridflow-runner/boards/major/flow-node-classes", http.MethodDelete, "/boards/major/flow-node-classes", `{"flowNodeClasses":["class-1"]}`},
-		{http.MethodPost, "/hybridflow-runner/boards/major/flow-node-classes/class-1/chain", http.MethodPost, "/boards/major/flow-node-classes/class-1/chain", `{"flowNode":"class-2"}`},
-		{http.MethodPost, "/hybridflow-runner/boards/major/flow-node-classes/class-1/versions", http.MethodPost, "/boards/major/flow-node-classes/class-1/versions", `{"body":"v2"}`},
-		{http.MethodPatch, "/hybridflow-runner/boards/major/flow-node-classes/class-1/versions/ver-1", http.MethodPatch, "/boards/major/flow-node-classes/class-1/versions/ver-1", `{"body":"v2"}`},
-		{http.MethodDelete, "/hybridflow-runner/boards/major/flow-node-classes/class-1/versions/ver-1", http.MethodDelete, "/boards/major/flow-node-classes/class-1/versions/ver-1", ""},
-		{http.MethodPost, "/hybridflow-runner/boards/major/flow-node-classes/class-1/instantiate", http.MethodPost, "/boards/major/flow-node-classes/class-1/instantiate", `{}`},
 		{http.MethodPost, "/hybridflow-runner/boards/major/workflows", http.MethodPost, "/boards/major/workflows", `{"name":"Sprint"}`},
 		{http.MethodGet, "/hybridflow-runner/boards/major/workflows/wf-1", http.MethodGet, "/boards/major/workflows/wf-1", ""},
 		{http.MethodPatch, "/hybridflow-runner/boards/major/workflows/wf-1", http.MethodPatch, "/boards/major/workflows/wf-1", `{"name":"Release"}`},
 		{http.MethodDelete, "/hybridflow-runner/boards/major/workflows", http.MethodDelete, "/boards/major/workflows", `{"workflows":["wf-1"]}`},
-		{http.MethodGet, "/hybridflow-runner/workflow-classes", http.MethodGet, "/workflow-classes", ""},
-		{http.MethodPost, "/hybridflow-runner/boards/major/workflow-classes", http.MethodPost, "/boards/major/workflow-classes", `{"name":"Sprint"}`},
-		{http.MethodGet, "/hybridflow-runner/boards/major/workflow-classes/wc-1", http.MethodGet, "/boards/major/workflow-classes/wc-1", ""},
-		{http.MethodPatch, "/hybridflow-runner/boards/major/workflow-classes/wc-1", http.MethodPatch, "/boards/major/workflow-classes/wc-1", `{"name":"Release"}`},
-		{http.MethodDelete, "/hybridflow-runner/boards/major/workflow-classes", http.MethodDelete, "/boards/major/workflow-classes", `{"workflowClasses":["wc-1"]}`},
-		{http.MethodPost, "/hybridflow-runner/boards/major/workflow-classes/wc-1/instantiate", http.MethodPost, "/boards/major/workflow-classes/wc-1/instantiate", `{}`},
 		{http.MethodGet, "/hybridflow-runner/agents", http.MethodGet, "/agents", ""},
 		{http.MethodPost, "/hybridflow-runner/agents", http.MethodPost, "/agents", `{"name":"Reviewer","harness":"claude"}`},
 		{http.MethodGet, "/hybridflow-runner/agents/agent-1", http.MethodGet, "/agents/agent-1", ""},
@@ -333,5 +305,21 @@ func TestBoardsProxyForwardsEverySafeRoute(t *testing.T) {
 		if stub.actor != "alex" {
 			t.Errorf("%s %s: upstream X-Kiao-Actor = %q, want the turn's owner", tc.method, tc.target, stub.actor)
 		}
+	}
+}
+
+func TestBoardsProxyWaitsForTheChangesFeed(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(25 * time.Millisecond)
+		_, _ = io.WriteString(w, `{"changes":[],"cursor":1}`)
+	}))
+	t.Cleanup(upstream.Close)
+	store := pkgBoards.NewHybridflowStore(upstream.URL, "")
+	store.Client.Timeout = time.Millisecond
+	svc := &Service{boardsUpstream: store}
+
+	res := do(svc, httptest.NewRequest(http.MethodGet, "/hybridflow-runner/changes?since=1&wait=1", nil))
+	if res.Code != http.StatusOK {
+		t.Errorf("watch status = %d, want 200; body: %s", res.Code, res.Body.String())
 	}
 }

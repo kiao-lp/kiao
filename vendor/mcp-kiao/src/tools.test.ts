@@ -32,19 +32,14 @@ describe('tool registrars', () => {
     });
 
     it('registerHybridflowTools exposes the hybridflow families', () => {
-        const families = ['board_', 'workflow_', 'workflow_class_', 'class_', 'agent_', 'runner_', 'hybridflow_'];
+        const families = ['board_', 'workflow_', 'agent_', 'runner_', 'hybridflow_'];
         expect(boardTools.every((n) => families.some((prefix) => n.startsWith(prefix)))).toBe(true);
         expect(boardTools).toEqual(
             expect.arrayContaining([
                 'board_schema_values', 'board_list', 'board_create', 'board_get', 'board_patch', 'board_delete',
                 'board_add_cards', 'board_get_card', 'board_patch_card', 'board_delete_cards',
-                'board_chain_card', 'board_card_usage', 'board_card_to_class', 'board_changes',
-                'workflow_create', 'workflow_get', 'workflow_patch', 'workflow_delete',
-                'workflow_class_list', 'workflow_class_create', 'workflow_class_get',
-                'workflow_class_patch', 'workflow_class_delete', 'workflow_class_instantiate',
-                'class_list', 'class_create', 'class_get', 'class_patch', 'class_delete',
-                'class_chain', 'class_create_version', 'class_patch_version',
-                'class_delete_version', 'class_instantiate',
+                'board_chain_card', 'board_card_usage', 'board_changes',
+                'workflow_create', 'workflow_get', 'workflow_copy', 'workflow_paste', 'workflow_patch', 'workflow_delete',
                 'agent_list', 'agent_create', 'agent_get', 'agent_patch', 'agent_delete', 'agent_publish', 'agent_versions',
                 'runner_list', 'runner_create', 'runner_get', 'runner_patch', 'runner_delete',
                 'hybridflow_schema',
@@ -55,7 +50,7 @@ describe('tool registrars', () => {
         for (const forbidden of ['board_play', 'board_played', 'board_settle', 'board_record_usage', 'runner_heartbeat']) {
             expect(boardTools).not.toContain(forbidden);
         }
-        expect(boardTools).toHaveLength(47);
+        expect(boardTools).toHaveLength(32);
     });
 
     it('the two tool sets are disjoint and free of duplicates', () => {
@@ -80,7 +75,6 @@ describe('token economy', () => {
         expect(ok('already text').content[0].text).toBe('already text');
     });
 });
-
 
 describe('agent tools', () => {
     it('accepts and forwards selection descriptions separately from instructions', async () => {
@@ -124,21 +118,18 @@ describe('agent tools', () => {
 });
 
 describe('scheduler tools', () => {
-    it('accepts and forwards duration on card and class creation and patches', async () => {
+    it('accepts and forwards duration on card creation and patches', async () => {
         const registered = new Map<string, { config: { inputSchema: z.ZodRawShape }; handler: (input: unknown) => Promise<unknown> }>();
         const server = { registerTool: (name: string, config: { inputSchema: z.ZodRawShape }, handler: (input: unknown) => Promise<unknown>) => {
             registered.set(name, { config, handler });
         } } as unknown as McpServer;
         const api = {
             createFlowNodes: vi.fn().mockResolvedValue([]), patchFlowNode: vi.fn().mockResolvedValue({}),
-            createFlowNodeClass: vi.fn().mockResolvedValue({}), patchFlowNodeClass: vi.fn().mockResolvedValue({}),
         };
         registerHybridflowTools(server, api as unknown as HybridflowApi);
         for (const [name, input, method] of [
             ['board_add_cards', { handle: 'major', flowNodes: [{ title: 'Wait', type: 'scheduler', duration: '15m' }] }, 'createFlowNodes'],
             ['board_patch_card', { handle: 'major', id: 'card', patch: { duration: '30s' } }, 'patchFlowNode'],
-            ['class_create', { handle: 'major', title: 'Wait', type: 'scheduler', duration: '1h' }, 'createFlowNodeClass'],
-            ['class_patch', { handle: 'major', id: 'class', patch: { duration: '2h' } }, 'patchFlowNodeClass'],
         ] as const) {
             const tool = registered.get(name)!;
             const parsed = z.object(tool.config.inputSchema).parse(input);

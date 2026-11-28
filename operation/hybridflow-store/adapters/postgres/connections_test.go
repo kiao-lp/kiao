@@ -3,12 +3,110 @@ package postgres
 import (
 	"context"
 	"errors"
+	"slices"
 	"sync"
 	"testing"
 
 	"kiao/hybridflow-store/core/entities"
 	"kiao/hybridflow-store/core/services"
 )
+
+func TestParallelGatewayClaimsOneReplayPerSetOfResults(t *testing.T) {
+	boards, nodes, store, _ := wire(t)
+	ctx := context.Background()
+	board, err := boards.Create(ctx, services.NewBoardRequest{Name: "Parallel"}, "alex")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := uuidIDs{store: store}
+	join, left, right := ids.NewID(), ids.NewID(), ids.NewID()
+	if _, err := nodes.Create(ctx, board.ID, []services.NewFlowNodeRequest{
+		{ID: join, Title: "Join", Type: "gateway"},
+		{ID: left, Title: "Left", Type: "scheduler", Duration: "1ms", Next: join},
+		{ID: right, Title: "Right", Type: "scheduler", Duration: "1ms", Next: join},
+	}, "alex"); err != nil {
+		t.Fatal(err)
+	}
+	complete := func(id, run string, arrival ...bool) {
+		t.Helper()
+		if _, err := nodes.StartPlay(ctx, id, run, "alex", arrival...); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := nodes.EndPlay(ctx, id, run, "alex", entities.PlayResult{Status: entities.StatusDone}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	complete(left, "left-1")
+	complete(right, "right-1")
+	complete(join, "join-1", true)
+	complete(left, "left-2")
+	if _, err := nodes.StartPlay(ctx, join, "early", "alex", true); !errors.Is(err, entities.ErrGatewayWaiting) {
+		t.Fatalf("claim with one previous result: %v", err)
+	}
+	complete(right, "right-2")
+	complete(join, "join-2", true)
+	if _, err := nodes.StartPlay(ctx, join, "late", "alex", true); !errors.Is(err, entities.ErrGatewayWaiting) {
+		t.Fatalf("duplicate arrival after the winner released the flow node: %v", err)
+	}
+	complete(join, "explicit-replay")
+}
+
+func TestExclusiveGatewayRoutesFollowTheirLinks(t *testing.T) {
+	boards, nodes, store, _ := wire(t)
+	ctx := context.Background()
+	board, err := boards.Create(ctx, services.NewBoardRequest{Name: "Decisions"}, "alex")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := uuidIDs{store: store}
+	decision, left, right, extra := ids.NewID(), ids.NewID(), ids.NewID(), ids.NewID()
+	first := entities.Route{Condition: "input.approved", FlowNode: left}
+	last := entities.Route{Condition: "true", FlowNode: right}
+	if _, err := nodes.Create(ctx, board.ID, []services.NewFlowNodeRequest{
+		{ID: decision, Type: "exclusive-gateway", Nexts: []string{left, right}, Routes: []entities.Route{first, last}},
+		{ID: left, Title: "Publish"}, {ID: right, Title: "Review"},
+		{Title: "Input", Next: decision},
+		{ID: extra, Title: "Alternative input"},
+	}, "alex"); err != nil {
+		t.Fatal(err)
+	}
+	assertRoutes := func(want []entities.Route) {
+		t.Helper()
+		got, err := store.FindFlowNode(ctx, decision)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !slices.Equal(got.Routes, want) {
+			t.Fatalf("routes = %+v, want %+v", got.Routes, want)
+		}
+	}
+	assertRoutes([]entities.Route{first, last})
+
+	routes := []entities.Route{last, first}
+	if _, err := nodes.Patch(ctx, decision, entities.FlowNodePatch{Routes: &routes}, nil, "alex"); err != nil {
+		t.Fatal(err)
+	}
+	assertRoutes(routes)
+	if _, err := nodes.Patch(ctx, decision, entities.FlowNodePatch{Nexts: &[]string{right, left}}, nil, "alex"); err != nil {
+		t.Fatal(err)
+	}
+	assertRoutes(routes)
+
+	if _, err := store.PatchFlowNode(ctx, extra, entities.FlowNodePatch{Next: &decision}, nil, "alex"); err != nil {
+		t.Fatalf("second exclusive predecessor: %v", err)
+	}
+	if _, err := nodes.Patch(ctx, decision, entities.FlowNodePatch{Nexts: &[]string{left}}, nil, "alex"); err != nil {
+		t.Fatal(err)
+	}
+	assertRoutes([]entities.Route{first})
+	if _, err := nodes.Patch(ctx, decision, entities.FlowNodePatch{Routes: &routes}, nil, "alex"); !errors.Is(err, entities.ErrInvalid) {
+		t.Fatalf("unlinked target: got %v, want an invalid route", err)
+	}
+	if err := nodes.Delete(ctx, []string{left}, "alex"); err != nil {
+		t.Fatal(err)
+	}
+	assertRoutes(nil)
+}
 
 func TestConnectionMigrationRetainsLegacyJoins(t *testing.T) {
 	pool := testPoolAtVersion(t, 30)
@@ -101,6 +199,49 @@ func TestConcurrentPredecessorsHaveOneWinner(t *testing.T) {
 	}
 	if won != 1 || refused != 1 {
 		t.Fatalf("winners = %d, refused = %d", won, refused)
+	}
+}
+
+func TestStartEventHasAnOutgoingLinkAndRejectsIncomingLinks(t *testing.T) {
+	boards, nodes, store, _ := wire(t)
+	ctx := context.Background()
+	b, err := boards.Create(ctx, services.NewBoardRequest{Name: "Start event"}, "alex")
+	if err != nil {
+		t.Fatal(err)
+	}
+	made, err := nodes.Create(ctx, b.ID, []services.NewFlowNodeRequest{
+		{Title: "Start", Type: "start"}, {Title: "Review"}, {Title: "Other"},
+	}, "alex")
+	if err != nil {
+		t.Fatal(err)
+	}
+	start, review, other := made[0].ID, made[1].ID, made[2].ID
+	if _, err := nodes.Chain(ctx, start, review, "alex"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := nodes.Chain(ctx, other, start, "alex"); !errors.Is(err, entities.ErrInvalid) {
+		t.Errorf("incoming chain = %v, want invalid", err)
+	}
+	if _, err := store.PatchFlowNode(ctx, other, entities.FlowNodePatch{Next: &start}, nil, "alex"); !errors.Is(err, entities.ErrInvalid) {
+		t.Errorf("incoming database link = %v, want invalid", err)
+	}
+	kind := entities.FlowNodeStart
+	patch := entities.FlowNodePatch{Type: &kind}
+	if _, err := nodes.Patch(ctx, review, patch, nil, "alex"); !errors.Is(err, entities.ErrInvalid) {
+		t.Errorf("retyping a successor = %v, want invalid", err)
+	}
+	if _, err := store.PatchFlowNode(ctx, review, patch, nil, "alex"); !errors.Is(err, entities.ErrInvalid) {
+		t.Errorf("retyping a database successor = %v, want invalid", err)
+	}
+	if _, err := nodes.StartPlay(ctx, start, "run", "alex"); err != nil {
+		t.Fatal(err)
+	}
+	done, err := nodes.EndPlay(ctx, start, "run", "alex", entities.PlayResult{Status: entities.StatusDone})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if done.Type != kind || done.Status != entities.StatusDone || done.Next != review {
+		t.Fatalf("completed Start event = %+v", done)
 	}
 }
 

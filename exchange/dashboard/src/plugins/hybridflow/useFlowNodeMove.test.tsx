@@ -2,7 +2,7 @@ import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-/** Moving cards to another board: created there first, taken off here after. */
+/** Moving nodes to another board: created there first, taken off here after. */
 
 const board = vi.hoisted(() => ({
     content: null as any,
@@ -49,7 +49,7 @@ beforeEach(() => {
 });
 
 describe('moving flow nodes to another board', () => {
-    it('files the cards on the other board and takes them off this one', async () => {
+    it('files the nodes on the other board and takes them off this one', async () => {
         showing('First', 'Second');
         const [first, second] = cardsOf();
         render(<Probe flowNodeIds={[first.id, second.id]} />);
@@ -79,7 +79,7 @@ describe('moving flow nodes to another board', () => {
         expect(removedBeforeCreated).toBe(false);
     });
 
-    it('keeps the chains among the moved cards, and takes off the ones left behind', async () => {
+    it('keeps the chains among the moved nodes, and takes off the ones left behind', async () => {
         showing('First', 'Second');
         const [first, second] = cardsOf();
         first.onSuccess = { flowNode: second.id, flowNodes: [], mode: 'continue', compact: false };
@@ -100,7 +100,7 @@ describe('moving flow nodes to another board', () => {
         expect(sent()[0].onSuccess?.flowNode).toBeUndefined();
     });
 
-    it('leaves the cards where they are when the other board refuses them', async () => {
+    it('leaves the nodes where they are when the other board refuses them', async () => {
         store.createFlowNodes.mockRejectedValue(new Error('refused'));
         showing('Staying');
         const [staying] = cardsOf();
@@ -112,7 +112,7 @@ describe('moving flow nodes to another board', () => {
         expect(board.removeFlowNodes).not.toHaveBeenCalled();
     });
 
-    it('does nothing at all where no id names a card, or the board is its own', async () => {
+    it('does nothing at all where no id names a node, or the board is its own', async () => {
         showing('Mine');
         render(<Probe flowNodeIds={['gone']} />);
 

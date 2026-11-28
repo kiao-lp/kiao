@@ -13,8 +13,8 @@ Cette vue décrit ce que kiao fait, au niveau conceptuel.
 | ID | Zone | Ce qu'elle fournit |
 | --- | --- | --- |
 | F1 | DCMS (gestion de documents et de contenus) | Gestion d'une base de documents, de code source ou de connaissances. |
-| F2 | Hybridflow (workflows hybride) | Conception et exécution de workflows composés de tâches humaines et de tâches d'agent. |
-| F3 | Conversations avec les agents | Dialogue avec un agent, libre ou rattaché à une tâche. |
+| F2 | Hybridflow (workflows hybrides) | Conception et exécution de workflows composés de tâches humaines et de tâches confiées à des agents. |
+| F3 | Conversations avec les agents | Dialogue libre ou rattaché à une tâche, dont les tours sont exécutés par un harness. |
 | F4 | Environnement et équipement | Gestion de l'environnement d'exécution, des outils et des profils d'exécution dont le travail a besoin. |
 
 ```mermaid
@@ -49,8 +49,8 @@ Un contenu est destiné à être publié ou diffusé.
 
 ## F2 · Hybridflow — travail hybride
 
-- Concevoir un travail comme un graphe BPMN de nœuds : tâches d'agent, tâches humaines,
-  nœuds de coordination et d'affichage, enchaînés dans l'ordre.
+- Concevoir un workflow comme un graphe BPMN reliant des nœuds de flux. Ces nœuds représentent
+  des tâches d’agent ou des tâches humaines, des étapes de contrôle et des informations affichées.
 - Énoncer le résultat visé et ses critères de réussite sur le travail.
 - Réutiliser des conceptions : classes de nœuds et classes de workflows instanciées en
   éléments concrets ; définitions d'agent publiées comme versions immuables.
@@ -62,10 +62,10 @@ Un contenu est destiné à être publié ou diffusé.
 
 ## F3 · Conversations avec les agents
 
-- Converser avec un moteur d'agent dans une conversation libre, et poursuivre,
-  bifurquer ou compacter cette conversation.
-- Déléguer un tour : lui donner un dossier de travail, des documents ou passages sélectionnés et des
-  pièces jointes ; le piloter pendant son exécution ; l'arrêter.
+- Choisir un agent pour une conversation libre, puis poursuivre, bifurquer ou compacter
+  cette conversation. Le harness choisi exécute chaque tour.
+- Démarrer un tour avec un dossier de travail, des documents ou passages sélectionnés et des
+  pièces jointes. Piloter ou arrêter le tour pendant son exécution.
 - Répondre à ses questions et contrôler ses outils par les modes d'autorisation.
 - Conserver les preuves : transcription, tours et traces, séparés de
   l'état du travail qu'ils ont servi.
@@ -75,10 +75,9 @@ Un contenu est destiné à être publié ou diffusé.
 
 ## F4 · Environnement et équipement
 
-- Équiper la machine : installer, retirer et vérifier les environnements d'exécution et les moteurs
-  d'agent, et savoir si chacun répond, pas seulement s'il est
-  présent.
+- Installer, retirer et vérifier les environnements d’exécution et les harnesses. Contrôler
+  leur disponibilité effective sur la machine.
 - Équiper un tour : sélectionner les serveurs MCP et les outils qui lui sont remis.
 - Configurer l'exécution : profils d'exécution nommant le fournisseur, les modèles et les
-  références d'identifiants, conservés localement chez l'exécutant. Les instructions d'agent
-  restent chez l'agent ; les identifiants restent hors des tableaux et des transcriptions.
+  références d’identifiants, conservés localement chez l’exécutant. La définition de l’agent
+  porte ses instructions. Les identifiants sont conservés hors des tableaux et des transcriptions.

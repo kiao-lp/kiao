@@ -1,6 +1,5 @@
 // Package ports defines the core's external contracts.
-// Repository writes record the actor and change in the same transaction, or neither lands.
-// UsageRepository is the exception.
+// Repositories record changes to feed subjects and their actor in the same transaction.
 package ports
 
 import (
@@ -23,14 +22,23 @@ type BoardFilter struct {
 	IncludeArchived bool
 }
 
-// BoardRepository keeps boards and cards as one aggregate with board-local chains
+// FolderRepository stores named folders within a collection. Deleting a folder detaches
+// its members in the same write.
+type FolderRepository interface {
+	ListFolders(ctx context.Context, scope entities.FolderScope) ([]entities.Folder, error)
+	CreateFolder(ctx context.Context, scope entities.FolderScope, folder entities.Folder) error
+	RenameFolder(ctx context.Context, scope entities.FolderScope, id, name string) (*entities.Folder, error)
+	DeleteFolder(ctx context.Context, scope entities.FolderScope, id, actor string) error
+}
+
+// BoardRepository keeps boards and flow nodes as one aggregate with board-local chains
 // and a shared change sequence.
 // Patch methods update only named fields; non-nil expected revisions must match
 // or return entities.ErrConflict. Nil skips the revision check.
 type BoardRepository interface {
 	// CreateBoard returns ErrNameTaken if the name is already held.
 	CreateBoard(ctx context.Context, board *entities.Board, actor string) error
-	// ListBoards excludes cards.
+	// ListBoards excludes flow nodes.
 	ListBoards(ctx context.Context, filter BoardFilter) ([]entities.Board, error)
 	FindBoard(ctx context.Context, id string) (*entities.Board, error)
 	FindBoardBySlug(ctx context.Context, slug string) (*entities.Board, error)
@@ -38,71 +46,41 @@ type BoardRepository interface {
 	// DeleteBoard removes the board and all its contents.
 	DeleteBoard(ctx context.Context, id string, actor string) error
 
-	// CreateFlowNodes writes all cards in one transaction.
+	// CreateFlowNodes writes all flow nodes in one transaction.
 	CreateFlowNodes(ctx context.Context, flowNodes []*entities.FlowNode, actor string) error
 	FindFlowNode(ctx context.Context, id string) (*entities.FlowNode, error)
 	ListFlowNodes(ctx context.Context, boardID string) ([]entities.FlowNode, error)
 	ListSchemaValues(ctx context.Context) ([]entities.SchemaValue, error)
 	OutputTypeUsed(ctx context.Context, id string) (bool, error)
-	// Run status writes may skip revision checks because the run holds the card.
+	// Run status writes may skip revision checks because the run holds the flow node.
 	PatchFlowNode(ctx context.Context, id string, patch entities.FlowNodePatch, expected *int64, actor string) (*entities.FlowNode, error)
 	DeleteFlowNodes(ctx context.Context, ids []string, actor string) error
 
-	// ClaimFlowNode atomically claims a free, ready card or returns entities.ErrFlowNodeHeld.
+	// ClaimFlowNode atomically claims a free, ready or done flow node. A done AI flow node loses its previous chat link.
 	// Claims are idempotent for the same run, including retries after usage limits refresh.
-	// StartPlay, not the claim, prevents duplicate play records.
-	ClaimFlowNode(ctx context.Context, id, runID string, status entities.FlowNodeStatus, actor string) (*entities.FlowNode, error)
-	// ReleaseFlowNode sets the final status and clears the run only if runID holds the card,
-	// preventing a stale run from changing another run's card.
-	ReleaseFlowNode(ctx context.Context, id, runID string, status entities.FlowNodeStatus, output, actor string) (*entities.FlowNode, error)
-	// ReleaseRun clears all cards held by the run, regardless of state, for restart recovery.
+	// A gateway reached from a predecessor checks that its inputs have completed for this firing.
+	ClaimFlowNode(ctx context.Context, id, runID string, status entities.FlowNodeStatus, actor string, afterPredecessor ...bool) (*entities.FlowNode, error)
+	// ReleaseFlowNode commits the result and clears the claim if runID still holds the flow node.
+	// A workflow update also requires the flow node to still belong to that workflow.
+	ReleaseFlowNode(ctx context.Context, id, runID, actor string, result entities.PlayResult) (*entities.FlowNode, error)
+	// ReleaseRun clears all flow nodes held by the run, regardless of state, for restart recovery.
 	ReleaseRun(ctx context.Context, runID string, status entities.FlowNodeStatus, actor string) (int, error)
 	HeldFlowNodes(ctx context.Context, runID string) ([]entities.FlowNode, error)
 }
 
-// ClassRepository keeps classes and versions as an aggregate separate from cards.
-// Patch methods update only named fields; non-nil expected must match or return
-// entities.ErrConflict. Nil skips the revision check.
-type ClassRepository interface {
-	CreateClass(ctx context.Context, class *entities.FlowNodeClass, actor string) error
-	FindClass(ctx context.Context, id string) (*entities.FlowNodeClass, error)
-	ListClasses(ctx context.Context, boardID string) ([]entities.FlowNodeClass, error)
-	// ListAllClasses orders by oldest board first.
-	ListAllClasses(ctx context.Context) ([]entities.FlowNodeClass, error)
-	PatchClass(ctx context.Context, id string, patch entities.FlowNodeClassPatch, expected *int64, actor string) (*entities.FlowNodeClass, error)
-	// DeleteClasses removes versions too; instantiated cards retain content and lose their link.
-	DeleteClasses(ctx context.Context, ids []string, actor string) error
-
-	// CreateVersion uses the caller-supplied version number.
-	CreateVersion(ctx context.Context, version *entities.FlowNodeClassVersion, actor string) error
-	FindVersion(ctx context.Context, id string) (*entities.FlowNodeClassVersion, error)
-	// ListVersions orders oldest first.
-	ListVersions(ctx context.Context, classID string) ([]entities.FlowNodeClassVersion, error)
-	PatchVersion(ctx context.Context, id string, patch entities.FlowNodeClassVersionPatch, expected *int64, actor string) (*entities.FlowNodeClassVersion, error)
-	// DeleteVersion removes any supplied version; the service must protect published versions.
-	DeleteVersion(ctx context.Context, id string, actor string) error
-}
-
-// WorkflowRepository keeps workflow groups; membership is stored on cards/classes
+// WorkflowRepository keeps workflow groups; membership is stored on flow nodes
 // and changed through their patches, with their own revisions and change rows.
 // Patch methods require non-nil expected revisions to match or return entities.ErrConflict;
 // nil skips the revision check.
 type WorkflowRepository interface {
 	CreateWorkflow(ctx context.Context, workflow *entities.Workflow, actor string) error
+	// CreateWorkflowWithFlowNodes writes the group, its new members and their changes atomically.
+	CreateWorkflowWithFlowNodes(ctx context.Context, workflow *entities.Workflow, flowNodes []*entities.FlowNode, actor string) error
 	FindWorkflow(ctx context.Context, id string) (*entities.Workflow, error)
 	ListWorkflows(ctx context.Context, boardID string) ([]entities.Workflow, error)
 	PatchWorkflow(ctx context.Context, id string, patch entities.WorkflowPatch, expected *int64, actor string) (*entities.Workflow, error)
-	// DeleteWorkflows ungroups cards without deleting or moving them.
+	// DeleteWorkflows ungroups flow nodes without deleting or moving them.
 	DeleteWorkflows(ctx context.Context, ids []string, actor string) error
-
-	CreateWorkflowClass(ctx context.Context, workflow *entities.WorkflowClass, actor string) error
-	FindWorkflowClass(ctx context.Context, id string) (*entities.WorkflowClass, error)
-	ListWorkflowClasses(ctx context.Context, boardID string) ([]entities.WorkflowClass, error)
-	// ListAllWorkflowClasses orders by oldest board first.
-	ListAllWorkflowClasses(ctx context.Context) ([]entities.WorkflowClass, error)
-	PatchWorkflowClass(ctx context.Context, id string, patch entities.WorkflowClassPatch, expected *int64, actor string) (*entities.WorkflowClass, error)
-	// DeleteWorkflowClasses ungroups classes without deleting them.
-	DeleteWorkflowClasses(ctx context.Context, ids []string, actor string) error
 }
 
 // RunnerRepository keeps runners independently of boards.
@@ -146,13 +124,13 @@ type AgentRepository interface {
 type UsageRepository interface {
 	// RecordUsage is idempotent by ID: the first write wins, so spool replay cannot double count.
 	RecordUsage(ctx context.Context, usage *entities.TaskUsage) error
-	// UsageTotals returns zero totals and no priced cost when the card has no reports.
+	// UsageTotals returns zero totals and no priced cost when the flow node has no reports.
 	UsageTotals(ctx context.Context, flowNodeID string) (entities.TaskUsageTotals, error)
 }
 
 // ChangeLog reads changes recorded transactionally by repository writes.
 type ChangeLog interface {
-	// Since returns changes after seq, oldest first, optionally scoped to a board and its cards.
+	// Since returns changes after seq, oldest first, optionally scoped to a board and its flow nodes.
 	// latest is the log's latest sequence, allowing detection of truncated pages.
 	Since(ctx context.Context, seq int64, boardID string, limit int) (changes []entities.Change, latest int64, err error)
 	// Latest supplies the watch cursor alongside the initial full read to avoid missing changes.

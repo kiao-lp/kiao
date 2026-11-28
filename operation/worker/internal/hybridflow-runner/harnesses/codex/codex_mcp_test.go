@@ -3,9 +3,23 @@ package codex
 import (
 	"kiao/worker/internal/core/equipment"
 	pkgEquipment "kiao/worker/internal/core/equipment"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestUnavailableMCPDisablesOnlyInheritedEntries(t *testing.T) {
+	dir := t.TempDir()
+	binary := filepath.Join(dir, "codex")
+	if err := os.WriteFile(binary, []byte("#!/bin/sh\nprintf '%s' '[{\"name\":\"remote\"},{\"name\":\"unrelated\"}]'\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	config := excludeUnavailableMCP(binary, dir, `{ active = { command = "/bin/true" } }`, []string{"remote", "missing"})
+	if want := `{ active = { command = "/bin/true" }, remote = { enabled = false } }`; config != want {
+		t.Fatalf("MCP config = %q, want %q", config, want)
+	}
+}
 
 // mcpServersFixture is the ledger as the toolbox hands it over: one of ours, which calls this
 // service back and therefore carries the turn-token placeholder, and one that reaches the open web.

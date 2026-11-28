@@ -1,14 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import {
-    archiveFlowNode, archiveFlowNodes, chainFlowNode, chainFlowNodeClass, cloneFlowNode, cloneFlowNodeClass, editClassVersion,
-    editFlowNode, editWorkflow, editWorkflowClass, findFlowNode, findWorkflow, findWorkflowClass,
-    groupFlowNodeClasses, groupFlowNodes,
-    insertClassVersion, insertFlowNodes, liveFlowNodes, moveSpots, placeFlowNodes,
-    removeClassVersion, removeFlowNode, removeFlowNodeClasses, removeFlowNodes,
-    removeWorkflowClasses, removeWorkflows, unarchiveFlowNodes,
+    archiveFlowNode, archiveFlowNodes, chainFlowNode, cloneFlowNode,
+    editFlowNode, editWorkflow, findFlowNode, findWorkflow,
+    groupFlowNodes,
+    insertFlowNodes, liveFlowNodes, moveSpots, placeFlowNodes,
+    removeFlowNode, removeFlowNodes,
+    removeWorkflows, unarchiveFlowNodes,
     successorOf, flowNodesOnChat, flowNodesNamed,
 } from './boardOps';
-import { FlowNodeClass, newClassVersion, newFlowNodeClass } from './flowNodeClass';
 import { newFlowNode, BoardContent, FlowNode } from './boardContent';
 import { FlowNodeSettings } from './flowNodeSettings';
 import { TransitionMode } from './flowNodeSuccess';
@@ -19,19 +18,19 @@ const flowNode = (title: string): FlowNode => newFlowNode(title);
 /** What the board holds — what every assertion here is about. */
 const shape = (content: BoardContent): string[] => content.flowNodes.map(entry => entry.title);
 
-/** The card of that title. */
-const card = (content: BoardContent, title: string): FlowNode =>
+/** The node of that title. */
+const node = (content: BoardContent, title: string): FlowNode =>
     content.flowNodes.find(entry => entry.title === title)!;
 
 describe('a flow node’s own life', () => {
     it('is found wherever it sits', () => {
         const content = board('One', 'Two');
-        const at = findFlowNode(content, card(content, 'Two').id)!;
+        const at = findFlowNode(content, node(content, 'Two').id)!;
         expect(at.flowNode.title).toBe('Two');
         expect(at.index).toBe(1);
     });
 
-    it('is filed at the end of the board, in the order the cards are given', () => {
+    it('is filed at the end of the board, in the order the nodes are given', () => {
         const before = board('One', 'Two');
         const after = insertFlowNodes(before, [flowNode('A'), flowNode('B')])!;
         expect(shape(after)).toEqual(['One', 'Two', 'A', 'B']);
@@ -44,20 +43,20 @@ describe('a flow node’s own life', () => {
 
     it('is edited field by field, and keeps its id', () => {
         const before = board('One');
-        const id = card(before, 'One').id;
+        const id = node(before, 'One').id;
         const after = editFlowNode(before, id, { title: 'Renamed', settings: { model: 'opus' } })!;
         expect(findFlowNode(after, id)!.flowNode).toMatchObject({ id, title: 'Renamed', settings: { model: 'opus' } });
     });
 
     it('is removed by id', () => {
         const before = board('One', 'Two');
-        expect(shape(removeFlowNode(before, card(before, 'One').id)!)).toEqual(['Two']);
+        expect(shape(removeFlowNode(before, node(before, 'One').id)!)).toEqual(['Two']);
         expect(removeFlowNode(before, 'nowhere')).toBeNull();
     });
 
-    it('names the cards picked out in board order, each once', () => {
+    it('names the nodes picked out in board order, each once', () => {
         const before = board('One', 'Two', 'Three');
-        const ids = [card(before, 'Three').id, card(before, 'One').id, 'nowhere', card(before, 'One').id];
+        const ids = [node(before, 'Three').id, node(before, 'One').id, 'nowhere', node(before, 'One').id];
         expect(flowNodesNamed(before, ids).map(entry => entry.title)).toEqual(['One', 'Three']);
     });
 });
@@ -74,61 +73,74 @@ describe('cloning a flow node', () => {
         })!;
     };
 
-    it('files the copy directly under the card it was made from', () => {
+    it('files the copy directly under the node it was made from', () => {
         const before = chained();
-        const done = cloneFlowNode(before, card(before, 'One').id)!;
+        const done = cloneFlowNode(before, node(before, 'One').id)!;
         expect(shape(done.content)).toEqual(['One', 'One', 'Two', 'Elsewhere']);
         expect(done.content.flowNodes[1].id).toBe(done.flowNode.id);
     });
 
     it('gives the copy an id of its own, and no chat', () => {
         const before = chained();
-        const original = card(before, 'One');
+        const original = node(before, 'One');
         const { flowNode: copy } = cloneFlowNode(before, original.id)!;
         expect(copy.id).not.toBe(original.id);
         expect(copy.chat).toBe('');
     });
 
-    it('carries the text, the tags and where it stands', () => {
+    it('carries the text, tags and settings', () => {
         const before = chained();
-        const original = card(before, 'One');
+        const original = node(before, 'One');
         const { flowNode: copy } = cloneFlowNode(before, original.id)!;
         expect(copy).toMatchObject({
             title: original.title,
             body: original.body,
             tags: ['bug'],
-            status: original.status,
             settings: original.settings,
         });
     });
 
+    it.each([
+        ['ai', 'draft'],
+        ['human', 'draft'],
+        ['scheduler', 'blocked'],
+    ] as const)('clones a blocked %s node with status %s', (type, status) => {
+        const content = board('One');
+        const original = node(content, 'One');
+        const before = editFlowNode(content, original.id, { type, status: 'blocked' })!;
+        const { content: after, flowNode: copy } = cloneFlowNode(before, original.id)!;
+
+        expect(copy.status).toBe(status);
+        expect(findFlowNode(after, original.id)?.flowNode.status).toBe('blocked');
+    });
+
     it('leaves a copied task unlinked to preserve the successor’s single predecessor', () => {
         const before = chained();
-        const original = card(before, 'One');
+        const original = node(before, 'One');
         const { flowNode: copy } = cloneFlowNode(before, original.id)!;
         expect(copy.onSuccess)
             .toEqual({ flowNode: '', flowNodes: [], mode: 'continue', compact: false });
     });
 
-    it('leaves the board it was given alone, and is nothing on a card that has gone', () => {
+    it('leaves the board it was given alone, and is nothing on a node that has gone', () => {
         const before = board('One');
-        cloneFlowNode(before, card(before, 'One').id);
+        cloneFlowNode(before, node(before, 'One').id);
         expect(shape(before)).toEqual(['One']);
         expect(cloneFlowNode(before, 'nowhere')).toBeNull();
     });
 });
 
 describe('chaining a flow node to another', () => {
-    it('draws one that was not there, leaving what the card said about its chat', () => {
+    it('draws one that was not there, leaving what the node said about its chat', () => {
         const before = board('First', 'Second');
-        const from = card(before, 'First').id;
-        const to = card(before, 'Second').id;
+        const from = node(before, 'First').id;
+        const to = node(before, 'Second').id;
 
         const after = chainFlowNode(before, from, to)!;
         expect(findFlowNode(after, from)!.flowNode.onSuccess).toEqual({ flowNode: to, flowNodes: [], mode: 'end', compact: false });
     });
 
-    it('keeps what an existing chain carries when it is pulled to another card', () => {
+    it('keeps what an existing chain carries when it is pulled to another node', () => {
         const before = board('First', 'Second', 'Third');
         const [from, second, third] = before.flowNodes.map(entry => entry.id);
         const held = { flowNode: second, flowNodes: [], mode: 'continue' as const, compact: true };
@@ -150,7 +162,7 @@ describe('chaining a flow node to another', () => {
             .toEqual({ flowNode: '', flowNodes: [], mode: 'continue', compact: true });
     });
 
-    it('takes the chain off when it is dropped back on the card it started from', () => {
+    it('takes the chain off when it is dropped back on the node it started from', () => {
         const before = board('First', 'Second');
         const [from, second] = before.flowNodes.map(entry => entry.id);
         const chained = editFlowNode(before, from, { onSuccess: { flowNode: second, flowNodes: [], mode: 'end', compact: false } })!;
@@ -180,7 +192,7 @@ describe('chaining a flow node to another', () => {
 describe('the chat a flow node is played in', () => {
     it('is a field of the flow node, and is taken off with an empty one', () => {
         const before = board('Played');
-        const id = card(before, 'Played').id;
+        const id = node(before, 'Played').id;
         const linked = editFlowNode(before, id, { chat: 'chat-1' })!;
         expect(findFlowNode(linked, id)!.flowNode.chat).toBe('chat-1');
         expect(findFlowNode(editFlowNode(linked, id, { chat: '' })!, id)!.flowNode.chat).toBe('');
@@ -196,7 +208,6 @@ describe('the chat a flow node is played in', () => {
     });
 });
 
-
 /** Everything a flow node needs to be one of the ones a play reaches. */
 const RUNNABLE: FlowNodeSettings = {
     agent: 'claude', model: 'opus', effort: 'high', permission: 'manualLive', folder: '/',
@@ -207,8 +218,8 @@ const chained = (mode: TransitionMode = 'continue', compact = false) => {
     const second = newFlowNode('Second', '', RUNNABLE);
     const first = newFlowNode('First', '', RUNNABLE, { flowNode: second.id, flowNodes: [], mode, compact });
     const content: BoardContent = {
-            flowNodes: [first, second], flowNodeClasses: [],
-            workflows: [], workflowClasses: [],
+            flowNodes: [first, second],
+            workflows: [],
         };
     return { content, first, second };
 };
@@ -227,8 +238,8 @@ describe('the flow node played after a played one', () => {
     it('is nobody where the flow node it names is not on the board', () => {
         const first = newFlowNode('First', '', RUNNABLE, { flowNode: 'never-existed', flowNodes: [], mode: 'continue', compact: false });
         const content: BoardContent = {
-                flowNodes: [first], flowNodeClasses: [],
-                workflows: [], workflowClasses: [],
+                flowNodes: [first],
+                workflows: [],
             };
         expect(successorOf(content, first)).toBeNull();
     });
@@ -241,7 +252,7 @@ describe('the flow node played after a played one', () => {
 });
 
 describe('removing a flow node', () => {
-    // Only the id goes: what the surviving card says about its chat is its own, and says nothing about.
+    // Only the id goes: what the surviving node says about its chat is its own, and says nothing about.
     it('takes the chains that named it with it, and leaves the rest', () => {
         const { content, first, second } = chained('continue', true);
         const without = removeFlowNode(content, second.id)!;
@@ -262,7 +273,7 @@ describe('removing a flow node', () => {
 describe('removing several flow nodes', () => {
     it('takes them all off, wherever on the board they sit', () => {
         const before = board('One', 'Two', 'Three');
-        const ids = [card(before, 'One').id, card(before, 'Three').id];
+        const ids = [node(before, 'One').id, node(before, 'Three').id];
         expect(shape(removeFlowNodes(before, ids)!)).toEqual(['Two']);
     });
 
@@ -273,48 +284,48 @@ describe('removing several flow nodes', () => {
             .toEqual({ flowNode: '', flowNodes: [], mode: 'continue', compact: true });
     });
 
-    it('passes over an id naming no card, and takes the rest', () => {
+    it('passes over an id naming no node, and takes the rest', () => {
         const before = board('One', 'Two');
-        const kept = removeFlowNodes(before, [card(before, 'One').id, 'nowhere'])!;
+        const kept = removeFlowNodes(before, [node(before, 'One').id, 'nowhere'])!;
         expect(shape(kept)).toEqual(['Two']);
     });
 
-    it('is nothing when no id names a card', () => {
+    it('is nothing when no id names a node', () => {
         const before = board('One');
         expect(removeFlowNodes(before, ['nowhere'])).toBeNull();
         expect(removeFlowNodes(before, [])).toBeNull();
     });
 });
 
-/** Where the cards sit on the board — the field a card dragged across the canvas writes. */
-describe('placing cards on the board', () => {
+/** Where the nodes sit on the board — the field a node dragged across the canvas writes. */
+describe('placing nodes on the board', () => {
     const placed = (content: BoardContent, title: string) =>
-        card(content, title)?.spot ?? null;
+        node(content, title)?.spot ?? null;
 
-    it('writes the places of however many cards are named, in one edit', () => {
+    it('writes the places of however many nodes are named, in one edit', () => {
         const before = board('One', 'Two');
         const after = placeFlowNodes(before, new Map([
-            [card(before, 'One').id, { x: 10, y: 20 }],
-            [card(before, 'Two').id, { x: 30, y: 40 }],
+            [node(before, 'One').id, { x: 10, y: 20 }],
+            [node(before, 'Two').id, { x: 30, y: 40 }],
         ]))!;
         expect(placed(after, 'One')).toEqual({ x: 10, y: 20 });
         expect(placed(after, 'Two')).toEqual({ x: 30, y: 40 });
     });
 
-    it('is nothing where every card already sits where it is being put', () => {
+    it('is nothing where every node already sits where it is being put', () => {
         const before = board('One');
-        const one = card(before, 'One');
+        const one = node(before, 'One');
         const after = placeFlowNodes(before, new Map([[one.id, { x: 10, y: 20 }]]))!;
         expect(placeFlowNodes(after, new Map([[one.id, { x: 10, y: 20 }]]))).toBeNull();
     });
 
-    it('passes over an id naming no card', () => {
+    it('passes over an id naming no node', () => {
         const before = board('One');
         expect(placeFlowNodes(before, new Map([['gone', { x: 1, y: 1 }]]))).toBeNull();
     });
 });
 
-describe('moving cards across the board', () => {
+describe('moving nodes across the board', () => {
 
     const laid = (spots: Record<string, [number, number]>): BoardContent => {
         const before = board(...Object.keys(spots));
@@ -322,10 +333,10 @@ describe('moving cards across the board', () => {
             [held.id, { x: spots[held.title][0], y: spots[held.title][1] }])))!;
     };
     const at = (content: BoardContent, title: string) =>
-        card(content, title)?.spot ?? null;
-    const idOf = (content: BoardContent, title: string) => card(content, title).id;
+        node(content, title)?.spot ?? null;
+    const idOf = (content: BoardContent, title: string) => node(content, title).id;
 
-    it('moves one card by the distance the gesture travelled', () => {
+    it('moves one node by the distance the gesture travelled', () => {
         const before = laid({ One: [100, 100] });
         const after = moveSpots(before, [idOf(before, 'One')], 40, -30)!;
         expect(at(after, 'One')).toEqual({ x: 140, y: 70 });
@@ -338,24 +349,24 @@ describe('moving cards across the board', () => {
         expect(at(after, 'Two')).toEqual({ x: 350, y: 270 });
     });
 
-    // The distance is clipped once, against whichever card of the set would otherwise be pushed off the top.
-    it('clips the distance against the set rather than against each card', () => {
+    // The distance is clipped once, against whichever node of the set would otherwise be pushed off the top.
+    it('clips the distance against the set rather than against each node', () => {
         const before = laid({ One: [20, 100], Two: [220, 100] });
         const after = moveSpots(before, [idOf(before, 'One'), idOf(before, 'Two')], -200, 0)!;
         expect(at(after, 'One')).toEqual({ x: 0, y: 100 });
         expect(at(after, 'Two')).toEqual({ x: 200, y: 100 });
     });
 
-    it('passes over a card that has never been placed', () => {
+    it('passes over a node that has never been placed', () => {
         const before = board('One');
-        expect(moveSpots(before, [card(before, 'One').id], 10, 10)).toBeNull();
+        expect(moveSpots(before, [node(before, 'One').id], 10, 10)).toBeNull();
     });
 });
 
-describe('a cloned card on the board', () => {
-    it('is set clear of the card it was made from rather than under it', () => {
+describe('a cloned node on the board', () => {
+    it('is set clear of the node it was made from rather than under it', () => {
         const before = board('One');
-        const one = card(before, 'One');
+        const one = node(before, 'One');
         const placedBoard = placeFlowNodes(before, new Map([[one.id, { x: 100, y: 100 }]]))!;
         const done = cloneFlowNode(placedBoard, one.id)!;
         expect(done.flowNode.spot).not.toBeNull();
@@ -363,188 +374,9 @@ describe('a cloned card on the board', () => {
         expect(done.flowNode.spot!.y).toBeGreaterThan(100);
     });
 
-    it('has no place where the card it was made from has none', () => {
+    it('has no place where the node it was made from has none', () => {
         const before = board('One');
-        expect(cloneFlowNode(before, card(before, 'One').id)!.flowNode.spot).toBeNull();
-    });
-});
-
-describe('boardOps — node classes', () => {
-    const classOf = (id: string, over: Partial<FlowNodeClass> = {}): FlowNodeClass => ({
-        ...newFlowNodeClass('ai'), id, title: id, ...over,
-    });
-
-    it('chains a class to another, and refuses a chain onto a flow node', () => {
-        const first = classOf('c1');
-        const second = classOf('c2');
-        const card = { ...flowNode('Card'), id: 'n1' };
-        const content: BoardContent = {
-            flowNodes: [card],
-            flowNodeClasses: [first, second],
-            workflows: [], workflowClasses: [],
-        };
-        const chained = chainFlowNodeClass(content, 'c1', 'c2');
-        expect(chained?.flowNodeClasses[0].onSuccess.flowNode).toBe('c2');
-        expect(chainFlowNodeClass(content, 'c1', 'n1')).toBeNull();
-        expect(chainFlowNode(content, 'n1', 'c1')).toBeNull();
-    });
-
-    it('takes a chain off with a null target', () => {
-        const first = classOf('c1', { onSuccess: { flowNode: 'c2', flowNodes: [], mode: 'end', compact: false } });
-        const content: BoardContent = {
-            flowNodes: [], flowNodeClasses: [first, classOf('c2')],
-            workflows: [], workflowClasses: [],
-        };
-        const unchained = chainFlowNodeClass(content, 'c1', null);
-        expect(unchained?.flowNodeClasses[0].onSuccess.flowNode).toBe('');
-    });
-
-    it('removes classes with the chains that named them', () => {
-        const first = classOf('c1', { onSuccess: { flowNode: 'c2', flowNodes: [], mode: 'end', compact: false } });
-        const content: BoardContent = {
-            flowNodes: [], flowNodeClasses: [first, classOf('c2')],
-            workflows: [], workflowClasses: [],
-        };
-        const removed = removeFlowNodeClasses(content, ['c2']);
-        expect(removed?.flowNodeClasses.map(one => one.id)).toEqual(['c1']);
-        expect(removed?.flowNodeClasses[0].onSuccess.flowNode).toBe('');
-    });
-
-    it('files and edits versions under their class', () => {
-        const content: BoardContent = {
-            flowNodes: [], flowNodeClasses: [classOf('c1')],
-            workflows: [], workflowClasses: [],
-        };
-        const version = newClassVersion([]);
-        const filed = insertClassVersion(content, 'c1', { ...version, body: 'Read it.' });
-        expect(filed?.flowNodeClasses[0].versions).toHaveLength(1);
-        const edited = editClassVersion(filed as BoardContent, 'c1', version.id, { status: 'published' });
-        expect(edited?.flowNodeClasses[0].versions[0].status).toBe('published');
-    });
-
-    it('takes a version off its class, and only that one', () => {
-        const first = { ...newClassVersion([]), id: 'v1', number: 1 };
-        const second = { ...newClassVersion([]), id: 'v2', number: 2 };
-        const content: BoardContent = {
-            flowNodes: [],
-            flowNodeClasses: [classOf('c1', { versions: [first, second] })],
-            workflows: [], workflowClasses: [],
-        };
-        const removed = removeClassVersion(content, 'c1', 'v2');
-        expect(removed?.flowNodeClasses[0].versions.map(version => version.id)).toEqual(['v1']);
-        expect(removeClassVersion(content, 'c1', 'v9')).toBeNull();
-        expect(removeClassVersion(content, 'c9', 'v1')).toBeNull();
-    });
-});
-
-describe('cloning a node class', () => {
-    const classOf = (id: string, over: Partial<FlowNodeClass> = {}): FlowNodeClass => ({
-        ...newFlowNodeClass('ai'), id, title: id, ...over,
-    });
-
-
-    const boardWithClasses = (): BoardContent => ({
-        flowNodes: [],
-        flowNodeClasses: [
-            classOf('c1', {
-                title: 'Review',
-                tags: ['bug'],
-                permission: 'manualLive',
-                runner: 'r1',
-                note: 'When the diff is ready.',
-                spot: { x: 100, y: 100 },
-                onSuccess: { flowNode: 'c2', flowNodes: [], mode: 'continue', compact: true },
-                versions: [
-                    {
-                        id: 'v1', number: 1, body: 'First words.',
-                        criteria: [{ id: 'k1', text: 'Done' }], template: false, status: 'published',
-                    },
-                    {
-                        id: 'v2', number: 2, body: 'Newer words.',
-                        criteria: [{ id: 'k2', text: 'Held' }], template: true, status: 'draft',
-                    },
-                ],
-            }),
-            classOf('c2', { title: 'Next' }),
-        ],
-        workflows: [], workflowClasses: [],
-    });
-
-    it('files the copy directly under the class it was made from', () => {
-        const before = boardWithClasses();
-        const done = cloneFlowNodeClass(before, 'c1')!;
-        expect(done.content.flowNodeClasses.map(one => one.title))
-            .toEqual(['Review', 'Review', 'Next']);
-        expect(done.content.flowNodeClasses[1].id).toBe(done.flowNodeClass.id);
-    });
-
-    it('gives the copy an id of its own, set clear of the class it was made from', () => {
-        const before = boardWithClasses();
-        const { flowNodeClass: copy } = cloneFlowNodeClass(before, 'c1')!;
-        expect(copy.id).not.toBe('c1');
-        expect(copy.spot).toEqual({ x: 128, y: 128 });
-    });
-
-    it('carries the class answers, and hands on to what the original hands on to', () => {
-        const before = boardWithClasses();
-        const { flowNodeClass: copy } = cloneFlowNodeClass(before, 'c1')!;
-        expect(copy).toMatchObject({
-            title: 'Review',
-            type: 'ai',
-            tags: ['bug'],
-            permission: 'manualLive',
-            runner: 'r1',
-            note: 'When the diff is ready.',
-            onSuccess: { flowNode: 'c2', flowNodes: [], mode: 'continue', compact: true },
-        });
-    });
-
-    it('holds only the latest version, copied as a draft', () => {
-        const before = boardWithClasses();
-        const { flowNodeClass: copy } = cloneFlowNodeClass(before, 'c1')!;
-        expect(copy.versions).toHaveLength(1);
-        const [version] = copy.versions;
-        expect(version.id).not.toBe('v2');
-        expect(version).toMatchObject({
-            number: 1,
-            body: 'Newer words.',
-            criteria: [{ id: 'k2', text: 'Held' }],
-            template: true,
-            status: 'draft',
-        });
-    });
-
-    it('holds the latest version as a draft where even that one is published', () => {
-        const before = boardWithClasses();
-        before.flowNodeClasses[0].versions = [
-            {
-                id: 'v1', number: 1, body: 'Frozen words.',
-                criteria: [], template: false, status: 'published',
-            },
-        ];
-        const { flowNodeClass: copy } = cloneFlowNodeClass(before, 'c1')!;
-        expect(copy.versions).toHaveLength(1);
-        expect(copy.versions[0]).toMatchObject({
-            number: 1, body: 'Frozen words.', status: 'draft',
-        });
-        expect(copy.versions[0].id).not.toBe('v1');
-    });
-
-    it('holds no version where the class it was made from holds none', () => {
-        const content: BoardContent = {
-            flowNodes: [], flowNodeClasses: [classOf('c1')],
-            workflows: [], workflowClasses: [],
-        };
-        const { flowNodeClass: copy } = cloneFlowNodeClass(content, 'c1')!;
-        expect(copy.versions).toEqual([]);
-    });
-
-    it('leaves the board it was given alone, and is nothing on a class that has gone', () => {
-        const before = boardWithClasses();
-        cloneFlowNodeClass(before, 'c1');
-        expect(before.flowNodeClasses).toHaveLength(2);
-        expect(before.flowNodeClasses[0].versions).toHaveLength(2);
-        expect(cloneFlowNodeClass(before, 'nowhere')).toBeNull();
+        expect(cloneFlowNode(before, node(before, 'One').id)!.flowNode.spot).toBeNull();
     });
 });
 
@@ -555,79 +387,52 @@ describe('workflows', () => {
         return groupFlowNodes(content, { id: 'w1', name: 'Sprint' }, [one.id, two.id])!;
     };
 
-    const classOf = (id: string, over: Partial<FlowNodeClass> = {}): FlowNodeClass => ({
-        ...newFlowNodeClass('ai'), id, title: id, ...over,
-    });
-
-    const boardWithClasses = (): BoardContent => ({
-        flowNodes: [],
-        flowNodeClasses: [classOf('c1', { title: 'One' }), classOf('c2', { title: 'Two' })],
-        workflows: [], workflowClasses: [],
-    });
-
-    it('files a workflow round the cards it names', () => {
+    it('files a workflow round the nodes it names', () => {
         const after = grouped();
         expect(after.workflows).toEqual([{ id: 'w1', name: 'Sprint' }]);
-        expect(after.flowNodes.map(card => card.workflow)).toEqual(['w1', 'w1', '']);
+        expect(after.flowNodes.map(node => node.workflow)).toEqual(['w1', 'w1', '']);
     });
 
-    it('moves a card already grouped into the new workflow', () => {
+    it('moves a node already grouped into the new workflow', () => {
         const before = grouped();
         const [one, , three] = before.flowNodes;
         const after = groupFlowNodes(before, { id: 'w2', name: 'Next' }, [one.id, three.id])!;
-        expect(after.flowNodes.map(card => card.workflow)).toEqual(['w2', 'w1', 'w2']);
+        expect(after.flowNodes.map(node => node.workflow)).toEqual(['w2', 'w1', 'w2']);
     });
 
-    it('passes over ids naming no card, and files nothing for none', () => {
+    it('passes over ids naming no node, and files nothing for none', () => {
         const before = board('One', 'Two');
         const after = groupFlowNodes(before, { id: 'w1', name: 'Sprint' }, [before.flowNodes[0].id, 'nowhere'])!;
         expect(after.workflows).toHaveLength(1);
-        expect(after.flowNodes.map(card => card.workflow)).toEqual(['w1', '']);
+        expect(after.flowNodes.map(node => node.workflow)).toEqual(['w1', '']);
         expect(groupFlowNodes(before, { id: 'w2', name: 'Empty' }, ['nowhere'])).toBeNull();
     });
 
     it('renames a workflow and leaves its members naming it', () => {
         const after = editWorkflow(grouped(), 'w1', 'Release')!;
         expect(findWorkflow(after, 'w1')?.name).toBe('Release');
-        expect(after.flowNodes.map(card => card.workflow)).toEqual(['w1', 'w1', '']);
+        expect(after.flowNodes.map(node => node.workflow)).toEqual(['w1', 'w1', '']);
         expect(editWorkflow(grouped(), 'nowhere', 'Release')).toBeNull();
     });
 
     it('ungroups the members of a workflow taken off', () => {
         const after = removeWorkflows(grouped(), ['w1', 'nowhere'])!;
         expect(after.workflows).toEqual([]);
-        expect(after.flowNodes.map(card => card.title)).toEqual(['One', 'Two', 'Three']);
-        expect(after.flowNodes.map(card => card.workflow)).toEqual(['', '', '']);
+        expect(after.flowNodes.map(node => node.title)).toEqual(['One', 'Two', 'Three']);
+        expect(after.flowNodes.map(node => node.workflow)).toEqual(['', '', '']);
         expect(removeWorkflows(grouped(), ['nowhere'])).toBeNull();
     });
 
-    it('takes a workflow emptied by a delete with its cards', () => {
+    it('takes a workflow emptied by a delete with its nodes', () => {
         const before = grouped();
         const [one, two] = before.flowNodes;
         const emptied = removeFlowNodes(before, [one.id, two.id])!;
         expect(emptied.workflows).toEqual([]);
         const halved = removeFlowNodes(before, [one.id])!;
         expect(halved.workflows).toEqual([{ id: 'w1', name: 'Sprint' }]);
-        expect(halved.flowNodes.map(card => card.workflow)).toEqual(['w1', '']);
+        expect(halved.flowNodes.map(node => node.workflow)).toEqual(['w1', '']);
     });
 
-    it('files and removes workflow classes round the classes they name', () => {
-        const before = boardWithClasses();
-        const [first, second] = before.flowNodeClasses;
-        const after = groupFlowNodeClasses(before, { id: 'wc1', name: 'Shapes' }, [first.id, second.id])!;
-        expect(after.workflowClasses).toEqual([{ id: 'wc1', name: 'Shapes' }]);
-        expect(after.flowNodeClasses.map(one => one.workflowClass)).toEqual(['wc1', 'wc1']);
-        expect(findWorkflowClass(after, 'wc1')?.name).toBe('Shapes');
-        expect(findWorkflowClass(after, 'nowhere')).toBeNull();
-        expect(findWorkflow(after, 'nowhere')).toBeNull();
-        const renamed = editWorkflowClass(after, 'wc1', 'Forms')!;
-        expect(renamed.workflowClasses).toEqual([{ id: 'wc1', name: 'Forms' }]);
-        const ungrouped = removeWorkflowClasses(renamed, ['wc1'])!;
-        expect(ungrouped.workflowClasses).toEqual([]);
-        expect(ungrouped.flowNodeClasses.map(one => one.workflowClass)).toEqual(['', '']);
-        const emptied = removeFlowNodeClasses(after, [first.id, second.id])!;
-        expect(emptied.workflowClasses).toEqual([]);
-    });
 });
 
 describe("chaining a gateway's branches", () => {
@@ -637,7 +442,7 @@ describe("chaining a gateway's branches", () => {
             newFlowNode('Left'),
             newFlowNode('Right'),
         ],
-        flowNodeClasses: [], workflows: [], workflowClasses: [],
+        workflows: [],
     });
 
     it('adds each target to the branches, in order', () => {
@@ -650,7 +455,7 @@ describe("chaining a gateway's branches", () => {
         expect(findFlowNode(twice, join)!.flowNode.onSuccess.flowNodes).toEqual([left, right]);
     });
 
-    it('is nothing where the branch is already held, the card itself, or nothing at all', () => {
+    it('is nothing where the branch is already held, the node itself, or nothing at all', () => {
         const before = gatewayBoard();
         const [join, left] = before.flowNodes.map(entry => entry.id);
         const once = chainFlowNode(before, join, left)!;
@@ -665,7 +470,7 @@ describe("chaining a gateway's branches", () => {
 });
 
 describe('archiving a flow node', () => {
-    it('hides the card without deleting it, with its links', () => {
+    it('hides the node without deleting it, with its links', () => {
         const { content, first, second } = chained();
         const archived = archiveFlowNode(content, second.id)!;
         expect(findFlowNode(archived, second.id)!.flowNode.archived).toBe(true);
@@ -674,14 +479,14 @@ describe('archiving a flow node', () => {
         expect(successorOf(archived, second)).toBeNull();
     });
 
-    it('refuses a chain to or from an archived card, without breaking', () => {
+    it('refuses a chain to or from an archived node, without breaking', () => {
         const { content, first, second } = chained();
         const archived = archiveFlowNodes(content, [second.id])!;
         expect(chainFlowNode(archived, first.id, second.id)).toBeNull();
         expect(chainFlowNode(archived, second.id, first.id)).toBeNull();
     });
 
-    it('brings the card back on unarchive', () => {
+    it('brings the node back on unarchive', () => {
         const { content, first, second } = chained();
         const archived = archiveFlowNode(content, second.id)!;
         const back = unarchiveFlowNodes(archived, [second.id])!;

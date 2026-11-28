@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
-import { Button, Flex, Select } from 'antd';
+import { Flex, Select } from 'antd';
 import { FormatPainterOutlined } from '@ant-design/icons';
-import { useSelectionContext } from '@kiao-dashboard-core';
+import { IconButton, useSelectionContext } from '@kiao-dashboard-core';
 
 import { useMindmapStateContext } from '../state';
 import { useApplyRelationStyleToSelection } from '../hooks/useRelation';
@@ -45,13 +45,11 @@ export const NewRelationStyleControl: React.FC = () => {
                 onChange={(color: RelationColor | '') => patchNewRelationStyle({ color })}
                 aria-label="Colour of a new relation"
             />
-            <Button
-                size="small"
-                type="text"
+            <IconButton
+                label="Apply this style to the selected relations"
                 icon={<FormatPainterOutlined />}
                 disabled={selection.length === 0}
                 onClick={applyStyleToSelection}
-                aria-label="Apply this style to the selected relations"
             />
         </Flex>
     );

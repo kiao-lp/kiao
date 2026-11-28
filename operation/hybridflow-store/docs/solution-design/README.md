@@ -1,6 +1,12 @@
+---
+document:
+  status: DRAFT
+  role: PRIMARY_SOURCE
+---
+
 # hybridflow-store solution design
 
-`operation/hybridflow-store` keeps the boards and the cards on them, in PostgreSQL. It is a
+`operation/hybridflow-store` keeps the boards and the flow nodes on them, in PostgreSQL. It is a
 Go service in hexagonal layout, authenticating against the same Keycloak realm as
 [worker](/operation/worker/README.md) and with the same realm role, so a caller that
 reaches one reaches the other with no second login.
@@ -16,7 +22,7 @@ design to the global designs and decision records.
 - [The board UI](/exchange/dashboard/src/plugins/hybridflow/docs/solution-design/board-ui.md) — the board's URL,
   the gestures, and what the browser mints, merges and keeps.
 - [Interactions](/docs/solution-design/partitions/hybridflow/interactions.md) — how Dashboard,
-  worker and this service meet around one card, and on what credential.
+  worker and this service meet around one flow node, and on what credential.
 - [Configuration and deployment](/operation/hybridflow-store/docs/solution-design/deployment.md) —
   the environment variables, and where the service runs in each environment.
 
@@ -25,7 +31,7 @@ design to the global designs and decision records.
 ```
 operation/hybridflow-store/
 ├── core/
-│   ├── entities/   boards, cards and their tasks, agents, runners — pure Go, no driver
+│   ├── entities/   boards, flow nodes and their tasks, agents, runners — pure Go, no driver
 │   ├── ports/      what the core asks of the outside world
 │   └── services/   the rules, written against the ports
 ├── adapters/

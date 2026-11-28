@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent } from 'src/test/render';
 import { readBookmarks } from './bookmarksFile';
 import { BookmarksPanel } from './BookmarksPanel';
 
@@ -31,8 +31,12 @@ vi.mock('./Bookmarks-ctx', () => ({ useBookmarks: () => list }));
 vi.mock('@kiao-dashboard-core', async importOriginal => {
     const { useState } = await import('react');
     return {
-    // Real `storedLinkOf`.
-    storedLinkOf: (await importOriginal<typeof import('@kiao-dashboard-core')>()).storedLinkOf,
+    AsyncList: (await import('src/core/ui-foundation/feedback/AsyncList')).AsyncList,
+    IconButton: (await import('src/core/ui-foundation/toolbar/IconButton')).IconButton,
+    ReorderableList: (await importOriginal<typeof import('@kiao-dashboard-core')>()).ReorderableList,
+    // Real `encodedDcmsLinkOf`.
+    encodedDcmsLinkOf: (await importOriginal<typeof import('@kiao-dashboard-core')>()).encodedDcmsLinkOf,
+    useConfirmation: (await import('src/core/ui-foundation/forms/ConfirmationDialog')).useConfirmation,
     useFileBrowsingPersistenceContext: () => browsing,
     useGlobalViewState: (key: string, fallback: any) => {
         const [state, setState] = useState(() => viewState.store[key] ?? fallback);

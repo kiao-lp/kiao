@@ -1,8 +1,9 @@
 import type { HarnessProfilesState, HarnessProfilesDocument, HarnessProfileModelOption, HarnessProfileSecret, HarnessProfileConnectionDiagnostic } from './harness-profile-types';
-import { FileDto, DiskUsage, StoreInfo, SearchResponse, ScopeResponse, Document, GitStatus, GitBranches, GitResult, LinkFixReport, MoveBatchRequest, CopyBatchRequest, CopyResult, ActionDescriptor, ActionResult, ReindexResult, StagingArea, UnzipResult, FileOptimizations, DeduplicateResult } from './types';
+import { FileDto, DiskUsage, StoreInfo, SearchResponse, ScopeResponse, Document, GitIdentity, GitStatus, GitBranches, GitResult, LinkFixReport, MoveBatchRequest, CopyBatchRequest, CopyResult, ActionDescriptor, ActionResult, ReindexResult, StagingArea, UnzipResult, FileOptimizations, DeduplicateResult } from './types';
 import { HarnessUsage, HarnessOption, HarnessOptions, HarnessModelConfiguration, HarnessModelPreferences, HarnessAttachment, HarnessAuthStatus, HarnessLoginResult, HarnessDeviceLoginStatus, HarnessConversation, HarnessConversationCreate, HarnessConversationDetail, HarnessConversationFork, HarnessConversationPatch, HarnessChainRun, RunnerIdentity } from './harness-types';
 import { Toolbox, ToolboxJob } from './toolbox-types';
 import { MediaJob, MediaSegment } from './media-types';
+import type { AgentMCPDiagnostic } from './harness-types';
 
 export class WorkerError extends Error {
     response: { status: number; statusText: string };
@@ -333,7 +334,7 @@ export class WorkerClient {
 
     /**
      * What the store under `path` is carrying that it need not be: the files stored more than once,
-     * and the biggest ones. `path` defaults to the store root.
+     * and the biggest ones. `path` defaults to the DCMS root.
      *
      * **Slow by design.** The server walks the store and reads the candidates it must read to be
      * sure two files are the same, so this is a call a person makes by opening a panel, never one a
@@ -480,11 +481,30 @@ export class WorkerClient {
 
     // ── Git (Source Control) ──────────────────────────────────────────────────
     //
-    // Every call takes the folder of the store it is about, and answers for the repository that
+    // Repository operations take a folder of the store, and answer for the repository that
     // folder belongs to — the store's own unless the folder sits inside a repository of its own.
     // The paths a call reports and the paths it accepts are relative to that repository's top
     // level, so a caller must pass the same folder to the whole sequence of calls it makes.
-    // Omitting it is the store root, which is what a caller that means the store as a whole wants.
+    // Omitting it is the DCMS root, which is what a caller that means the store as a whole wants.
+
+    async gitIdentity(): Promise<GitIdentity> {
+        const response = await this.fetch(this.getUrl('/git/config'), { cache: 'no-store' });
+        if (!response.ok) throw new WorkerError('Could not load Git configuration.', response.status, response.statusText);
+        return response.json();
+    }
+
+    async saveGitIdentity(identity: GitIdentity): Promise<GitIdentity> {
+        const response = await this.fetch(this.getUrl('/git/config'), {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(identity),
+        });
+        if (!response.ok) {
+            const detail = response.status === 400 ? (await response.text()).trim() : '';
+            throw new WorkerError(detail || 'Could not save Git configuration.', response.status, response.statusText);
+        }
+        return response.json();
+    }
 
     async gitStatus(folder?: string): Promise<GitStatus> {
         const response = await this.fetch(this.getUrl('/git/status', gitFolder(folder)), { cache: 'no-store' });
@@ -629,9 +649,19 @@ export class WorkerClient {
 
     // ── Harnesses ────────────────────────────────────────────────────────────────
 
+    async diagnoseAgentMCP(id: string, commit?: string, signal?: AbortSignal): Promise<AgentMCPDiagnostic[]> {
+        const url = this.getUrl(`/hybridflow-runner/agents/${encodeURIComponent(id)}/mcp-diagnostics`, commit ? { commit } : {});
+        const response = await this.fetch(url, { method: 'POST', signal });
+        if (!response.ok) {
+            const failure = await response.json().catch(() => null);
+            throw new WorkerError(failure?.error ?? `MCP diagnostics failed (${response.status})`, response.status, response.statusText);
+        }
+        return response.json();
+    }
+
     /**
-     * One harness's rolling rate-limit usage — the account *that* engine spends, which is why the harness
-     * is named. Omitting it answers the default harness's, as this endpoint always has.
+     * Rolling rate-limit usage for the account used by the selected harness.
+     * Omit the harness to read usage for the default harness.
      *
      * The service answers 404 for a harness with no account to report, and 503 when it has one and
      * could not be asked.
@@ -840,7 +870,7 @@ export class WorkerClient {
     /**
      * Creates a conversation. `folder` is fixed for its life — it is the CLI's working directory and
      * the one owning the CLI's own transcript — so a folder that is gone is a 404 and one outside
-     * the store root is a 400.
+     * the DCMS root is a 400.
      */
     async createHarnessConversation(body: HarnessConversationCreate): Promise<HarnessConversation> {
         const response = await this.fetch(this.getUrl('/hybridflow-runner/conversations'), {
@@ -925,7 +955,7 @@ export class WorkerClient {
      * this conversation's transcript does not hold is a `404`.
      *
      * `harness` forks *onto* another harness, which is the only way there is to change the one a
-     * conversation runs on — a session id belongs to one engine, so such a copy carries the
+     * conversation runs on — a session id belongs to one harness, so such a copy carries the
      * transcript and starts a session of its own. Omitted keeps the source's harness.
      *
      * A turn running in the source is a `409`: the reply still being written would land in one
@@ -959,7 +989,7 @@ export class WorkerClient {
     // `chainRun` frame, broadcast to every open socket, since they are service-wide and every tab has to agree.
     //
     // **There are several**, and each one is named by its id in the five that act on one. Two boards
-    // play side by side, and so do two chains of one board started from two cards; a run stays in the
+    // play side by side, as do two chains of one board started from different flow nodes. A run stays in the
     // list once it has ended, saying so, which is what a restart is offered on.
 
     /** Every run the service knows, live and lately ended. Read once at start-up; the socket carries
@@ -975,14 +1005,14 @@ export class WorkerClient {
      * person starting it called this run. Other runs are left alone.
      *
      * Refused (400) for a flow node whose settings do not name a model, an effort, a permission mode and a
-     * folder: nothing writes any of them for it, so nothing plays it. Refused (409) for a card
-     * another run is already playing.
+     * folder: nothing writes any of them for it, so nothing plays it. Refused (409) for a flow node
+     * another run is already playing. Pass the completed predecessor ID to queue an exclusive gateway arrival.
      */
-    async playChainRun(path: string, flowNodeId: string, name: string): Promise<HarnessChainRun | null> {
+    async playChainRun(path: string, flowNodeId: string, name: string, afterPredecessor?: boolean, predecessorId?: string): Promise<HarnessChainRun | null> {
         const response = await this.fetch(this.getUrl('/hybridflow-runner/chain-runs/play'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ path, flowNodeId, name }),
+            body: JSON.stringify({ path, flowNodeId, name, afterPredecessor, predecessorId }),
         });
         if (!response.ok) throw new WorkerError(await errorText(response, 'Play chain run failed'), response.status, response.statusText);
         return (await response.json()).run ?? null;
@@ -1004,23 +1034,22 @@ export class WorkerClient {
     }
 
     /**
-     * Picks a suspended run back up: the flow node it was on is answered by the turn about to run in its
-     * chat, and the chain carries on from there. Refused (409) when that run is not suspended.
+     * Resumes a suspended run in its conversation. Set startTurn to continue immediately.
+     * By default the runner waits for a separate prompt before starting a continuation turn itself.
      */
-    async resumeChainRun(runId: string): Promise<HarnessChainRun | null> {
+    async resumeChainRun(runId: string, startTurn?: boolean): Promise<HarnessChainRun | null> {
         const response = await this.fetch(this.getUrl('/hybridflow-runner/chain-runs/resume'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ runId }),
+            body: JSON.stringify({ runId, startTurn }),
         });
         if (!response.ok) throw new WorkerError(await errorText(response, 'Resume chain run failed'), response.status, response.statusText);
         return (await response.json()).run ?? null;
     }
 
     /**
-     * Plays an ended run again from the card it was started on, keeping its name and its place in the
-     * list. Refused (409) while it is still playing, and (400) where that card has no description
-     * left to send — which is what a played card looks like until the next question is written in it.
+     * Plays an ended run again from its starting flow node, keeping its name and its place in the
+     * list. An interrupted AI task continues in its conversation.
      */
     async restartChainRun(runId: string): Promise<HarnessChainRun | null> {
         const response = await this.fetch(this.getUrl('/hybridflow-runner/chain-runs/restart'), {

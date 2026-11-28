@@ -17,4 +17,4 @@ the set.
 | Design | Scope |
 | --- | --- |
 | [Board and task interactions](./interactions.md) | How Dashboard, worker and hybridflow-store coordinate board updates and playback. |
-| [Structured task data](./structured-task-data.md) | JSON Schema outputs and predecessor inputs across task chains. |
+| [Structured task data](./structured-task-data.md) | JSON Schema outputs, predecessor inputs and shared workflow values. |

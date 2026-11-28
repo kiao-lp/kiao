@@ -8,10 +8,13 @@ document:
 
 Part of the [Dashboard solution design](../../../../../docs/solution-design/README.md).
 
-Ordered lists reorder by **dragging a row's grip**. There are no up/down buttons. `useReorderable({ count, onMove })` returns `rowProps(index, className)` for the row and `handleProps(index)` for the `<ReorderHandle>` inside it. `onMove(from, to)` receives indices on the current list; `moveInArray` applies them.
+`ReorderableList` supplies the rows, grip and drop indicator for vertical lists. Each caller renders the row contents, places and labels the grip, and applies `onMove(from, to)` to its data. `moveInArray` moves an item between those indices.
 
-The gesture uses pointer events, so touch reorders like a mouse. HTML5 drag-and-drop gives no insertion line on touch. Nothing moves until the drop: the dragged row dims in place, a line marks the target gap, and passed rows stay under the pointer. The grip is a button and the keyboard route: ↑ ↓ move one place, Home / End go to an end, Escape cancels the drag.
+- Bookmarks keep open notes and edit state with the moved entry.
+- Tags keep their colour control and name field, with rows keyed by label.
+- Sub-templates move within the collection, below the fixed root, in both the template file and task description editors.
+- Exclusive gateway routes move in evaluation order and disable their grips in read-only mode.
 
-Used by unit contents and members, template sub-templates, the bookmarks panel and external projects.
+Mouse, pen and touch use pointer events. During a drag, the row dims in place and an insertion line marks the target gap. Arrow keys move one place, Home and End go to either end, and Escape cancels a drag. Focus follows the moved grip. Single-item lists disable the grip.
 
-Import from `@kiao-dashboard-core`; `@kiao-dashboard-kit/reorder` remains an alias to the same implementation.
+For tables and compound layouts, `useReorderable({ count, onMove })` exposes `rowProps(index, className)` and `handleProps(index)` for a `ReorderHandle`. Import from `@kiao-dashboard-core`. `@kiao-dashboard-kit/reorder` remains a compatibility alias.

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Button } from 'antd';
+import { IconButton } from '@kiao-dashboard-core';
 import { CloseOutlined, InfoCircleOutlined, WarningOutlined } from '@ant-design/icons';
 import type { Anomaly, ExtensionUse, ImageWeight, ModelReport } from './report';
 import {
@@ -16,13 +16,7 @@ export const ReportPanel: React.FC<{ report: ModelReport; onClose: () => void }>
         <aside className="model3d-report" aria-label="Model inspector">
 
             <header className="model3d-report-head">
-                <Button
-                    size="small"
-                    type="text"
-                    icon={<CloseOutlined />}
-                    onClick={onClose}
-                    aria-label="Close the inspector"
-                />
+                <IconButton label="Close the inspector" icon={<CloseOutlined />} onClick={onClose} />
                 <span>Inspector</span>
             </header>
 

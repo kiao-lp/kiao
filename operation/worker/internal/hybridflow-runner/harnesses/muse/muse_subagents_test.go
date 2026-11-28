@@ -111,7 +111,7 @@ func TestMuseDriverFilesADelegationWhole(t *testing.T) {
 	dir := t.TempDir()
 	driver, logPath := museStubDriver(t, "subagent")
 	if err := driver.Spawn(harnessapi.HarnessRun{
-		Prompt: "delegate", WorkDir: dir, StoreRoot: dir,
+		Prompt: "delegate", WorkDir: dir, DCMSRoot: dir,
 		PermissionMode: runnerconfig.PermissionModeBypass, AllowBypass: true,
 	}); err != nil {
 		t.Fatalf("Spawn = %v", err)
@@ -187,7 +187,7 @@ func TestMuseDriverFilesARefusedReadAsTheSummaryLine(t *testing.T) {
 	dir := t.TempDir()
 	driver, _ := museStubDriver(t, "subagent-fail")
 	if err := driver.Spawn(harnessapi.HarnessRun{
-		Prompt: "delegate", WorkDir: dir, StoreRoot: dir,
+		Prompt: "delegate", WorkDir: dir, DCMSRoot: dir,
 		PermissionMode: runnerconfig.PermissionModeBypass, AllowBypass: true,
 	}); err != nil {
 		t.Fatalf("Spawn = %v", err)

@@ -18,6 +18,7 @@ func TestChangingTheModelOfATaskForksItsConversation(t *testing.T) {
 	}}
 	play := func(model string) string {
 		t.Helper()
+		rt.editFlowNode("flow-node-1", func(node *pkgBoards.FlowNode) { node.Status = pkgBoards.FlowNodeStatusReady })
 		rt.play("flow-node-1")
 		rt.waitIdle()
 		node := rt.board().FlowNode("flow-node-1")
@@ -88,6 +89,7 @@ printf '%s\n' '{"type":"turn.completed"}'
 			}); err != nil {
 				t.Fatal(err)
 			}
+			rt.editFlowNode("flow-node-1", func(node *pkgBoards.FlowNode) { node.Status = pkgBoards.FlowNodeStatusReady })
 		}
 	}
 

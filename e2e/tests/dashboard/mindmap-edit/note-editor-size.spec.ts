@@ -3,9 +3,8 @@ import { test, expect, Page, restoreFixture } from '../../harness';
 /**
  * E2E: the size of the note editing popup.
  *
- * The textarea takes all the height the toolbar leaves, and the popup is resizable
- * from its bottom right corner so a long note can be given more room — the textarea
- * following the popup instead of being clipped by it.
+ * The textarea fills the space between the toolbar and the bottom controls.
+ * Dragging the bottom right grip gives the textarea more room.
  *
  * Both microphone states are covered: VoiceTextArea renders the textarea on its own
  * when no microphone is available, and wraps it in a div when there is one, so the
@@ -15,7 +14,7 @@ import { test, expect, Page, restoreFixture } from '../../harness';
 
 const TIMEOUT = 15000;
 const FILE = 'folder-a/Mindmap.mmap.json';
-const BOTTOM_STRIP = 16; // room kept for the resize grip and the voice input button
+const BOTTOM_STRIP = 16; // room kept for the resize grip
 
 /**
  * The specs of this map all write it — notes dragged, grouped, resized — and a worker runs them
@@ -73,10 +72,17 @@ for (const withMicrophone of [true, false]) {
         expect(trash.y + trash.height / 2).toBeGreaterThanOrEqual(firstSelect.y);
         expect(trash.y + trash.height / 2).toBeLessThanOrEqual(firstSelect.y + firstSelect.height);
 
-        // The textarea starts right under the toolbar and runs down to the bottom strip.
+        // The textarea starts under the toolbar. The microphone has its own row above the grip.
         expect(before.textarea.y).toBeCloseTo(before.toolbar.y + before.toolbar.height, 0);
-        const bottomGap = (before.popup.y + before.popup.height) - (before.textarea.y + before.textarea.height);
-        expect(bottomGap).toBeLessThanOrEqual(BOTTOM_STRIP + 2);
+        let editorBottom = before.textarea.y + before.textarea.height;
+        if (withMicrophone) {
+            const mic = popup.getByRole('button', { name: 'Voice Input' });
+            await expect(mic).toBeVisible();
+            const bounds = (await mic.boundingBox())!;
+            expect(bounds.y).toBeCloseTo(editorBottom, 0);
+            editorBottom = bounds.y + bounds.height;
+        }
+        expect(before.popup.y + before.popup.height - editorBottom).toBeCloseTo(BOTTOM_STRIP + 1, 0);
         expect(before.textarea.width).toBeCloseTo(before.popup.width - 2, 0);
 
         // Drag the popup's bottom right grip.

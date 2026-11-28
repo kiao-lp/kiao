@@ -15,6 +15,7 @@ import (
 	"kiao/worker/internal/hybridflow-runner/harnesses/protocol"
 	turnevents "kiao/worker/internal/hybridflow-runner/turns/events"
 	"net/http"
+	"path/filepath"
 	"strings"
 )
 
@@ -37,7 +38,7 @@ func (s *Service) HandleCreateConversation(w http.ResponseWriter, r *http.Reques
 		httpkit.WriteError(w, r, &httpkit.HTTPError{Status: http.StatusBadRequest, Msg: "invalid request body"})
 		return
 	}
-	folder, err := runnerconfig.ResolveFolder(s.cfg.RootPath, req.Folder)
+	folder, err := s.cfg.ResolveFolder(req.Folder)
 	if err != nil {
 		httpkit.WriteError(w, r, err)
 		return
@@ -66,8 +67,8 @@ func (s *Service) HandleCreateConversation(w http.ResponseWriter, r *http.Reques
 		httpkit.WriteError(w, r, err)
 		return
 	}
-	mode := protocol.OrDefault(req.PermissionMode, s.defaultConversationMode(agent.Harness))
-	if err := s.validatePermission(agent.Harness, mode); err != nil {
+	mode, err := s.conversationPermissionMode(agent.Harness, req.PermissionMode)
+	if err != nil {
 		httpkit.WriteError(w, r, err)
 		return
 	}
@@ -137,7 +138,7 @@ func (s *Service) HandleForkConversation(w http.ResponseWriter, r *http.Request)
 			Msg: "A turn is running in this conversation. Fork it once the turn has finished."})
 		return
 	}
-	if _, err := runnerconfig.ResolveFolder(s.cfg.RootPath, source.Folder); err != nil {
+	if _, err := s.cfg.ResolveFolder(source.Folder); err != nil {
 		httpkit.WriteError(w, r, err) // outside the root → 400, gone → 404
 		return
 	}
@@ -179,11 +180,11 @@ func (s *Service) HandleForkConversation(w http.ResponseWriter, r *http.Request)
 	}
 	mode := source.PermissionMode
 	if source.Harness != agent.Harness || s.validatePermission(agent.Harness, mode) != nil {
-		mode = s.defaultConversationMode(agent.Harness)
-	}
-	if err := s.validatePermission(agent.Harness, mode); err != nil {
-		httpkit.WriteError(w, r, err)
-		return
+		mode, err = s.conversationPermissionMode(agent.Harness, "")
+		if err != nil {
+			httpkit.WriteError(w, r, err)
+			return
+		}
 	}
 	target := pkgConversations.ForkTarget{
 		AgentVersion:   agent,
@@ -206,8 +207,7 @@ func (s *Service) HandleForkConversation(w http.ResponseWriter, r *http.Request)
 	httpkit.WriteJSON(w, http.StatusCreated, s.conversationDto(meta))
 }
 
-// HandleGetConversation serves GET /hybridflow-runner/conversations/{id} — the summary plus the whole
-// transcript. This is where a client's history comes from; the socket carries only the live turn.
+// HandleGetConversation serves the summary, transcript and on-disk locations.
 func (s *Service) HandleGetConversation(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	meta, err := s.conversations.Get(id)
@@ -224,8 +224,16 @@ func (s *Service) HandleGetConversation(w http.ResponseWriter, r *http.Request) 
 	for _, rec := range records {
 		messages = append(messages, pkgConversations.MessageDto(rec))
 	}
+	locations := s.conversations.Locations(id)
+	if folder, err := s.cfg.ResolveFolder(meta.Folder); err == nil {
+		locations.WorkingDirectory, _ = filepath.Abs(folder.Abs)
+	}
+	if s.attachments != nil {
+		locations.AttachmentsDirectory = s.attachments.Dir
+	}
 	httpkit.WriteJSON(w, http.StatusOK, pkgConversations.HarnessConversationDetailDto{
 		HarnessConversationDto: s.conversationDto(meta),
+		Locations:              locations,
 		Messages:               messages,
 	})
 }
@@ -439,17 +447,14 @@ func (s *Service) validatePermission(harness, mode string) error {
 	return nil
 }
 
-func (s *Service) defaultConversationMode(harness string) string {
-	preferred := s.cfg.DefaultPermissionMode()
-	if s.harnesses.PublishesMode(harness, preferred) {
-		return preferred
+func (s *Service) conversationPermissionMode(harness, requested string) (string, error) {
+	if requested != "" {
+		return requested, s.validatePermission(harness, requested)
 	}
-	if options, ok := s.harnesses.DriverFor(harness).(harnessapi.HarnessOptions); ok {
-		for _, mode := range options.Options().PermissionModes {
-			if s.cfg.AllowsPermissionMode(mode.Value) {
-				return mode.Value
-			}
+	for _, mode := range []string{runnerconfig.PermissionModeBypass, runnerconfig.PermissionModeManualLive, runnerconfig.PermissionModeManual} {
+		if s.cfg.AllowsPermissionMode(mode) && s.harnesses.PublishesMode(harness, mode) {
+			return mode, nil
 		}
 	}
-	return preferred
+	return "", faults.Invalid(s.harnesses.Label(harness) + " has no available permission modes.")
 }

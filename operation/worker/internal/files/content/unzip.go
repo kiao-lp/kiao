@@ -189,6 +189,9 @@ func checkUnzipClash(destAbs string, isDir bool) error {
 	if !isDir && info.IsDir() {
 		return fmt.Errorf("%q would replace a folder", filepath.Base(destAbs))
 	}
+	if !isDir && !info.Mode().IsRegular() {
+		return fmt.Errorf("%q would replace a non-regular file", filepath.Base(destAbs))
+	}
 	return nil
 }
 

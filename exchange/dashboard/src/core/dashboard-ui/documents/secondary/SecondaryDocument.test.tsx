@@ -51,7 +51,7 @@ const PrimaryProbe: React.FC = () => {
     return <div data-testid="primary-content">{currentFile?.path}</div>;
 };
 
-const harness = (target: FileDto) => (
+const secondaryDocumentFixture = (target: FileDto) => (
     <PluginListProvider plugins={[fakePlugin as never]}>
         <SecondaryDocumentProvider>
             <ScopedFileBrowsingProvider value={{ currentFile: file('main.md'), currentPath: '' }}>
@@ -78,7 +78,7 @@ describe('secondary document', () => {
         bars.secondCentralArea = false;
         bars.setSecondCentralArea.mockClear();
         bars.showTab.mockClear();
-        render(harness(file('notes/ref.md')));
+        render(secondaryDocumentFixture(file('notes/ref.md')));
 
         expect(screen.getByTestId('secondary-document-panel')).toHaveTextContent('No secondary document');
 
@@ -94,7 +94,7 @@ describe('secondary document', () => {
         bars.secondCentralArea = true;
         bars.setSecondCentralArea.mockClear();
         bars.showTab.mockClear();
-        render(harness(file('notes/ref.md')));
+        render(secondaryDocumentFixture(file('notes/ref.md')));
         fireEvent.click(screen.getByTestId('open-secondary'));
 
         expect(bars.showTab).toHaveBeenCalledWith('secondary-document');
@@ -105,7 +105,7 @@ describe('secondary document', () => {
     });
 
     it('does not open folders', () => {
-        render(harness(file('notes', true)));
+        render(secondaryDocumentFixture(file('notes', true)));
         fireEvent.click(screen.getByTestId('open-secondary'));
         expect(screen.queryByTestId('secondary-content')).toBeNull();
         expect(screen.getByTestId('secondary-document-panel')).toHaveTextContent('No secondary document');

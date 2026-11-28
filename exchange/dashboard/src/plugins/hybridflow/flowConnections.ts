@@ -1,5 +1,5 @@
 import type { FlowNodeSuccess } from './flowNodeSuccess';
-import { chains, isDisplay, FlowNodeType } from './flowNodeType';
+import { acceptsPredecessor, chains, joins, FlowNodeType, splits } from './flowNodeType';
 
 interface ConnectedNode {
     id: string;
@@ -12,18 +12,24 @@ interface ConnectedNode {
 export const successorIds = (node: ConnectedNode): string[] =>
     [...new Set([node.onSuccess.flowNode, ...node.onSuccess.flowNodes].filter(Boolean))];
 
-export const predecessors = (nodes: ConnectedNode[], id: string): ConnectedNode[] =>
+export const predecessors = <T extends ConnectedNode>(nodes: T[], id: string): T[] =>
     nodes.filter(node => successorIds(node).includes(id));
 
 export const canConnect = (nodes: ConnectedNode[], from: string, to: string): boolean => {
     const source = nodes.find(node => node.id === from);
     const target = nodes.find(node => node.id === to);
-    return !!source && !!target && from !== to && chains(source.type) && !isDisplay(target.type)
-        && (target.type === 'gateway' || !predecessors(nodes, to).some(node => node.id !== from));
+    return !!source && !!target && from !== to && chains(source.type) && acceptsPredecessor(target.type)
+        && (joins(target.type) || !predecessors(nodes, to).some(node => node.id !== from));
+};
+
+export const canAppendSuccessor = (nodes: ConnectedNode[], from: string, to: string): boolean => {
+    const source = nodes.find(node => node.id === from);
+    return canConnect(nodes, from, to)
+        && (source?.type !== 'limiter' || source.onSuccess.flowNodes.length < 2);
 };
 
 export const canRetype = (nodes: ConnectedNode[], id: string, type: FlowNodeType): boolean =>
-    type === 'gateway' || predecessors(nodes, id).length <= (isDisplay(type) ? 0 : 1);
+    joins(type) || predecessors(nodes, id).length <= (acceptsPredecessor(type) ? 1 : 0);
 
 /** Validate the live connected component, leaving independent chains playable. */
 export const chainConnectionIssue = (nodes: ConnectedNode[], root?: string): string | null => {
@@ -48,11 +54,17 @@ export const chainConnectionIssue = (nodes: ConnectedNode[], root?: string): str
         const next = successorIds(node).filter(target => byId.has(target));
         const previous = incoming.get(id) ?? [];
         const name = node.title || node.id;
-        if (previous.length > (node.type === 'gateway' ? Infinity : isDisplay(node.type) ? 0 : 1)) {
-            return `“${name}” can have only ${isDisplay(node.type) ? 'zero' : 'one'} predecessor. Use a gateway to join branches.`;
+        if (!acceptsPredecessor(node.type) && previous.length > 0) {
+            return `“${name}” cannot have a predecessor.`;
         }
-        if ((!chains(node.type) && next.length) || (node.type !== 'gateway' && next.length > 1)) {
+        if (!joins(node.type) && previous.length > 1) {
+            return `“${name}” can have only one predecessor. Use a gateway to join branches.`;
+        }
+        if ((!chains(node.type) && next.length) || (!splits(node.type) && next.length > 1)) {
             return `“${name}” has successors its type does not allow. Use a gateway to split branches.`;
+        }
+        if (node.type === 'limiter' && successorIds(node).length > 2) {
+            return `“${name}” can have only two successors.`;
         }
         if (next.includes(id)) return `“${name}” cannot be chained to itself.`;
         pending.push(...next, ...previous);

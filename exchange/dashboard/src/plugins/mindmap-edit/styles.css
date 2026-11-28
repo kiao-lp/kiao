@@ -28,7 +28,7 @@
     min-height: 140px;
     max-width: calc(100vw - 20px);
     max-height: calc(100vh - 20px);
-    /* free strip along the bottom for the resize grip and the voice input button */
+    /* Keep the popup resize grip clear of the editor. */
     padding-bottom: 16px;
     z-index: 10000;
 }
@@ -94,12 +94,6 @@
     flex: 1 1 auto;
     min-height: 0;
     width: 100%;
-}
-
-/* Microphone available: the textarea sits inside .voice-input-wrapper, which has
-   to stretch it rather than lay it out on a text baseline. */
-.mindmap-rich-text-editor-wrapper .voice-input-wrapper {
-    display: flex;
 }
 
 /* Editor (Textarea) — fills its slot in both cases. Both selectors outweigh antd's
@@ -177,9 +171,19 @@
 
 .mindmap-text-rich-text .mindmap-rich-text-view ul,
 .mindmap-text-rich-text .mindmap-rich-text-view ol {
+    --mindmap-list-marker-width: 0.95em;
     margin: 0;
-    padding-left: 35px;
+    /* Halve the space before the marker and leave room for the marker itself. */
+    padding-left: max(var(--mindmap-list-marker-width), calc((35px + var(--mindmap-list-marker-width)) / 2));
     padding-right: 8px;
+}
+
+.mindmap-text-rich-text .mindmap-rich-text-view ol {
+    --mindmap-list-marker-width: 2ch;
+}
+
+.mindmap-text-rich-text .mindmap-rich-text-view ol:is([start], [reversed], :has(> li:nth-child(10), > li[value])) {
+    --mindmap-list-marker-width: 3ch;
 }
 
 .mindmap-text-rich-text .mindmap-rich-text-view p,
@@ -200,6 +204,10 @@
     position: relative;
     align-self: stretch;
     flex: 1;
+    min-width: max-content;
+    /* A finger pans the map as it pans any other document — the browser's own scrolling, on the
+       pane the map is drawn in — and a double tap stays a double tap, which is how a note is made. */
+    touch-action: pan-x pan-y;
 }
 
 .mindmap-visualize {
@@ -592,17 +600,13 @@
     pointer-events: none;
 }
 
-/* Zoom Container */
-.mindmap-zoom-container {
-    transform-origin: top left;
-}
-
+/* The pane takes the height of the map it holds, and whatever of the map lies beyond the frame
+   scrolls the document area around it — the scrolling every other plugin gets. Clipping it here
+   left a map larger than the frame with nothing to scroll it by. */
 .mindmap-panel {
     flex: 1;
-    min-height: 0;
     display: flex;
     flex-direction: column;
-    overflow: hidden;
 }
 
 /* The one colour the map is being drawn in, the style new notes are made with, the style new

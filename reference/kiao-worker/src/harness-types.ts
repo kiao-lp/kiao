@@ -312,12 +312,12 @@ export type HarnessWireBlock =
     | { kind: 'subagent'; text: string; at?: string; durationMs?: number; subagent?: HarnessWireSubagent };
 
 /** The protocol version this package's types describe. Compare against `hello.protocolVersion`. */
-export const HARNESS_PROTOCOL_VERSION = 21;
+export const HARNESS_PROTOCOL_VERSION = 23;
 
 /**
  * Branch on code, not message text.
  * unknown_conversation: missing/deleted conversation; conversation_busy: turn already running.
- * bad_folder: missing, non-directory, or outside store root.
+ * bad_folder: missing, non-directory, or outside DCMS root.
  * unknown_permission_mode: service cannot drive this mode.
  * too_many_turns: concurrent-turn cap; spawn_failed: CLI could not start.
  * not_permitted: caller does not own the turn; cli_error: mid-turn CLI error event.
@@ -339,7 +339,9 @@ export type HarnessErrorCode =
     | 'too_many_turns'
     /** Missing/expired attachment or too many attachments; refuse rather than run without them. */
     | 'bad_attachment'
+    | 'bad_response_token_limit'
     | 'spawn_failed'
+    | 'resume_failed'
     | 'not_permitted'
     /** between reached no running turn; return text to the user so it can be sent as a prompt. */
     | 'no_running_turn'
@@ -378,11 +380,15 @@ export type HarnessClientMessage =
           /** `false` disables extended thinking (`CLAUDE_CODE_DISABLE_THINKING=1`) for the turn. */
           thinking?: boolean;
           permissionMode?: HarnessPermissionMode;
+          /** Decimal token budget for the agent's visible replies in this turn. */
+          responseTokenLimit?: string;
           /**
            * Already-uploaded attachment ids, in attachment order; never host paths.
            * At most ten, all still available, otherwise bad_attachment.
            */
           attachments?: string[];
+          /** Reclaims this suspended run and uses this prompt as the task's next turn. */
+          resumeRunId?: string;
       }
     /**
      * Send text into the running turn’s stdin; folded in at its next tool boundary.
@@ -429,7 +435,7 @@ export type HarnessConversationMessage =
           permissionMode: HarnessPermissionMode;
           /** Conversation’s harness, never overridden by the prompt. */
           harness: HarnessName;
-          /** Store-relative working directory of this turn; `""` is the store root. */
+          /** Working directory relative to the DCMS root. An empty string selects the DCMS root. */
           folder: string;
           /** Unix epoch millis. */
           startedAt: number;
@@ -527,20 +533,22 @@ export type HarnessRegistryMessage =
 /**
  * Run states:
  * - playing: turn for flowNodeId running or about to start.
- * - compacting: completed card’s chat is being compacted at its request; card stays marked playing.
+ * - compacting: the AI task requests compaction of its conversation after completion.
  * - waiting: transient error; resend the flow node at retryAt (20 minutes).
  * - refreshing: quota exhausted; at the limit’s retryAt, resume the cut-off turn instead of
- *   resending the node. Card document status is waiting-refresh.
- * - scheduled: Scheduler card waiting for its datetime, read from the card itself.
+ *   resending the node. The flow node status is waiting-refresh.
+ * - scheduled: a Scheduler flow node is waiting for its configured duration or datetime.
  * - stopping: stop requested; running node is the last played.
- * - suspended: turn stopped from chat; chat input resumes via POST /hybridflow-runner/chain-runs/resume.
+ * - suspended: a stopped turn can resume via a prompt naming the run or via POST /hybridflow-runner/chain-runs/resume.
  */
 export type HarnessChainRunState =
     | 'playing'
     | 'compacting'
+    | 'queued'
     | 'waiting'
     | 'refreshing'
     | 'scheduled'
+    | 'polling'
     | 'stopping'
     | 'suspended'
     | 'ended';
@@ -548,24 +556,24 @@ export type HarnessChainRunState =
 export interface HarnessChainRunFlowNode {
     id: string;
     title: string;
-    /** Board status, with ready explicit instead of empty. Empty if the card was removed. */
+    /** Flow node status, including explicit ready. Empty if the node was removed. */
     status: string;
-    /** Already played, excluding current and upcoming cards. */
+    /** Already played, excluding the current and upcoming flow nodes. */
     played?: boolean;
-    /** The card the run is on right now: exactly one while it is live, none once it has ended. */
+    /** The current flow node, set for one entry while the run is live. */
     current?: boolean;
 }
 
 /**
  * Service-owned run; continues independently of connected clients. Concurrent runs are
- * allowed, except on the same card. Ended runs remain listed with their ending and restart option.
+ * allowed on different flow nodes. Ended runs remain listed with their ending and restart option.
  */
 export interface HarnessChainRun {
     id: string;
     name: string;
     /** Board handle used by the browser, sent as path. */
     path: string;
-    /** The card the run was started on, and the one a restart plays again. */
+    /** The starting flow node, used again on restart. */
     rootFlowNodeId: string;
     /** Current node, including while its completed chat is compacting. */
     flowNodeId: string;
@@ -661,10 +669,11 @@ export interface HarnessConversation {
     profileId?: string;
     id: string;
     title: string;
-    /** Store-relative CLI cwd; "" is the store root. Immutable: must match the CLI transcript’s folder slug. */
+    /** CLI working directory relative to the DCMS root. An empty string selects the DCMS root.
+     * This value must always match the CLI transcript’s folder slug. */
     folder: string;
     /**
-     * Resolved harness (default if absent in storage). Immutable because sessions belong to an engine;
+     * Resolved harness (default if absent in storage). Immutable because sessions belong to a harness;
      * another agent can be selected when forking the conversation.
      */
     harness: HarnessName;
@@ -672,7 +681,7 @@ export interface HarnessConversation {
     effort: string;
     permissionMode: HarnessPermissionMode;
     thinking: boolean;
-    /** The CLI session this conversation resumes. Absent once it has been lost. */
+    /** Native resume reference, an ID or session file depending on the harness. */
     sessionId?: string;
     /** Whether a turn is running right now — the job registry's answer, not the stored state's. */
     running: boolean;
@@ -798,7 +807,18 @@ export interface HarnessTranscriptMessage {
     attachments?: HarnessAttachment[];
 }
 
+/** Paths on the worker host. Some files and directories are created on first use. */
+export interface HarnessConversationLocations {
+    workingDirectory?: string;
+    conversationDirectory: string;
+    metadataFile: string;
+    transcriptFile: string;
+    turnTracesDirectory: string;
+    attachmentsDirectory?: string;
+}
+
 export interface HarnessConversationDetail extends HarnessConversation {
+    locations?: HarnessConversationLocations;
     messages: HarnessTranscriptMessage[];
 }
 
@@ -839,5 +859,13 @@ export interface HarnessConversationPatch {
     permissionMode?: HarnessPermissionMode;
     thinking?: boolean;
     traceStream?: boolean;
+}
+
+export interface AgentMCPDiagnostic {
+    server: string;
+    available: boolean;
+    stage?: string;
+    message?: string;
+    tools?: number;
 }
 

@@ -22,7 +22,7 @@ const BackButton = () => {
     return <button onClick={() => navigate(-1)}>Back</button>;
 };
 
-const Harness = ({ initial = '/note.md' }: { initial?: string }) => (
+const AppRouteFixture = ({ initial = '/note.md' }: { initial?: string }) => (
     <MemoryRouter basename="/dashboard" initialEntries={[`/dashboard${initial}`]}>
         <AppRoutesProvider routes={routes}>
             <Link to="/boards">Boards list</Link>
@@ -48,20 +48,20 @@ beforeEach(() => {
 
 describe('route tab selection', () => {
     it('selects only Document when a document URL opens', () => {
-        const { rerender } = render(<Harness initial="/note.md" />);
+        const { rerender } = render(<AppRouteFixture initial="/note.md" />);
         expect(shownTabs()).toEqual(['document']);
 
-        rerender(<Harness initial="/note.md" />);
+        rerender(<AppRouteFixture initial="/note.md" />);
         expect(bars.showTab).toHaveBeenCalledTimes(1);
     });
 
     it.each(['/boards', '/boards/major'])('selects only Board when %s opens', initial => {
-        render(<Harness initial={initial} />);
+        render(<AppRouteFixture initial={initial} />);
         expect(shownTabs()).toEqual(['board']);
     });
 
     it('keeps the document and its draft mounted when opening and leaving a panel route', () => {
-        render(<Harness />);
+        render(<AppRouteFixture />);
         const draft = screen.getByRole('textbox', { name: 'Document draft' });
         fireEvent.change(draft, { target: { value: 'Work in progress' } });
         bars.showTab.mockClear();
@@ -87,57 +87,57 @@ describe('route tab selection', () => {
         ['/boards/major', 'board'],
     ])('waits for the target tab to register for %s, once per navigation', (initial, tabId) => {
         bars.tabs = [];
-        const { rerender } = render(<Harness initial={initial} />);
+        const { rerender } = render(<AppRouteFixture initial={initial} />);
         expect(bars.showTab).not.toHaveBeenCalled();
 
         bars.tabs = [{ id: 'boards' }, { id: 'file-navigation-tree' }];
-        rerender(<Harness initial={initial} />);
+        rerender(<AppRouteFixture initial={initial} />);
         expect(bars.showTab).not.toHaveBeenCalled();
 
         bars.tabs = [...bars.tabs, { id: tabId }];
-        rerender(<Harness initial={initial} />);
+        rerender(<AppRouteFixture initial={initial} />);
         expect(shownTabs()).toEqual([tabId]);
 
         bars.tabs = [...bars.tabs, { id: 'another-tab' }];
-        rerender(<Harness initial={initial} />);
+        rerender(<AppRouteFixture initial={initial} />);
         expect(bars.showTab).toHaveBeenCalledTimes(1);
     });
 
     it('selects Board again when following the same board link', () => {
-        render(<Harness initial="/boards/major" />);
+        render(<AppRouteFixture initial="/boards/major" />);
         fireEvent.click(screen.getByText('Major'));
         expect(shownTabs()).toEqual(['board', 'board']);
     });
 
     it.each(['Document', 'Other document', 'Folder', 'Section'])(
-        'selects only Document when following a store link (%s)', label => {
-            const { rerender } = render(<Harness initial="/boards/major" />);
+        'selects only Document when navigating to a DCMS file or folder (%s)', label => {
+            const { rerender } = render(<AppRouteFixture initial="/boards/major" />);
             bars.showTab.mockClear();
 
             fireEvent.click(screen.getByText(label));
 
             expect(shownTabs()).toEqual(['document']);
 
-            rerender(<Harness initial="/boards/major" />);
+            rerender(<AppRouteFixture initial="/boards/major" />);
             expect(bars.showTab).toHaveBeenCalledTimes(1);
         },
     );
 
     it('waits for Document to register after following a link', () => {
         bars.tabs = [{ id: 'board' }];
-        const { rerender } = render(<Harness initial="/boards/major" />);
+        const { rerender } = render(<AppRouteFixture initial="/boards/major" />);
         bars.showTab.mockClear();
         fireEvent.click(screen.getByText('Other document'));
         expect(bars.showTab).not.toHaveBeenCalled();
 
         bars.tabs = [{ id: 'board' }, { id: 'file-navigation-tree' }, { id: 'document' }];
-        rerender(<Harness initial="/boards/major" />);
+        rerender(<AppRouteFixture initial="/boards/major" />);
 
         expect(shownTabs()).toEqual(['document']);
     });
 
     it('selects only Document again when following the same link twice', () => {
-        render(<Harness initial="/boards/major" />);
+        render(<AppRouteFixture initial="/boards/major" />);
         bars.showTab.mockClear();
         fireEvent.click(screen.getByText('Document'));
         fireEvent.click(screen.getByText('Document'));
@@ -146,7 +146,7 @@ describe('route tab selection', () => {
     });
 
     it('selects only Document when returning from a panel route with browser history', () => {
-        render(<Harness />);
+        render(<AppRouteFixture />);
         fireEvent.click(screen.getByText('Major'));
         bars.showTab.mockClear();
 
@@ -157,7 +157,7 @@ describe('route tab selection', () => {
 
     it('selects Document again after returning from a route whose tab has not registered', () => {
         bars.tabs = [{ id: 'document' }];
-        render(<Harness />);
+        render(<AppRouteFixture />);
         bars.showTab.mockClear();
 
         fireEvent.click(screen.getByText('Major'));
@@ -168,7 +168,7 @@ describe('route tab selection', () => {
     });
 
     it('selects only Board when navigating between boards and returning through browser history', () => {
-        render(<Harness initial="/boards/major" />);
+        render(<AppRouteFixture initial="/boards/major" />);
         bars.showTab.mockClear();
 
         fireEvent.click(screen.getByText('Minor'));
@@ -180,7 +180,7 @@ describe('route tab selection', () => {
     });
 
     it('selects Board again when returning from a page route', () => {
-        render(<Harness initial="/boards/major" />);
+        render(<AppRouteFixture initial="/boards/major" />);
         fireEvent.click(screen.getByText('Settings'));
         bars.showTab.mockClear();
 
@@ -190,7 +190,7 @@ describe('route tab selection', () => {
     });
 
     it('renders page routes in place of the document and selects no tab', () => {
-        render(<Harness />);
+        render(<AppRouteFixture />);
         bars.showTab.mockClear();
         fireEvent.click(screen.getByText('Settings'));
         expect(screen.getByText('Settings page')).toBeInTheDocument();

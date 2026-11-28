@@ -96,7 +96,7 @@ func TestAgentPublicationMigrationPreservesExistingDefinitions(t *testing.T) {
 		VALUES ('00000000-0000-4000-8000-000000000098', 'Existing', 'pi', 'provider/retired', 'account-a', 'Selection guidance', 'Keep these orders.');`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := migrateBeforeRetirement(ctx, pool); err != nil {
+	if _, err := migrateThrough(ctx, pool, 35); err != nil {
 		t.Fatal(err)
 	}
 	agent, err := NewAgentStore(pool).FindAgent(ctx, "00000000-0000-4000-8000-000000000098")

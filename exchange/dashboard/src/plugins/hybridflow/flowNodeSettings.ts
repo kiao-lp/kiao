@@ -1,7 +1,8 @@
 /** AI tasks require agent, effort, permission and folder; Human tasks use only folder. */
 
 import type { HarnessOption, HarnessOptionsEntry, HarnessProfileOffer } from 'kiao-worker';
-import { storeLinkOf, storePathOf } from 'kiao-worker/utils';
+import { dcmsLinkOf, storePathOf } from 'kiao-worker/utils';
+import { hasContextReference } from './nodeContext';
 
 export interface AgentSelection {
     agent?: string;
@@ -19,11 +20,13 @@ export interface FlowNodeSettings extends AgentSelection {
     folder?: string;
     /** Optional runner id: pinned nodes refuse execution on other runners; not required by isPlayable. */
     runner?: string;
+
+    extra?: Record<string, string>;
 }
 
 /** Dropped files select their parent folder. */
 export const droppedFolder = (path: string, isDirectory: boolean): string =>
-    storeLinkOf(isDirectory ? path : path.slice(0, Math.max(path.lastIndexOf('/'), 0)));
+    dcmsLinkOf(isDirectory ? path : path.slice(0, Math.max(path.lastIndexOf('/'), 0)));
 
 export const AGENT_KEY = 'agent';
 export const HARNESS_KEY = 'harness';
@@ -48,11 +51,17 @@ export const readSettings = (raw: unknown): FlowNodeSettings => {
         const value = source[key];
         if (typeof value === 'string' && value.trim() !== '') settings[key] = value.trim();
     }
+    if (source.extra && typeof source.extra === 'object' && !Array.isArray(source.extra)) {
+        const entries = Object.entries(source.extra).filter((entry): entry is [string, string] =>
+            typeof entry[1] === 'string');
+        if (entries.length > 0) settings.extra = Object.fromEntries(entries);
+    }
     return settings;
 };
 
 /** Empty settings are omitted from the document. */
-export const noSettings = (settings: FlowNodeSettings): boolean => TEXT_KEYS.every(key => !settings[key]);
+export const noSettings = (settings: FlowNodeSettings): boolean =>
+    TEXT_KEYS.every(key => !settings[key]) && !Object.keys(settings.extra ?? {}).length;
 
 export const withSettings = (settings: FlowNodeSettings, changes: SettingsChanges): FlowNodeSettings => {
     const next: FlowNodeSettings = { ...settings };
@@ -74,7 +83,8 @@ export const normalizeFolder = (folder: string): string =>
 /** Keep unset distinct from root. */
 export const folderLink = (folder: string): string | undefined => {
     const written = folder.trim();
-    return written === '' ? undefined : storeLinkOf(normalizeFolder(written));
+    if (hasContextReference(written)) return written;
+    return written === '' ? undefined : dcmsLinkOf(normalizeFolder(written));
 };
 
 /** Call only for playable nodes: an unset folder is not a root fallback. */
@@ -86,7 +96,7 @@ export const settingsPermission = (settings: FlowNodeSettings): string => settin
 /** Call only for playable nodes; no agent fallback. */
 export const settingsAgent = (settings: FlowNodeSettings): string => settings.agent ?? '';
 
-/** Managed UUIDs are instance-local references, stripped on cross-instance paste; legacy engine names. */
+/** Agent UUIDs are local to the store. Legacy harness IDs can travel between stores. */
 export const isAgentId = (value: string): boolean =>
     /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
         .test(value.trim());
@@ -104,23 +114,23 @@ const firstWord = (value: string): string =>
 export const shortPermission = (permission: string): string =>
     PERMISSION_WORDS[permission] ?? firstWord(permission);
 
-export const isLegacyAgent = (settings: FlowNodeSettings): boolean =>
+export const hasLegacyHarness = (settings: FlowNodeSettings): boolean =>
     !!settings.model && ['claude', 'codex', 'muse', 'pi', 'gemini'].includes(settings.agent ?? '');
 
-/** The profile a managed agent runs on; an unset id is the deployment default. */
-export const profileForAgent = (
-    own: HarnessOptionsEntry, agent?: { profileId?: string; published?: { profileId?: string } },
+/** Resolve the selected profile, then the agent's preference, then the harness default. */
+export const profileForSelection = (
+    own: HarnessOptionsEntry, defaults?: { profileId?: string; published?: { profileId?: string } },
     profileId?: string,
 ): HarnessProfileOffer | undefined =>
-    own.profiles?.find(one => one.id === (profileId || (agent?.published ?? agent)?.profileId || own.defaultProfileId));
+    own.profiles?.find(one => one.id === (profileId || (defaults?.published ?? defaults)?.profileId || own.defaultProfileId));
 
-/** The efforts a managed agent offers. */
-export const effortsForAgent = (
-    own: HarnessOptionsEntry, agent?: { profileId?: string; model?: string; published?: { profileId?: string; model?: string } },
+/** Reasoning levels offered by the selected harness, profile and model. */
+export const effortsForSelection = (
+    own: HarnessOptionsEntry, defaults?: { profileId?: string; model?: string; published?: { profileId?: string; model?: string } },
     profileId?: string, modelId?: string,
 ): HarnessOption[] => {
-    const profile = profileForAgent(own, agent, profileId);
-    const chosen = modelId || (agent?.published ?? agent)?.model;
+    const profile = profileForSelection(own, defaults, profileId);
+    const chosen = modelId || (defaults?.published ?? defaults)?.model;
     if (!profile) return own.models.find(one => one.value === (chosen || own.defaultModel))?.efforts ?? own.efforts;
     const model = profile.models.find(one => one.value === (chosen || profile.defaultModel));
     if (model) return model.efforts;

@@ -1,12 +1,13 @@
 import {
-    TaskExecutionDto, AgenticResourceDto, ResourceFileDto, SchemaValueDto, AgentDto, AgentPatchDto, AgentVersionDto, BoardSummary, ChangesDto, ClassVersionDto, ClassVersionPatchDto,
-    InstantiateBodies, InstantiateWorkflowResult,
-    NewAgentDto, NewClassVersionDto, NewFlowNodeClassDto, NewRunnerDto, NewWorkflowClassDto,
+    TaskExecutionDto, AgenticResourceDto, ResourceFileDto, SchemaValueDto, AgentDto, AgentPatchDto, AgentVersionDto, BoardSummary, ChangesDto,
+    WorkflowWithFlowNodesDto,
+    NewAgentDto, NewRunnerDto,
     NewWorkflowDto,
-    NewFlowNodeDto, FlowNodeClassDto, FlowNodeClassPatchDto, FlowNodeDto, FlowNodePatchDto,
+    NewFlowNodeDto, FlowNodeDto, FlowNodePatchDto,
     FlowNodeUsageTotalsDto,
-    ListedClassDto, ListedWorkflowClassDto, RunnerDto, RunnerPatchDto, SpotDto, BoardDetailDto,
-    WorkflowClassDto, WorkflowClassPatchDto, WorkflowDto, WorkflowPatchDto,
+    FolderDto,
+    RunnerDto, RunnerPatchDto, SpotDto, BoardDetailDto,
+    WorkflowDto, WorkflowPatchDto,
 } from './types';
 import type { ReleaseBump } from '../agentic-resources/release';
 
@@ -37,24 +38,30 @@ export class HybridflowClient {
         return out.schemaValues ?? [];
     }
 
-
     async boards(includeArchived = false): Promise<BoardSummary[]> {
         const query = includeArchived ? '?archived=1' : '';
         const { boards } = await this.send<{ boards: BoardSummary[] }>('GET', `/boards${query}`);
         return boards ?? [];
     }
 
-
-    board(handle: string): Promise<BoardDetailDto> {
-        return this.send<BoardDetailDto>('GET', `/boards/${encodeURIComponent(handle)}`);
+    board(handle: string, signal?: AbortSignal): Promise<BoardDetailDto> {
+        return this.send('GET', this.boardPath(handle), undefined, undefined, signal);
     }
 
-    createBoard(name: string): Promise<BoardDetailDto> {
-        return this.send<BoardDetailDto>('POST', '/boards', { name });
+    flowNodeBoard(id: string, signal: AbortSignal): Promise<BoardSummary> {
+        return this.send('GET', `/flow-nodes/${encodeURIComponent(id)}/board`, undefined, undefined, signal);
+    }
+
+    createBoard(name: string, folderId?: string): Promise<BoardDetailDto> {
+        return this.send<BoardDetailDto>('POST', '/boards', { name, folderId });
     }
 
     renameBoard(handle: string, name: string, revision?: number): Promise<BoardSummary> {
         return this.send<BoardSummary>('PATCH', `/boards/${encodeURIComponent(handle)}`, { name }, revision);
+    }
+
+    moveBoard(handle: string, folderId: string, revision: number): Promise<BoardSummary> {
+        return this.send('PATCH', this.boardPath(handle), { folderId }, revision);
     }
 
     archiveBoard(handle: string, archive: boolean, revision?: number): Promise<BoardSummary> {
@@ -65,6 +72,22 @@ export class HybridflowClient {
         return this.sendVoid('DELETE', `/boards/${encodeURIComponent(handle)}`);
     }
 
+    async boardFolders(): Promise<FolderDto[]> {
+        const { folders } = await this.send<{ folders: FolderDto[] }>('GET', '/folders/boards');
+        return folders ?? [];
+    }
+
+    createBoardFolder(name: string): Promise<FolderDto> {
+        return this.send('POST', '/folders/boards', { name });
+    }
+
+    renameBoardFolder(id: string, name: string): Promise<FolderDto> {
+        return this.send('PATCH', `/folders/boards/${encodeURIComponent(id)}`, { name });
+    }
+
+    deleteBoardFolder(id: string): Promise<void> {
+        return this.sendVoid('DELETE', `/folders/boards/${encodeURIComponent(id)}`);
+    }
 
     async createFlowNodes(handle: string, flowNodes: NewFlowNodeDto[]): Promise<FlowNodeDto[]> {
         const out = await this.send<{ flowNodes: FlowNodeDto[] }>(
@@ -76,7 +99,6 @@ export class HybridflowClient {
         return this.send<FlowNodeDto>('PATCH', this.flowNodePath(handle, flowNodeId), patch, revision);
     }
 
-
     chainFlowNode(handle: string, fromId: string, toId: string): Promise<FlowNodeDto> {
         return this.send<FlowNodeDto>('POST', `${this.flowNodePath(handle, fromId)}/chain`, { flowNode: toId });
     }
@@ -85,91 +107,23 @@ export class HybridflowClient {
         return this.sendVoid('DELETE', `${this.boardPath(handle)}/flow-nodes`, { flowNodes });
     }
 
-
-    convertFlowNodeToClass(handle: string, flowNodeId: string): Promise<FlowNodeClassDto> {
-        return this.send<FlowNodeClassDto>(
-            'POST', `${this.flowNodePath(handle, flowNodeId)}/to-class`, {});
-    }
-
-
     flowNodeUsageTotals(handle: string, flowNodeId: string): Promise<FlowNodeUsageTotalsDto> {
         return this.send<FlowNodeUsageTotalsDto>(
             'GET', `${this.flowNodePath(handle, flowNodeId)}/usage`);
     }
-
-
-    async flowNodeClasses(): Promise<ListedClassDto[]> {
-        const { flowNodeClasses } = await this.send<{ flowNodeClasses: ListedClassDto[] }>(
-            'GET', '/flow-node-classes');
-        return flowNodeClasses ?? [];
-    }
-
-
-    createFlowNodeClass(handle: string, flowNodeClass: NewFlowNodeClassDto): Promise<FlowNodeClassDto> {
-        return this.send<FlowNodeClassDto>(
-            'POST', `${this.boardPath(handle)}/flow-node-classes`, flowNodeClass);
-    }
-
-    patchFlowNodeClass(
-        handle: string, classId: string, patch: FlowNodeClassPatchDto, revision?: number,
-    ): Promise<FlowNodeClassDto> {
-        return this.send<FlowNodeClassDto>(
-            'PATCH', this.flowNodeClassPath(handle, classId), patch, revision);
-    }
-
-
-    chainFlowNodeClass(handle: string, fromId: string, toId: string): Promise<FlowNodeClassDto> {
-        return this.send<FlowNodeClassDto>(
-            'POST', `${this.flowNodeClassPath(handle, fromId)}/chain`, { flowNode: toId });
-    }
-
-    deleteFlowNodeClasses(handle: string, flowNodeClasses: string[]): Promise<void> {
-        return this.sendVoid(
-            'DELETE', `${this.boardPath(handle)}/flow-node-classes`, { flowNodeClasses });
-    }
-
-
-    createClassVersion(
-        handle: string, classId: string, version: NewClassVersionDto,
-    ): Promise<ClassVersionDto> {
-        return this.send<ClassVersionDto>(
-            'POST', `${this.flowNodeClassPath(handle, classId)}/versions`, version);
-    }
-
-    patchClassVersion(
-        handle: string, classId: string, versionId: string, patch: ClassVersionPatchDto,
-        revision?: number,
-    ): Promise<ClassVersionDto> {
-        return this.send<ClassVersionDto>(
-            'PATCH', `${this.flowNodeClassPath(handle, classId)}/versions/${encodeURIComponent(versionId)}`,
-            patch, revision);
-    }
-
-
-    deleteClassVersion(handle: string, classId: string, versionId: string): Promise<void> {
-        return this.sendVoid(
-            'DELETE', `${this.flowNodeClassPath(handle, classId)}/versions/${encodeURIComponent(versionId)}`);
-    }
-
-
-    async instantiateFlowNodeClass(
-        handle: string, classId: string, spot?: SpotDto, bodies?: InstantiateBodies, agents?: Record<string, string>,
-    ): Promise<FlowNodeDto[]> {
-        const out = await this.send<{ flowNodes: FlowNodeDto[] }>(
-            'POST', `${this.flowNodeClassPath(handle, classId)}/instantiate`, {
-                ...(spot ? { spot } : {}),
-                ...(bodies && Object.keys(bodies).length ? { bodies } : {}),
-                ...(agents && Object.keys(agents).length ? { agents } : {}),
-            });
-        return out.flowNodes ?? [];
-    }
-
 
     createWorkflow(handle: string, workflow: NewWorkflowDto): Promise<WorkflowDto> {
         return this.send<WorkflowDto>(
             'POST', `${this.boardPath(handle)}/workflows`, workflow);
     }
 
+    pasteWorkflow(handle: string, clipboard: Record<string, unknown>, spot?: SpotDto): Promise<WorkflowWithFlowNodesDto> {
+        return this.send('POST', `${this.boardPath(handle)}/workflows/clipboard`, { clipboard, spot });
+    }
+
+    workflow(handle: string, id: string): Promise<WorkflowDto> {
+        return this.send('GET', `${this.boardPath(handle)}/workflows/${encodeURIComponent(id)}`);
+    }
 
     patchWorkflow(
         handle: string, workflowId: string, patch: WorkflowPatchDto, revision?: number,
@@ -179,57 +133,14 @@ export class HybridflowClient {
             patch, revision);
     }
 
-
     deleteWorkflows(handle: string, workflows: string[]): Promise<void> {
         return this.sendVoid('DELETE', `${this.boardPath(handle)}/workflows`, { workflows });
     }
-
-
-    createWorkflowClass(handle: string, workflow: NewWorkflowClassDto): Promise<WorkflowClassDto> {
-        return this.send<WorkflowClassDto>(
-            'POST', `${this.boardPath(handle)}/workflow-classes`, workflow);
-    }
-
-
-    patchWorkflowClass(
-        handle: string, workflowId: string, patch: WorkflowClassPatchDto, revision?: number,
-    ): Promise<WorkflowClassDto> {
-        return this.send<WorkflowClassDto>(
-            'PATCH', `${this.boardPath(handle)}/workflow-classes/${encodeURIComponent(workflowId)}`,
-            patch, revision);
-    }
-
-
-    deleteWorkflowClasses(handle: string, workflowClasses: string[]): Promise<void> {
-        return this.sendVoid(
-            'DELETE', `${this.boardPath(handle)}/workflow-classes`, { workflowClasses });
-    }
-
-
-    async workflowClasses(): Promise<ListedWorkflowClassDto[]> {
-        const { workflowClasses } = await this.send<{ workflowClasses: ListedWorkflowClassDto[] }>(
-            'GET', '/workflow-classes');
-        return workflowClasses ?? [];
-    }
-
-
-    instantiateWorkflowClass(
-        handle: string, workflowClassId: string, spot?: SpotDto, bodies?: InstantiateBodies, agents?: Record<string, string>,
-    ): Promise<InstantiateWorkflowResult> {
-        return this.send<InstantiateWorkflowResult>(
-            'POST', `${this.boardPath(handle)}/workflow-classes/${encodeURIComponent(workflowClassId)}/instantiate`, {
-                ...(spot ? { spot } : {}),
-                ...(bodies && Object.keys(bodies).length ? { bodies } : {}),
-                ...(agents && Object.keys(agents).length ? { agents } : {}),
-            });
-    }
-
 
     async agents(includeArchived = false): Promise<AgentDto[]> {
         const { agents } = await this.send<{ agents: AgentDto[] }>('GET', `/agents${includeArchived ? '?archived=true' : ''}`);
         return agents ?? [];
     }
-
 
     agent(id: string): Promise<AgentDto> {
         return this.send<AgentDto>('GET', `/agents/${encodeURIComponent(id)}`);
@@ -256,12 +167,10 @@ export class HybridflowClient {
         return versions;
     }
 
-
     async runners(): Promise<RunnerDto[]> {
         const { runners } = await this.send<{ runners: RunnerDto[] }>('GET', '/runners');
         return runners ?? [];
     }
-
 
     runner(id: string): Promise<RunnerDto> {
         return this.send<RunnerDto>('GET', `/runners/${encodeURIComponent(id)}`);
@@ -279,7 +188,6 @@ export class HybridflowClient {
         return this.sendVoid('DELETE', `/runners/${encodeURIComponent(id)}`);
     }
 
-
     changes(
         boardId: string, since: number, opts: { wait?: boolean; signal?: AbortSignal } = {},
     ): Promise<ChangesDto> {
@@ -294,10 +202,6 @@ export class HybridflowClient {
 
     private flowNodePath(handle: string, flowNodeId: string): string {
         return `${this.boardPath(handle)}/flow-nodes/${encodeURIComponent(flowNodeId)}`;
-    }
-
-    private flowNodeClassPath(handle: string, classId: string): string {
-        return `${this.boardPath(handle)}/flow-node-classes/${encodeURIComponent(classId)}`;
     }
 
     private async send<T>(
@@ -337,7 +241,6 @@ export class HybridflowError extends Error {
         super(message);
         this.name = 'HybridflowError';
     }
-
 
     get conflict(): boolean { return this.status === 409; }
 

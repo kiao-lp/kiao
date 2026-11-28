@@ -3,9 +3,12 @@ import type { FileOptimizations } from 'kiao-worker';
 import { useWorkerClient, useRefreshFileList } from '@kiao-dashboard-core';
 import type { Consolidation, ConsolidationOutcome } from './duplicatesModel';
 
+type Operation = 'scan' | 'consolidate' | 'delete';
+const busyError = 'Wait for the current file operation to finish.';
+
 export interface FileOptimizationsController {
     result: FileOptimizations | null;
-    loading: boolean;
+    operation: Operation | null;
     error: string | null;
     refresh: () => Promise<void>;
     /** Runs the plan; resolves one outcome per group and never rejects. */
@@ -19,18 +22,18 @@ export const useFileOptimizations = (enabled: boolean): FileOptimizationsControl
     const workerClient = useWorkerClient();
     const refreshFileList = useRefreshFileList();
     const [result, setResult] = useState<FileOptimizations | null>(null);
-    const [loading, setLoading] = useState(false);
+    const [operation, setOperation] = useState<Operation | null>(null);
     const [error, setError] = useState<string | null>(null);
 
     // Guards setState after unmount during a long scan.
     const mounted = useRef(true);
+    const running = useRef<Operation | null>(null);
     useEffect(() => {
         mounted.current = true;
         return () => { mounted.current = false; };
     }, []);
 
-    const refresh = useCallback(async () => {
-        setLoading(true);
+    const scan = useCallback(async () => {
         try {
             const next = await workerClient.getFileOptimizations('');
             if (!mounted.current) return;
@@ -39,10 +42,24 @@ export const useFileOptimizations = (enabled: boolean): FileOptimizationsControl
         } catch (e: any) {
             if (!mounted.current) return;
             setError(e?.message ?? String(e));
-        } finally {
-            if (mounted.current) setLoading(false);
         }
     }, [workerClient]);
+
+    const run = useCallback(async <T,>(next: Operation, work: () => Promise<T>) => {
+        if (running.current) throw new Error(busyError);
+        running.current = next;
+        setOperation(next);
+        try {
+            return await work();
+        } finally {
+            running.current = null;
+            if (mounted.current) setOperation(null);
+        }
+    }, []);
+
+    const refresh = useCallback(async () => {
+        if (!running.current) await run('scan', scan);
+    }, [run, scan]);
 
     // Ref gate scans once per opening; failure or empty results do not retrigger.
     const asked = useRef(false);
@@ -57,30 +74,33 @@ export const useFileOptimizations = (enabled: boolean): FileOptimizationsControl
     }, [enabled, refresh]);
 
     const keepOnlyOne = useCallback(async (plan: Consolidation[]): Promise<ConsolidationOutcome[]> => {
-        const outcomes: ConsolidationOutcome[] = [];
-        // Sequential: concurrent runs would race on shared link rewrites.
-        for (const job of plan) {
-            try {
-                const done = await workerClient.deduplicate(job.paths, job.target);
-                outcomes.push({ target: job.target, removed: done.removed });
-            } catch (e: any) {
-                outcomes.push({ target: job.target, removed: [], error: e?.message ?? String(e) });
+        if (running.current) return plan.map(job => ({ target: job.target, removed: [], error: busyError }));
+        return run('consolidate', async () => {
+            const outcomes: ConsolidationOutcome[] = [];
+            // Sequential: concurrent runs would race on shared link rewrites.
+            for (const job of plan) {
+                try {
+                    const done = await workerClient.deduplicate(job.paths, job.target);
+                    outcomes.push({ target: job.target, removed: done.removed });
+                } catch (e: any) {
+                    outcomes.push({ target: job.target, removed: [], error: e?.message ?? String(e) });
+                }
             }
-        }
-        refreshFileList();
-        await refresh();
-        return outcomes;
-    }, [workerClient, refreshFileList, refresh]);
+            refreshFileList();
+            await scan();
+            return outcomes;
+        });
+    }, [workerClient, refreshFileList, run, scan]);
 
     // One batch with one link-fix pass; listings refresh even on partial failure.
-    const deleteFiles = useCallback(async (paths: string[]): Promise<void> => {
+    const deleteFiles = useCallback((paths: string[]) => run('delete', async () => {
         try {
             await workerClient.deleteBatch(paths);
         } finally {
             refreshFileList();
-            await refresh();
+            await scan();
         }
-    }, [workerClient, refreshFileList, refresh]);
+    }), [workerClient, refreshFileList, run, scan]);
 
-    return { result, loading, error, refresh, keepOnlyOne, deleteFiles };
+    return { result, operation, error, refresh, keepOnlyOne, deleteFiles };
 };

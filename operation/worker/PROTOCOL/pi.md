@@ -9,7 +9,7 @@ document:
 Pi is one harness, `pi`, driven through JSONL RPC. The profile chooses an exact installation,
 provider connections and an allowlist of provider/model pairs. Profiles belong to the executing
 worker; managed agents only retain `profileId`. A missing runner profile is an explicit refusal.
-Existing engines and documents may omit every field below.
+Other harnesses and existing documents may omit every field below.
 
 ## Profiles and secrets
 
@@ -54,8 +54,9 @@ Key writes and deletes invalidate model caches. Key listing and reveal responses
 `Cache-Control: no-store`; only the explicit reveal endpoint returns a key's full value.
 
 External `installations` explicitly declare `{id, engine:"pi", version:"1.5.2", path, protocol:"pi-rpc-1.5",
-external:true}`. `path` is an absolute executable or a declared command resolved on PATH; its
-version is checked. Toolbox installations are reported separately in `availableInstallations`.
+external:true}`. The persisted `engine` key identifies the harness. `path` is an absolute
+executable or a declared command resolved on PATH. The worker checks its version. Toolbox
+installations are reported separately in `availableInstallations`.
 The toolbox ships Pi 1.5.2, using the official npm install lock
 with SHA256 verification and Node.js 22.19+, 23.8+ or 24+ with Zstandard support. The launcher
 prefers the toolbox's Node and checks the actual runtime's version and decompression capability

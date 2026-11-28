@@ -32,10 +32,9 @@ type MuseRun struct {
 	// ends at, carried on every block the driver emits (see HarnessEvent.MessageID). Empty is the
 	// session's end, which is a fork of a conversation whole.
 	resumeAt string
-	// storeRoot is the whole file store, absolute, handed over as the session's workspaceRoot. A
-	// turn's working directory is one folder of it; without this every path outside that folder
-	// would raise an approval in manual mode.
-	StoreRoot string
+	// DCMSRoot is passed as the session's workspaceRoot so turns in a subdirectory can
+	// work across the store in manual mode.
+	DCMSRoot string
 	// workDir is the turn's own folder, the host process's working directory.
 	workDir string
 	// mcpConfig is the `mcp_servers` fragment rendered from the ledger, with the turn's token
@@ -61,7 +60,7 @@ func museRunFor(run harnessapi.HarnessRun) MuseRun {
 		sessionID:      run.SessionID,
 		forkSession:    run.ForkSession,
 		resumeAt:       run.ResumeAt,
-		StoreRoot:      run.StoreRoot,
+		DCMSRoot:       run.DCMSRoot,
 		workDir:        run.WorkDir,
 		McpConfig:      run.MCPConfig,
 		McpToken:       run.MCPToken,
@@ -129,11 +128,8 @@ func (d *MuseDriver) Spawn(run harnessapi.HarnessRun) error {
 
 	sessionID, err := openMuseSession(conn, mrun)
 	if err != nil {
-		// A session the host would not open is not a turn that never ran — it is a turn whose
-		// engine has forgotten the conversation, and the hub has a path for exactly that. The
-		// reader emits the failure and a non-zero end with no session announced, which is what
-		// the hub reads as a lost session: the conversation is marked, and the next turn starts
-		// fresh instead of asking again for a session that is gone.
+		// The reader reports a nonzero exit without a session ID. The worker marks the
+		// harness session as lost so the next turn opens a new one.
 		conn.Close()
 
 		d.host.setConnection(nil)
@@ -167,7 +163,7 @@ func (d *MuseDriver) Spawn(run harnessapi.HarnessRun) error {
 	}
 
 	input := map[string]any{"type": "text",
-		"text": briefing.HarnessBriefingWith(mrun.StoreRoot, mrun.instructions) + "\n\n" + run.Prompt}
+		"text": briefing.HarnessBriefingWith(mrun.DCMSRoot, mrun.instructions) + "\n\n" + run.Prompt}
 	start := map[string]any{
 		"commandId": MspCommandID(), "sessionId": sessionID,
 		"input": []any{input},
@@ -196,7 +192,7 @@ func (d *MuseDriver) Spawn(run harnessapi.HarnessRun) error {
 
 	harnessapi.LogClaudeWS.Info("spawned",
 		"harness", harnessapi.HarnessMuse, "conversation", run.Conversation, "turn", run.Turn,
-		"work_dir", run.WorkDir, "store_root", run.StoreRoot,
+		"work_dir", run.WorkDir, "store_root", run.DCMSRoot,
 		"session", sessionID, "msp_turn", started.TurnID)
 
 	d.host.opened(sessionID, started.TurnID, false)
@@ -263,7 +259,7 @@ func openMuseSession(conn *MspConn, run MuseRun) (string, error) {
 		}
 		return resumed.Session.SessionID, nil
 	}
-	workspace := strings.TrimSpace(run.StoreRoot)
+	workspace := strings.TrimSpace(run.DCMSRoot)
 	if workspace == "" {
 		workspace = run.workDir
 	}

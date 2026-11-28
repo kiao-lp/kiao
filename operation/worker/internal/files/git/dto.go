@@ -13,7 +13,8 @@ type GitFileDto struct {
 
 type GitStatusDto struct {
 	Repo bool `json:"repo"`
-	// Root is store-relative ("" for the store itself); Files paths are relative to Root.
+	// Root is the Git worktree path relative to the DCMS root. It is empty for a worktree at
+	// or above the DCMS root. Files paths are relative to the Git worktree.
 	Root        string       `json:"root"`
 	Branch      string       `json:"branch"`
 	Upstream    string       `json:"upstream"`

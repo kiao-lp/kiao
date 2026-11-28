@@ -38,11 +38,11 @@ if listening "$AGENTIC_PORT"; then
   exit 1
 fi
 
-TEMP_DATA_DIR="$(mktemp -d "/tmp/kiao-e2e-$LOG_TAG-XXXXXX")"
+TEMP_DCMS_ROOT="$(mktemp -d "/tmp/kiao-e2e-$LOG_TAG-XXXXXX")"
 # Worker state in <root>/.kiao-config stays isolated and is removed with the temp store.
 mkdir -p "$REPO_ROOT/log"
-cp -r "$DATA_TEMPLATE/." "$TEMP_DATA_DIR/"
-echo "[E2E $LOG_TAG] Created temp data at $TEMP_DATA_DIR"
+cp -r "$DATA_TEMPLATE/." "$TEMP_DCMS_ROOT/"
+echo "[E2E $LOG_TAG] Created temporary DCMS root at $TEMP_DCMS_ROOT"
 
 # VITE_PLUGIN_PATHS also controls assembly and spec selection. Overlay each project
 # fixture and add its id to the template's pinned plugin list so the store loads it.
@@ -51,7 +51,7 @@ for path in "${PLUGIN_PATHS[@]}"; do
   path="$(echo "$path" | xargs)"
   [ -n "$path" ] || continue
   dir="$(cd "$DASHBOARD_DIR" && cd "$path" && pwd)"
-  if [ -d "$dir/e2e/files" ]; then cp -r "$dir/e2e/files/." "$TEMP_DATA_DIR/"; fi
+  if [ -d "$dir/e2e/files" ]; then cp -r "$dir/e2e/files/." "$TEMP_DCMS_ROOT/"; fi
   node -e '
     const { readFileSync, writeFileSync } = require("node:fs");
     const [config, manifest] = process.argv.slice(1);
@@ -59,7 +59,7 @@ for path in "${PLUGIN_PATHS[@]}"; do
     const store = JSON.parse(readFileSync(config, "utf-8"));
     if (!store.plugins.includes(id)) store.plugins.push(id);
     writeFileSync(config, JSON.stringify(store, null, 2) + "\n");
-  ' "$TEMP_DATA_DIR/.kiao-config/dashboard.json" "$dir/package.json"
+  ' "$TEMP_DCMS_ROOT/.kiao-config/dashboard.json" "$dir/package.json"
   echo "[E2E $LOG_TAG] Dropped in $(basename "$dir")"
 done
 
@@ -84,7 +84,10 @@ cleanup() {
   kill_tree "$CMS_PID"
   kill_tree "$AGENTIC_PID"
 
-  if [ -d "$TEMP_DATA_DIR" ]; then rm -rf "$TEMP_DATA_DIR"; fi
+  if [ -d "$TEMP_DCMS_ROOT/.kiao-config/agentic-packages" ]; then
+    find "$TEMP_DCMS_ROOT/.kiao-config/agentic-packages" -type d -exec chmod u+w {} +
+  fi
+  if [ -d "$TEMP_DCMS_ROOT" ]; then rm -rf "$TEMP_DCMS_ROOT"; fi
   echo "[E2E $LOG_TAG] Cleanup complete."
 }
 trap cleanup EXIT INT TERM
@@ -95,17 +98,17 @@ GO="$("$REPO_ROOT/bin/find-go.sh")"
 unset GOROOT
 cd "$WORKER_DIR"
 export KIAO_WORKER_AUTH_MODE=debug
-export KIAO_WORKER_ROOT_PATH="$TEMP_DATA_DIR"
+export KIAO_WORKER_DCMS_ROOT="$TEMP_DCMS_ROOT"
 export KIAO_WORKER_MIGRATIONS_ENABLED=false
 export SERVER_PORT="$WORKER_PORT"
 export GOTOOLCHAIN=local
 export KIAO_AGENTIC_RESOURCE_MANAGER_URL="http://localhost:$AGENTIC_PORT"
 export KIAO_AGENTIC_RESOURCE_MANAGER_AUTH_MODE=debug
 export KIAO_AGENTIC_RESOURCE_MANAGER_PORT="$AGENTIC_PORT"
-resource_root="$TEMP_DATA_DIR/agentic-resource-management"
+resource_root="$TEMP_DCMS_ROOT/agentic-resource-management"
 export KIAO_AGENTIC_RESOURCES_PATH="$resource_root/agents"
 export KIAO_AGENTIC_DEPENDENCIES_PATH="$resource_root/dependencies"
-export KIAO_AGENTIC_RESOURCE_MANAGER_CACHE="$TEMP_DATA_DIR/.kiao-config/agentic-cache"
+export KIAO_AGENTIC_RESOURCE_MANAGER_CACHE="$TEMP_DCMS_ROOT/.kiao-config/agentic-cache"
 export KIAO_AGENTIC_RESOURCE_MANAGER_SERVICE_TOKEN=""
 python3 "$REPO_ROOT/bin/stage-agentic-repositories.py" prepare "$resource_root"
 cp -r "$REPO_ROOT/e2e/data/agentic-dependencies" "$KIAO_AGENTIC_DEPENDENCIES_PATH"

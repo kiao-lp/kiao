@@ -93,7 +93,7 @@ type Config struct {
 func (c *Config) Validate() []string {
 	var problems []string
 
-	// Fail at startup rather than silently leaving turns without tools.
+	// Validate the declarations at startup. The runner checks their runtimes before use.
 	if p := strings.TrimSpace(c.MCPPath); p != "" {
 		if !filepath.IsAbs(p) {
 			problems = append(problems, fmt.Sprintf(

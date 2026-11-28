@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { stepSurfaceZoom } from '@kiao-dashboard-core';
 
 /**
  * Hook to handle keyboard zoom shortcuts (Ctrl+Plus, Ctrl+Minus).
@@ -16,10 +17,10 @@ export const useKeyboardZoom = (
 
             if (e.key === '+' || e.key === '=') {
                 e.preventDefault();
-                setZoom(zoom + 0.1);
+                setZoom(stepSurfaceZoom(zoom, 1));
             } else if (e.key === '-') {
                 e.preventDefault();
-                setZoom(zoom - 0.1);
+                setZoom(stepSurfaceZoom(zoom, -1));
             }
         };
 

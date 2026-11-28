@@ -1,7 +1,5 @@
-/** Backlog: `<doc>.blog.md` companion (see `subsidiary.go`). Stored links use bare path + `#text=`. Append scrolls via `useTextFragment`, caret via `?cursor=end`. */
-
 import { WorkerClient, WorkerError } from 'kiao-worker';
-import { resolveInternalLink, storedLinkOf } from '../navigation/internal-links';
+import { resolveInternalLink, encodedDcmsLinkOf } from '../navigation/internal-links';
 import { linkToPassage, textFragmentOf, TextDirective } from './textDirective';
 
 /** The companion suffix worker recognises as a backlog. */
@@ -43,9 +41,9 @@ export const backlogSectionFor = (
     return { heading, markdown };
 };
 
-/** Stored form: bare path + `#text=` fragment, no domain or mount. */
-export const storedPassageLink = (sourcePath: string, directive: TextDirective): string =>
-    linkToPassage(storedLinkOf(sourcePath), [directive]);
+/** DCMS link with a `#text=` fragment selecting the passage. */
+export const dcmsLinkToPassage = (sourcePath: string, directive: TextDirective): string =>
+    linkToPassage(encodedDcmsLinkOf(sourcePath), [directive]);
 
 /** `[words](/path#text=…)` with untruncated, bracket-escaped label. */
 export const markdownLinkToPassage = (
@@ -53,7 +51,7 @@ export const markdownLinkToPassage = (
     directive: TextDirective,
     passageText: string,
 ): string =>
-    `[${escapeLinkText(collapseWhitespace(passageText))}](${storedPassageLink(sourcePath, directive)})`;
+    `[${escapeLinkText(collapseWhitespace(passageText))}](${dcmsLinkToPassage(sourcePath, directive)})`;
 
 /** Appends with exactly one blank line between sections. */
 export const appendBacklogSection = (existing: string, section: string): string => {
@@ -64,7 +62,7 @@ export const appendBacklogSection = (existing: string, section: string): string 
 
 /** Backlog URL: `?cursor=end` before `#text=` fragment. */
 export const backlogUrlFor = (backlogPath: string, heading: string): string =>
-    resolveInternalLink(`${storedLinkOf(backlogPath)}?cursor=end${textFragmentOf([{ start: heading }])}`);
+    resolveInternalLink(`${encodedDcmsLinkOf(backlogPath)}?cursor=end${textFragmentOf([{ start: heading }])}`);
 
 /** Appends to backlog, creating it if missing. Only 404 reads as empty; other errors propagate. */
 export const addPassageToBacklog = async (
@@ -74,7 +72,7 @@ export const addPassageToBacklog = async (
     passageText: string,
 ): Promise<void> => {
     const backlogPath = backlogPathFor(sourcePath);
-    const passageLink = storedPassageLink(sourcePath, directive);
+    const passageLink = dcmsLinkToPassage(sourcePath, directive);
     const { heading, markdown } = backlogSectionFor(passageText, passageLink);
 
     let existing = '';

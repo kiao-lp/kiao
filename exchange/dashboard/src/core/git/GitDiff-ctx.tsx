@@ -11,11 +11,9 @@ export interface GitDiffTarget {
      */
     folder: string;
     /**
-     * Where the answering repository sits within the store: "" for the store's own, the
-     * store-relative path for one nested inside it (`GitStatus.root`). It travels with the
-     * path so the diff can open the working-tree file in the browser: `root` joined with
-     * `path` is the store path, while `folder` alone is not — it may be a subfolder of the
-     * repository rather than its top.
+     * Git worktree path relative to the DCMS root (`GitStatus.root`). It is empty for a
+     * worktree at or above the DCMS root. For a nested repository, the diff joins `root`
+     * with `path` to open the working-tree file in the browser.
      */
     root: string;
 }
@@ -38,7 +36,9 @@ interface GitDiffContextType {
     /** Writes the draft, on every keystroke of the working-tree pane. */
     storeDraft: (base: string, text: string) => void;
     /** Drops the draft: the pane is clean again, saved, or closed. */
-    clearDraft: () => void;
+    clearDraft: (saved?: { target: GitDiffTarget; text: string }) => void;
+    savingFiles: ReadonlySet<string>;
+    runSave: (storePath: string, save: () => Promise<void>) => Promise<void>;
 }
 
 const GitDiffContext = createContext<GitDiffContextType | null>(null);
@@ -56,6 +56,8 @@ export const useGitDiffOptional = (): GitDiffContextType | null => useContext(Gi
 export const GitDiffProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [diffTarget, setDiffTarget] = useState<GitDiffTarget | null>(null);
     const [refreshToken, setRefreshToken] = useState(0);
+    const activeSaves = useRef(new Set<string>());
+    const [savingFiles, setSavingFiles] = useState<ReadonlySet<string>>(new Set());
     // The draft lives in a ref: nothing renders from it — the pane reads it once after loading
     // and writes it on every keystroke — so it must never re-render anything. One slot is enough:
     // one diff is open at a time, and opening another drops what was typed in this one.
@@ -92,14 +94,26 @@ export const GitDiffProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const storeDraft = useCallback((base: string, text: string) => {
         draft.current = { base, text };
     }, []);
-    const clearDraft = useCallback(() => {
-        draft.current = null;
+    const clearDraft = useCallback((saved?: { target: GitDiffTarget; text: string }) => {
+        if (!saved || (latest.current === saved.target && draft.current?.text === saved.text)) draft.current = null;
+    }, []);
+    const runSave = useCallback(async (storePath: string, save: () => Promise<void>) => {
+        const active = activeSaves.current;
+        if (active.has(storePath)) return;
+        active.add(storePath);
+        setSavingFiles(new Set(active));
+        try {
+            await save();
+        } finally {
+            active.delete(storePath);
+            setSavingFiles(new Set(active));
+        }
     }, []);
 
     const value = useMemo(() => ({
         diffTarget, openDiff, closeDiff, refreshToken, requestRefresh,
-        readDraft, storeDraft, clearDraft,
-    }), [diffTarget, openDiff, closeDiff, refreshToken, requestRefresh, readDraft, storeDraft, clearDraft]);
+        readDraft, storeDraft, clearDraft, savingFiles, runSave,
+    }), [diffTarget, openDiff, closeDiff, refreshToken, requestRefresh, readDraft, storeDraft, clearDraft, savingFiles, runSave]);
 
     return <GitDiffContext.Provider value={value}>{children}</GitDiffContext.Provider>;
 };

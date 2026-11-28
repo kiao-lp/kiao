@@ -1,12 +1,9 @@
-import React, { forwardRef, useImperativeHandle, useRef, useCallback, useEffect, useMemo } from 'react';
-import CodeMirror, { ReactCodeMirrorRef } from '@uiw/react-codemirror';
-import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
-import { languages } from '@codemirror/language-data';
+import React, { forwardRef, useImperativeHandle, useRef, useEffect, useMemo } from 'react';
+import { CodeMirrorEditor, normalizeDocumentLink } from '@kiao-dashboard-core';
 import { tags } from '@lezer/highlight';
 import { foldService, HighlightStyle, syntaxHighlighting } from '@codemirror/language';
 import { EditorView, keymap, Command } from '@codemirror/view';
 import { Extension, Prec } from '@codemirror/state';
-import { vscodeDark, vscodeLight } from '@uiw/codemirror-theme-vscode';
 import {
     findTableEdits,
     parseTableAt,
@@ -18,10 +15,8 @@ import {
     ParsedTable,
     TableEditResult,
 } from './markdownTableFormat';
-import { toStoredLink } from '@kiao-dashboard-core';
+import { markdownSourceLanguage } from '../markdown/sourceLanguage';
 import { markdownInlineKeymap } from './markdownInlineFormat';
-import { themeMode } from 'kiao-style';
-import { useTheme } from '@kiao-dashboard-core';
 import './CodeMirrorMarkdownEditor.css';
 
 const customHighlightStyle = HighlightStyle.define([
@@ -165,15 +160,15 @@ export const insertBlockAt = (view: EditorView, block: string): void => {
     view.focus();
 };
 
-/** A pasted bare internal link is stored without domain or context path. Other pastes are untouched. */
-const storeInternalLinksOnPaste = EditorView.domEventHandlers({
+/** Normalize Dashboard URLs and mounted hrefs pasted into Markdown. */
+const normalizeDocumentLinksOnPaste = EditorView.domEventHandlers({
     paste(event, view) {
         const pasted = event.clipboardData?.getData('text/plain')?.trim();
         if (!pasted || /\s/.test(pasted)) return false;
-        const stored = toStoredLink(pasted);
-        if (stored === pasted) return false;
+        const link = normalizeDocumentLink(pasted);
+        if (link === pasted) return false;
         event.preventDefault();
-        view.dispatch(view.state.replaceSelection(stored));
+        view.dispatch(view.state.replaceSelection(link));
         return true;
     },
 });
@@ -203,53 +198,67 @@ export interface CodeMirrorMarkdownEditorProps {
     extensions?: Extension;
 }
 
-// Stable empty value; a new array per render would reconfigure the editor.
-const NO_EXTENSIONS: Extension = [];
+const markdownExtensions = [
+    markdownSourceLanguage,
+    Prec.highest(syntaxHighlighting(customHighlightStyle, { fallback: false })),
+    // Shift+Alt+F avoids the browser DevTools binding.
+    Prec.highest(keymap.of([
+        { key: 'Shift-Alt-f', preventDefault: true, run: formatTablesCommand },
+        { key: 'Mod-Enter', preventDefault: true, run: insertRowBelowCommand },
+        { key: 'Mod-Shift-Enter', preventDefault: true, run: insertColumnRightCommand },
+    ])),
+    markdownInlineKeymap,
+    markdownHeadingFoldService,
+    normalizeDocumentLinksOnPaste,
+    EditorView.theme({ '.cm-foldGutter': { width: '16px' } }),
+];
 
 export const CodeMirrorMarkdownEditor = forwardRef<CodeMirrorMarkdownEditorRef, CodeMirrorMarkdownEditorProps>(
-    ({ value, onChange, onViewReady, style, extensions = NO_EXTENSIONS }, ref) => {
-        const editorRef = useRef<ReactCodeMirrorRef>(null);
-        const { theme } = useTheme();
+    ({ value, onChange, onViewReady, style, extensions }, ref) => {
+        const editorRef = useRef<EditorView | null>(null);
 
         const onViewReadyRef = useRef(onViewReady);
         onViewReadyRef.current = onViewReady;
-        useEffect(() => () => onViewReadyRef.current?.(null), []);
+        useEffect(() => () => {
+            editorRef.current = null;
+            onViewReadyRef.current?.(null);
+        }, []);
 
         useImperativeHandle(ref, () => ({
             formatTables: () => {
-                const view = editorRef.current?.view;
+                const view = editorRef.current;
                 if (view) {
                     formatTablesCommand(view);
                 }
             },
             insertTable: (rows, cols) => {
-                const view = editorRef.current?.view;
+                const view = editorRef.current;
                 if (view) {
                     insertTableAt(view, rows, cols);
                 }
             },
             insertRowBelow: () => {
-                const view = editorRef.current?.view;
+                const view = editorRef.current;
                 if (view) {
                     insertRowBelowCommand(view);
                     view.focus();
                 }
             },
             insertColumnRight: () => {
-                const view = editorRef.current?.view;
+                const view = editorRef.current;
                 if (view) {
                     insertColumnRightCommand(view);
                     view.focus();
                 }
             },
             insertBlock: (text) => {
-                const view = editorRef.current?.view;
+                const view = editorRef.current;
                 if (view) {
                     insertBlockAt(view, text);
                 }
             },
             replaceRange: (from, to, text) => {
-                const view = editorRef.current?.view;
+                const view = editorRef.current;
                 if (!view || to > view.state.doc.length) {
                     return false;
                 }
@@ -257,7 +266,7 @@ export const CodeMirrorMarkdownEditor = forwardRef<CodeMirrorMarkdownEditorRef, 
                 return true;
             },
             isCursorInTable: () => {
-                const view = editorRef.current?.view;
+                const view = editorRef.current;
                 if (!view) {
                     return false;
                 }
@@ -265,7 +274,7 @@ export const CodeMirrorMarkdownEditor = forwardRef<CodeMirrorMarkdownEditorRef, 
                 return parseTableAt(view.state.doc.toString(), line.number - 1) !== null;
             },
             goToLine: (line) => {
-                const view = editorRef.current?.view;
+                const view = editorRef.current;
                 if (!view) {
                     return;
                 }
@@ -278,65 +287,23 @@ export const CodeMirrorMarkdownEditor = forwardRef<CodeMirrorMarkdownEditorRef, 
             },
         }));
 
-        const handleChange = useCallback((val: string) => {
-            onChange(val);
-        }, [onChange]);
-
-        const allExtensions: Extension[] = useMemo(() => [
-            extensions,
-            markdown({ base: markdownLanguage, codeLanguages: languages }),
-            Prec.highest(syntaxHighlighting(customHighlightStyle, { fallback: false })),
-            // Shift+Alt+F avoids the browser DevTools binding.
-            Prec.highest(keymap.of([
-                { key: 'Shift-Alt-f', preventDefault: true, run: formatTablesCommand },
-                { key: 'Mod-Enter', preventDefault: true, run: insertRowBelowCommand },
-                { key: 'Mod-Shift-Enter', preventDefault: true, run: insertColumnRightCommand },
-            ])),
-            markdownInlineKeymap,
-            markdownHeadingFoldService,
-            storeInternalLinksOnPaste,
-            EditorView.lineWrapping,
-            EditorView.theme({
-                '&': {
-                    height: '100%',
-                    fontSize: '14px',
-                },
-                '.cm-scroller': {
-                    fontFamily: 'monospace',
-                    overflow: 'auto',
-                },
-                '.cm-foldGutter': {
-                    width: '16px',
-                },
-            }),
-        ], [extensions]);
+        const editorExtensions = useMemo(
+            () => extensions ? [extensions, markdownExtensions] : markdownExtensions,
+            [extensions],
+        );
 
         return (
-            <div className="markdown-codemirror-editor" style={{ height: '100%', width: '100%' }}>
-                <CodeMirror
-                    ref={editorRef}
-                    value={value}
-                    onChange={handleChange}
-                    onCreateEditor={(view) => onViewReadyRef.current?.(view)}
-                    extensions={allExtensions}
-                    theme={themeMode(theme) === 'light' ? vscodeLight : vscodeDark}
-                    style={{
-                        height: '100%',
-                        width: '100%',
-                        ...style,
-                    }}
-                    basicSetup={{
-                        lineNumbers: true,
-                        foldGutter: true,
-                        highlightActiveLineGutter: true,
-                        highlightActiveLine: true,
-                        bracketMatching: true,
-                        closeBrackets: true,
-                        autocompletion: false,
-                        searchKeymap: true,
-                    }}
-                />
-            </div>
+            <CodeMirrorEditor
+                className="markdown-codemirror-editor"
+                value={value}
+                onChange={onChange}
+                onEditor={view => {
+                    editorRef.current = view;
+                    onViewReadyRef.current?.(view);
+                }}
+                extensions={editorExtensions}
+                style={style}
+            />
         );
     }
 );

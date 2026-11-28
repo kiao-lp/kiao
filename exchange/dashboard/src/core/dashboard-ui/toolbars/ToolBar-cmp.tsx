@@ -1,12 +1,12 @@
 import React, { useCallback, useRef } from 'react';
-import { Dropdown, Tabs } from 'antd';
+import { Tabs } from 'antd';
 import { useToolBarsOptional } from './ToolBars-ctx';
 import { layoutGridMenuItem } from './LayoutGrid-cmp';
 import { BarSide, BarSpec, barsOfSide, clampBarWidth } from './barsModel';
 import type { SplitPart } from '../../ui-foundation/layout';
 import { SplitRow } from '../preferences/PersistentSplitRow';
 import { DOCUMENT_TAB_ID, useDocumentContentOptional } from '../documents/DocumentContent-ctx';
-import { KEEP_MENU_IN_VIEWPORT } from '../../ui-foundation/interactions/menuPlacement';
+import { ContextMenu } from '../../ui-foundation/interactions/ContextMenu';
 import { CentralStackView, useCentralStackControls } from '../documents/CentralStack-ctx';
 import '../../ui-foundation/layout/ResizeHandle.css';
 import './ToolBars.css';
@@ -53,14 +53,9 @@ const ToolBar: React.FC<{ spec: BarSpec }> = ({ spec }) => {
                             const tab = held.find(tab => tab.id === node.key);
                             if (!tab || tab.pinned) return node;
                             return (
-                                <Dropdown
-                                    key={tab.id}
-                                    trigger={['contextMenu']}
-                                    menu={{ items: [layoutGridMenuItem(tab.id)] }}
-                                    {...KEEP_MENU_IN_VIEWPORT}
-                                >
+                                <ContextMenu key={tab.id} items={[layoutGridMenuItem(tab.id)]}>
                                     {node}
-                                </Dropdown>
+                                </ContextMenu>
                             );
                         }}
                     </DefaultTabBar>

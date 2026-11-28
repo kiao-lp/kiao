@@ -1,32 +1,32 @@
 import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import * as ops from './boardOps';
 import * as writes from './boardWrites';
+import { boardUrl, taskUrl, useLinkedTaskId } from './boardRoute';
 import { useBoardSync } from './useBoardSync';
-import { ClassVersionEdit, FlowNodeClassEdit, FlowNodeEdit } from './boardOps';
-import { FlowNodeClass, FlowNodeClassVersion, newFlowNodeClass } from './flowNodeClass';
-import { InstantiateBodies } from './service';
+import { FlowNodeEdit } from './boardOps';
+import { BoardSummary, type WorkflowPatchDto } from './service';
 import { FlowNodeSpot } from './flowNodeSpot';
+import { readLimiter } from './flowNodeLimiter';
 import { FlowNodeStatus } from './flowNodeStatus';
 import { newFlowNodeSettings, FlowNodeType } from './flowNodeType';
-type TaskAgents = Record<string, string>;
+import type { WorkflowValuesPatch } from './workflowValues';
+type WorkflowFilesPatch = Pick<WorkflowPatchDto, 'workflowFolder' | 'files'>;
 import {
-    newFlowNode, newId, BoardContent, FlowNode, Workflow, WorkflowClass,
+    newFlowNode, newId, BoardContent, FlowNode, Workflow,
 } from './boardContent';
-
-/** A workflow or workflow class open in the workflow panel, by kind and id. */
-export interface SelectedWorkflow {
-    kind: 'workflow' | 'workflowClass';
-    id: string;
-}
 
 interface HybridflowValue {
     content: BoardContent | null;
 
+    board: BoardSummary | null;
     handle: string | null;
     error: string | null;
     loading: boolean;
     selected: string | null;
     select: (flowNodeId: string | null) => void;
+    openTask: (taskId: string) => void;
+    selectFromRoute: (taskId: string | null) => void;
 
     marked: string[];
     toggleMark: (flowNodeId: string) => void;
@@ -35,10 +35,9 @@ interface HybridflowValue {
 
     openingId: number;
     selectedFlowNode: ops.FlowNodeAt | null;
-    selectedClass: ops.FlowNodeClassAt | null;
-    selectedWorkflow: SelectedWorkflow | null;
-    selectWorkflow: (workflow: SelectedWorkflow | null) => void;
-    selectedWorkflowGroup: Workflow | WorkflowClass | null;
+    selectedWorkflow: string | null;
+    selectWorkflow: (workflow: string | null) => void;
+    selectedWorkflowGroup: Workflow | null;
     working: string | null;
     setWorking: (flowNodeId: string | null) => void;
     openBoard: (handle: string) => void;
@@ -48,7 +47,6 @@ interface HybridflowValue {
     chainFlowNode: (fromId: string, toId: string | null) => void;
     placeFlowNodes: (spots: Map<string, FlowNodeSpot>) => void;
     moveSpots: (flowNodeIds: string[], dx: number, dy: number) => void;
-    chainFlowNodeClass: (fromId: string, toId: string | null) => void;
 
     setFlowNodeStatus: (flowNodeId: string, status: FlowNodeStatus) => void;
 
@@ -59,38 +57,17 @@ interface HybridflowValue {
     archiveFlowNodes: (flowNodeIds: string[]) => void;
     unarchiveFlowNodes: (flowNodeIds: string[]) => void;
 
-    cloneFlowNodeClass: (classId: string) => void;
-
     insertFlowNodes: (flowNodes: FlowNode[]) => void;
 
     cloneFlowNode: (flowNodeId: string) => void;
 
-    addFlowNodeClass: (type: FlowNodeType, spot: FlowNodeSpot, workflowClass?: string) => void;
-    editFlowNodeClass: (classId: string, edit: FlowNodeClassEdit) => void;
-    removeFlowNodeClasses: (classIds: string[]) => void;
-
-    createClassVersion: (classId: string, from?: FlowNodeClassVersion) => void;
-    editClassVersion: (classId: string, versionId: string, edit: ClassVersionEdit) => void;
-    publishClassVersion: (classId: string, versionId: string) => void;
-    deleteClassVersion: (classId: string, versionId: string) => void;
-
-    convertFlowNodeToClass: (flowNodeId: string) => void;
-
-    instantiateFlowNodeClass: (
-        classId: string, spot: FlowNodeSpot, bodies?: InstantiateBodies, workflow?: string, agents?: TaskAgents,
-    ) => void;
-
-    instantiateWorkflowClass: (
-        workflowClassId: string, spot: FlowNodeSpot, bodies?: InstantiateBodies, agents?: TaskAgents,
-    ) => void;
-
     createWorkflow: (flowNodeIds: string[]) => void;
+    pasteWorkflow: (clipboard: Record<string, unknown>, spot?: FlowNodeSpot) => Promise<boolean>;
 
-    createWorkflowClass: (classIds: string[]) => void;
     editWorkflow: (workflowId: string, name: string) => void;
-    editWorkflowClass: (workflowId: string, name: string) => void;
+    editWorkflowValues: (workflowId: string, patch: WorkflowValuesPatch) => Promise<boolean>;
+    editWorkflowFiles: (workflowId: string, edit: (workflow: Workflow) => WorkflowFilesPatch | null) => Promise<boolean>;
     removeWorkflows: (workflowIds: string[]) => void;
-    removeWorkflowClasses: (workflowIds: string[]) => void;
 
     titleCaret: string | null;
     takeTitleCaret: () => void;
@@ -106,17 +83,20 @@ export const useHybridflow = (): HybridflowValue => {
 
 /** Holds board state for the app lifetime. */
 export const HybridflowProvider: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
-    const [handle, setHandle] = useState<string | null>(null);
+    const navigate = useNavigate();
+    const linkedTaskId = useLinkedTaskId();
+    const [boardAddress, setBoardAddress] = useState<string | null>(null);
     const [selected, setSelected] = useState<string | null>(null);
-    const [selectedWorkflow, setSelectedWorkflow] = useState<SelectedWorkflow | null>(null);
+    const [selectedWorkflow, setSelectedWorkflow] = useState<string | null>(null);
     const [marked, setMarked] = useState<string[]>([]);
     const [openingId, setOpeningId] = useState(0);
     const [working, setWorking] = useState<string | null>(null);
     const [titleCaret, setTitleCaret] = useState<string | null>(null);
 
-    const { content, loading, error, apply: applyTo, reload } = useBoardSync(handle);
+    const { board, content, loading, error, apply: applyTo, enqueueWrite, reload } = useBoardSync(boardAddress);
+    const handle = board?.slug ?? boardAddress;
 
-    const select = useCallback((flowNodeId: string | null) => {
+    const selectFromRoute = useCallback((flowNodeId: string | null) => {
         setSelected(flowNodeId);
         setSelectedWorkflow(null);
         setOpeningId(id => id + 1);
@@ -124,12 +104,28 @@ export const HybridflowProvider: React.FC<{ children?: React.ReactNode }> = ({ c
         setMarked([]);
     }, []);
 
-    const selectWorkflow = useCallback((workflow: SelectedWorkflow | null) => {
+    const leaveTaskUrl = useCallback(() => {
+        if (linkedTaskId && handle) navigate(boardUrl(handle), { replace: true });
+    }, [linkedTaskId, handle, navigate]);
+
+    const select = useCallback((flowNodeId: string | null) => {
+        if (flowNodeId !== linkedTaskId) leaveTaskUrl();
+        selectFromRoute(flowNodeId);
+    }, [linkedTaskId, leaveTaskUrl, selectFromRoute]);
+
+    const openTask = useCallback((taskId: string) => {
+        if (!board) return;
+        if (taskId !== linkedTaskId) navigate(taskUrl(taskId, board.id));
+        selectFromRoute(taskId);
+    }, [board, linkedTaskId, navigate, selectFromRoute]);
+
+    const selectWorkflow = useCallback((workflow: string | null) => {
+        leaveTaskUrl();
         setSelectedWorkflow(workflow);
         setSelected(null);
         setTitleCaret(null);
         setMarked([]);
-    }, []);
+    }, [leaveTaskUrl]);
 
     const toggleMark = useCallback((flowNodeId: string) => {
         setMarked(held => {
@@ -150,17 +146,21 @@ export const HybridflowProvider: React.FC<{ children?: React.ReactNode }> = ({ c
 
     const apply = applyTo;
 
+    const resetBoardSelection = useCallback(() => {
+        selectFromRoute(null);
+        setWorking(null);
+    }, [selectFromRoute]);
+
     const openBoard = useCallback((next: string) => {
-        setHandle(prev => (prev === next ? prev : next));
-    }, []);
+        if (next === boardAddress || next === board?.id || next === board?.slug) return;
+        setBoardAddress(next);
+        resetBoardSelection();
+    }, [boardAddress, board?.id, board?.slug, resetBoardSelection]);
 
     const closeBoard = useCallback(() => {
-        setHandle(null);
-        setSelected(null);
-        setSelectedWorkflow(null);
-        setMarked([]);
-        setWorking(null);
-    }, []);
+        setBoardAddress(null);
+        resetBoardSelection();
+    }, [resetBoardSelection]);
 
     const reloadBoard = reload;
 
@@ -169,31 +169,12 @@ export const HybridflowProvider: React.FC<{ children?: React.ReactNode }> = ({ c
             (client, board) => client.chainFlowNode(board, fromId, toId ?? ''));
     }, [apply]);
 
-    const chainFlowNodeClass = useCallback((fromId: string, toId: string | null) => {
-        apply(held => ops.chainFlowNodeClass(held, fromId, toId),
-            (client, board) => client.chainFlowNodeClass(board, fromId, toId ?? ''));
-    }, [apply]);
-
     const placeFlowNodes = useCallback((spots: Map<string, FlowNodeSpot>) => {
-        apply(held => {
-            const nodes = ops.placeFlowNodes(held, spots);
-            const classes = ops.placeFlowNodeClasses(nodes ?? held, spots);
-            return classes ?? nodes;
-        }, async (client, board, before, after) => {
-            await writes.writeSpots([...spots.keys()])(client, board, before, after);
-            await writes.writeClassSpots([...spots.keys()])(client, board, before, after);
-        });
+        apply(held => ops.placeFlowNodes(held, spots), writes.writeSpots([...spots.keys()]));
     }, [apply]);
 
     const moveSpots = useCallback((flowNodeIds: string[], dx: number, dy: number) => {
-        apply(held => {
-            const nodes = ops.moveSpots(held, flowNodeIds, dx, dy);
-            const classes = ops.moveClassSpots(nodes ?? held, flowNodeIds, dx, dy);
-            return classes ?? nodes;
-        }, async (client, board, before, after) => {
-            await writes.writeSpots(flowNodeIds)(client, board, before, after);
-            await writes.writeClassSpots(flowNodeIds)(client, board, before, after);
-        });
+        apply(held => ops.moveSpots(held, flowNodeIds, dx, dy), writes.writeSpots(flowNodeIds));
     }, [apply]);
 
     const editFlowNode = useCallback((flowNodeId: string, edit: FlowNodeEdit) => {
@@ -209,9 +190,10 @@ export const HybridflowProvider: React.FC<{ children?: React.ReactNode }> = ({ c
                 await writes.writeDeleteEmptiedWorkflows()(client, board, before, after);
             });
         const gone = new Set(flowNodeIds);
+        if (linkedTaskId && gone.has(linkedTaskId)) leaveTaskUrl();
         setSelected(prev => (prev && gone.has(prev) ? null : prev));
         forget(gone);
-    }, [apply, forget]);
+    }, [apply, forget, linkedTaskId, leaveTaskUrl]);
 
     const removeFlowNode = useCallback((flowNodeId: string) => removeFlowNodes([flowNodeId]), [removeFlowNodes]);
 
@@ -224,9 +206,10 @@ export const HybridflowProvider: React.FC<{ children?: React.ReactNode }> = ({ c
                 }
             });
         const gone = new Set(flowNodeIds);
+        if (linkedTaskId && gone.has(linkedTaskId)) leaveTaskUrl();
         setSelected(prev => (prev && gone.has(prev) ? null : prev));
         forget(gone);
-    }, [apply, forget]);
+    }, [apply, forget, linkedTaskId, leaveTaskUrl]);
 
     const unarchiveFlowNodes = useCallback((flowNodeIds: string[]) => {
         apply(held => ops.unarchiveFlowNodes(held, flowNodeIds),
@@ -238,89 +221,16 @@ export const HybridflowProvider: React.FC<{ children?: React.ReactNode }> = ({ c
             });
     }, [apply]);
 
-    const editFlowNodeClass = useCallback((classId: string, edit: FlowNodeClassEdit) => {
-        apply(held => ops.editFlowNodeClass(held, classId, edit),
-            (client, board) => client.patchFlowNodeClass(board, classId, writes.patchOfClass(edit)));
-    }, [apply]);
-
-    const removeFlowNodeClasses = useCallback((classIds: string[]) => {
-        apply(held => ops.removeFlowNodeClasses(held, classIds),
-            async (client, board, before, after) => {
-                await client.deleteFlowNodeClasses(board, classIds);
-                await writes.writeDeleteEmptiedWorkflowClasses()(client, board, before, after);
-            });
-        const gone = new Set(classIds);
-        setSelected(prev => (prev && gone.has(prev) ? null : prev));
-        forget(gone);
-    }, [apply, forget]);
-
-    const addFlowNodeClass = useCallback((type: FlowNodeType, spot: FlowNodeSpot, workflowClass = '') => {
-        const flowNodeClass = { ...newFlowNodeClass(type, spot), workflowClass };
-        apply(held => ops.insertFlowNodeClasses(held, [flowNodeClass]),
-            writes.writeCreateClass(flowNodeClass));
-        select(flowNodeClass.id);
-        setTitleCaret(flowNodeClass.id);
-    }, [apply, select]);
-
-    const createClassVersion = useCallback((classId: string, from?: FlowNodeClassVersion) => {
+    const pasteWorkflow = useCallback((clipboard: Record<string, unknown>, spot?: FlowNodeSpot) =>
         apply(held => held, async (client, board) => {
-            await client.createClassVersion(board, classId, writes.newClassVersionDto(from));
-            reload();
-        });
-    }, [apply, reload]);
-
-    const editClassVersion = useCallback((classId: string, versionId: string, edit: ClassVersionEdit) => {
-        apply(held => ops.editClassVersion(held, classId, versionId, edit),
-            (client, board) => client.patchClassVersion(
-                board, classId, versionId, writes.patchOfVersion(edit)));
-    }, [apply]);
-
-    const publishClassVersion = useCallback((classId: string, versionId: string) => {
-        apply(held => ops.editClassVersion(held, classId, versionId, { status: 'published' }),
-            (client, board) => client.patchClassVersion(
-                board, classId, versionId, { status: 'published' }));
-    }, [apply]);
-
-    const deleteClassVersion = useCallback((classId: string, versionId: string) => {
-        apply(held => ops.removeClassVersion(held, classId, versionId),
-            (client, board) => client.deleteClassVersion(board, classId, versionId));
-    }, [apply]);
-
-    const convertFlowNodeToClass = useCallback((flowNodeId: string) => {
-        apply(held => held, async (client, board) => {
-            const made = await client.convertFlowNodeToClass(board, flowNodeId);
-            reload();
-            return made;
-        });
-    }, [apply, reload]);
-
-    const instantiateFlowNodeClass = useCallback(
-        (classId: string, spot: FlowNodeSpot, bodies?: InstantiateBodies, workflow = '', agents?: TaskAgents) => {
-            apply(held => held, async (client, board) => {
-                const made = await client.instantiateFlowNodeClass(board, classId, spot, bodies, agents);
-                if (workflow) {
-                    for (const flowNode of made) {
-                        await client.patchFlowNode(board, flowNode.id, { workflow });
-                    }
-                }
-                reload();
-                return made;
-            });
-        }, [apply, reload]);
-
-    const instantiateWorkflowClass = useCallback(
-        (workflowClassId: string, spot: FlowNodeSpot, bodies?: InstantiateBodies, agents?: TaskAgents) => {
-            apply(held => held, async (client, board) => {
-                const made = await client.instantiateWorkflowClass(
-                    board, workflowClassId, spot, bodies, agents);
-                reload();
-                return made;
-            });
-        }, [apply, reload]);
+            await client.pasteWorkflow(board, clipboard, spot);
+            await reload(board);
+        }), [apply, reload]);
 
     const addFlowNode = useCallback((type: FlowNodeType, spot: FlowNodeSpot, workflow = '', agent = '') => {
         const flowNode: FlowNode = {
             ...newFlowNode('', '', { ...newFlowNodeSettings(type), ...(agent ? { agent } : {}) }), type, spot, workflow,
+            ...(type === 'limiter' ? readLimiter({}) : {}),
         };
         apply(held => ops.insertFlowNodes(held, [flowNode]), writes.writeCreate([flowNode]));
         select(flowNode.id);
@@ -337,22 +247,7 @@ export const HybridflowProvider: React.FC<{ children?: React.ReactNode }> = ({ c
         }, (client, board, before, after) =>
             writes.writeCreateWorkflow(workflow, members)(client, board, before, after));
         if (members.length > 0) {
-            selectWorkflow({ kind: 'workflow', id: workflow.id });
-            setTitleCaret(workflow.id);
-        }
-    }, [apply, selectWorkflow]);
-
-    const createWorkflowClass = useCallback((classIds: string[]) => {
-        const workflow: WorkflowClass = { id: newId(), name: '' };
-        let members: string[] = [];
-        apply(held => {
-            members = ops.flowNodeClassesNamed(held, classIds).map(one => one.id);
-            if (members.length === 0) return null;
-            return ops.groupFlowNodeClasses(held, workflow, members);
-        }, (client, board, before, after) =>
-            writes.writeCreateWorkflowClass(workflow, members)(client, board, before, after));
-        if (members.length > 0) {
-            selectWorkflow({ kind: 'workflowClass', id: workflow.id });
+            selectWorkflow(workflow.id);
             setTitleCaret(workflow.id);
         }
     }, [apply, selectWorkflow]);
@@ -362,23 +257,29 @@ export const HybridflowProvider: React.FC<{ children?: React.ReactNode }> = ({ c
             (client, board) => client.patchWorkflow(board, workflowId, { name }));
     }, [apply]);
 
-    const editWorkflowClass = useCallback((workflowId: string, name: string) => {
-        apply(held => ops.editWorkflowClass(held, workflowId, name),
-            (client, board) => client.patchWorkflowClass(board, workflowId, { name }));
-    }, [apply]);
+    const editWorkflowValues = useCallback((workflowId: string, patch: WorkflowValuesPatch) => {
+        if (!boardAddress) return Promise.resolve(false);
+        return enqueueWrite(boardAddress, async (client, target) => {
+            await client.patchWorkflow(target, workflowId, patch);
+            await reload(target);
+        });
+    }, [boardAddress, enqueueWrite, reload]);
+
+    const editWorkflowFiles = useCallback<HybridflowValue['editWorkflowFiles']>((workflowId, edit) => {
+        if (!boardAddress) return Promise.resolve(false);
+        return enqueueWrite(boardAddress, async (client, target) => {
+            const workflow = await client.workflow(target, workflowId);
+            const patch = edit(workflow);
+            if (patch) await client.patchWorkflow(target, workflowId, patch, workflow.revision);
+            await reload(target);
+        });
+    }, [boardAddress, enqueueWrite, reload]);
 
     const removeWorkflows = useCallback((workflowIds: string[]) => {
         apply(held => ops.removeWorkflows(held, workflowIds),
             writes.writeDeleteWorkflows(workflowIds));
         const gone = new Set(workflowIds);
-        setSelectedWorkflow(prev => (prev && gone.has(prev.id) ? null : prev));
-    }, [apply]);
-
-    const removeWorkflowClasses = useCallback((workflowIds: string[]) => {
-        apply(held => ops.removeWorkflowClasses(held, workflowIds),
-            writes.writeDeleteWorkflowClasses(workflowIds));
-        const gone = new Set(workflowIds);
-        setSelectedWorkflow(prev => (prev && gone.has(prev.id) ? null : prev));
+        setSelectedWorkflow(prev => (prev && gone.has(prev) ? null : prev));
     }, [apply]);
 
     const insertFlowNodes = useCallback((flowNodes: FlowNode[]) => {
@@ -400,19 +301,6 @@ export const HybridflowProvider: React.FC<{ children?: React.ReactNode }> = ({ c
         if (copy) select((copy as FlowNode).id);
     }, [apply, select]);
 
-    const cloneFlowNodeClass = useCallback((classId: string) => {
-        let copy: FlowNodeClass | null = null;
-        apply(held => {
-            const done = ops.cloneFlowNodeClass(held, classId);
-            if (!done) return null;
-            copy = done.flowNodeClass;
-            return done.content;
-        }, (client, board, before, after) => (copy
-            ? writes.writeCreateClass(copy)(client, board, before, after)
-            : Promise.resolve()));
-        if (copy) select((copy as FlowNodeClass).id);
-    }, [apply, select]);
-
     const setFlowNodeStatus = useCallback((flowNodeId: string, status: FlowNodeStatus) => {
         apply(held => ops.setFlowNodeStatus(held, flowNodeId, status),
             (client, board) => client.patchFlowNode(board, flowNodeId, { status }));
@@ -424,53 +312,35 @@ export const HybridflowProvider: React.FC<{ children?: React.ReactNode }> = ({ c
         return at && !at.flowNode.archived ? at : null;
     }, [content, selected]);
 
-    const selectedClass = useMemo(
-        () => (content && selected ? ops.findFlowNodeClass(content, selected) : null),
-        [content, selected],
-    );
-
     const selectedWorkflowGroup = useMemo(
-        (): Workflow | WorkflowClass | null => {
-            if (!content || !selectedWorkflow) return null;
-            return selectedWorkflow.kind === 'workflow'
-                ? ops.findWorkflow(content, selectedWorkflow.id)
-                : ops.findWorkflowClass(content, selectedWorkflow.id);
-        },
+        () => content && selectedWorkflow ? ops.findWorkflow(content, selectedWorkflow) : null,
         [content, selectedWorkflow],
     );
 
     const value = useMemo(() => ({
-        content, handle, error, loading, selected, select, openingId, selectedFlowNode, selectedClass,
+        content, board, handle, error, loading, selected, select, openTask, selectFromRoute, openingId, selectedFlowNode,
         selectedWorkflow, selectWorkflow, selectedWorkflowGroup,
         working, setWorking,
         marked, toggleMark, clearMarks, setMarked: setMarkedIds,
         titleCaret, takeTitleCaret,
         openBoard, closeBoard, reloadBoard,
-        chainFlowNode, chainFlowNodeClass, placeFlowNodes, moveSpots, setFlowNodeStatus,
+        chainFlowNode, placeFlowNodes, moveSpots, setFlowNodeStatus,
         addFlowNode, editFlowNode, removeFlowNode, removeFlowNodes, archiveFlowNodes, unarchiveFlowNodes,
         insertFlowNodes, cloneFlowNode,
-        cloneFlowNodeClass,
-        addFlowNodeClass, editFlowNodeClass, removeFlowNodeClasses,
-        createClassVersion, editClassVersion, publishClassVersion, deleteClassVersion,
-        convertFlowNodeToClass, instantiateFlowNodeClass, instantiateWorkflowClass,
-        createWorkflow, createWorkflowClass, editWorkflow, editWorkflowClass,
-        removeWorkflows, removeWorkflowClasses,
+        createWorkflow, pasteWorkflow, editWorkflow, editWorkflowValues, editWorkflowFiles,
+        removeWorkflows,
     }), [
-        content, handle, error, loading, selected, select, openingId, selectedFlowNode, selectedClass,
+        content, board, handle, error, loading, selected, select, openTask, selectFromRoute, openingId, selectedFlowNode,
         selectedWorkflow, selectWorkflow, selectedWorkflowGroup,
         working,
         marked, toggleMark, clearMarks, setMarkedIds,
         titleCaret, takeTitleCaret,
         openBoard, closeBoard, reloadBoard,
-        chainFlowNode, chainFlowNodeClass, placeFlowNodes, moveSpots, setFlowNodeStatus,
+        chainFlowNode, placeFlowNodes, moveSpots, setFlowNodeStatus,
         addFlowNode, editFlowNode, removeFlowNode, removeFlowNodes, archiveFlowNodes, unarchiveFlowNodes,
         insertFlowNodes, cloneFlowNode,
-        cloneFlowNodeClass,
-        addFlowNodeClass, editFlowNodeClass, removeFlowNodeClasses,
-        createClassVersion, editClassVersion, publishClassVersion, deleteClassVersion,
-        convertFlowNodeToClass, instantiateFlowNodeClass, instantiateWorkflowClass,
-        createWorkflow, createWorkflowClass, editWorkflow, editWorkflowClass,
-        removeWorkflows, removeWorkflowClasses,
+        createWorkflow, pasteWorkflow, editWorkflow, editWorkflowValues, editWorkflowFiles,
+        removeWorkflows,
     ]);
 
     return <HybridflowContext.Provider value={value}>{children}</HybridflowContext.Provider>;

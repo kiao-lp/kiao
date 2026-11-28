@@ -8,14 +8,17 @@ document:
 
 Hybridflow manages boards, conversations and published agents in Dashboard. Boards live in
 [hybridflow-store](/operation/hybridflow-store/README.md) and open at `/boards/<handle>`.
-Conversations and AI tasks use the same published agents and turn engine.
+Free conversations and AI tasks use the same agent catalogue. The selected harness executes
+their turns.
 
 ## What it claims
 
 The `/boards` app route opens the movable **Board** panel while the Document tab remains
-mounted. It also contributes **Node**, **Workflow**, **Boards**, **Conversations**, **Chain runs** and **Usage** tabs.
-The Tools menu opens **Agents**, **Agentic resources** and **Runners**. Template forms use the
-Board panel’s stack. `chatEnabled` controls conversation and task execution.
+mounted. It also contributes **Flow node**, **Workflow**, **Boards**, **Conversations**, **Chain runs** and **Usage** tabs.
+The Tools menu opens **Agentic resources**, **Agentic resources (legacy)** and **Runners**.
+**Agentic resources** lists agents, skills and MCP modules in separate tabs. Each card opens
+the resource editor. Template forms use the Board panel’s stack. `chatEnabled` controls
+conversation and task execution.
 
 The bare `/boards` route and Boards tab share a name-sorted list. The open board stays
 highlighted while a document URL is active. Row actions appear on hover/focus and remain
@@ -41,22 +44,22 @@ information only. Playing preserves the task text and position and records outpu
 | Need | Guide |
 | --- | --- |
 | Locate implementation or change format rules | [Files](README/files.md) |
-| Open/edit cards, mark sets, drop files | [Editing cards](README/editing-cards.md) |
+| Edit flow nodes, select cards or drop files | [Editing flow nodes](README/editing-cards.md) |
 | Transfer, duplicate or remove nodes | [Clipboard and archive](README/clipboard-and-archive.md) |
 | Choose task, control or display kinds | [Node types](README/flow-node-types.md) |
 | Configure explicit execution settings | [Settings](README/settings.md) |
-| Reuse versions or group nodes | [Classes and workflows](README/classes-and-workflows.md) |
+| Group or copy workflows | [Workflows](README/workflows.md) |
 | Label and filter | [Tags](README/tags.md) |
 | Arrange nodes and read arrows | [Board canvas](README/board.md) |
 | Start and fork conversations | [Conversations panel](docs/solution-design/conversations.md) |
 | Understand task lifecycle | [Status and chat](README/status-and-chat.md) |
 | Chain tasks and hand off chats | [On success](README/on-success.md) |
 | Instantiate descriptions | [Templates](README/flow-node-templates.md) |
-| Run, stop, retry or pass structured output | [Playing nodes](README/playing-flow-nodes.md) |
+| Run, stop, retry or pass structured output | [Playing flow nodes](README/playing-flow-nodes.md) |
 
 The [board design](docs/solution-design/board-ui.md) owns routing and UI
 integration; the [store design](/operation/hybridflow-store/docs/solution-design/README.md)
-owns persistence. Read topic pages as needed rather than loading the whole guide.
+owns persistence. For domain terms, see the [Hybridflow concept catalog](/docs/architecture/data/hybridflow-concept-catalog.md).
 
 ## Moved sections
 
@@ -104,27 +107,23 @@ Legacy anchors point to the current topic pages.
 
 ### The Shutdown card
 
-[flow-node-types.md](README/flow-node-types.md#the-shutdown-card).
+[flow-node-types.md](README/flow-node-types.md#the-shutdown-flow-node).
 
 ### The Scheduler card
 
-[flow-node-types.md](README/flow-node-types.md#the-scheduler-card).
+[flow-node-types.md](README/flow-node-types.md#the-scheduler-flow-node).
 
 ### The Gateway card
 
-[flow-node-types.md](README/flow-node-types.md#the-gateway-card).
+[flow-node-types.md](README/flow-node-types.md#gateways-and-limiter).
 
 ### Settings
 
 [settings.md](README/settings.md#settings).
 
-### Node classes
-
-[classes-and-workflows.md](README/classes-and-workflows.md#node-classes).
-
 ### Workflows
 
-[classes-and-workflows.md](README/classes-and-workflows.md#workflows).
+[workflows.md](README/workflows.md).
 
 ### Tags
 

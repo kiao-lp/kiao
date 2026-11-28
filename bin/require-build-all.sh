@@ -7,9 +7,7 @@
 # can act on, instead of a Vite error about an unresolved `file:` import or a `cp` on a path that
 # is not there.
 #
-# It checks *presence*, not freshness: nothing here can tell a binary built this morning from one
-# built last month. Rerunning bin/build-all.sh is cheap where it matters — npm and Go both skip
-# what has not changed — so the rule is simply to run it after a pull.
+# The shared stage stamps its Git revision and catalogue. Rebuild after changing either.
 #
 # Usage: bin/require-build-all.sh <artefact>...
 #   reference         the reference libraries (reference/)
@@ -52,5 +50,11 @@ if [ -n "$missing" ]; then
     echo "" >&2
     echo "       Run ./bin/build-all.sh first. It builds everything the kiao end scripts share," >&2
     echo "       once, so that running two of them in a row does not build it twice." >&2
+    exit 1
+fi
+
+if [ "$(git -C "$PROJECT_ROOT" rev-parse HEAD)" != "$(cat "$PROJECT_ROOT/dist/kiao-build-revision" 2>/dev/null)" ] ||
+   ! cmp -s "$PROJECT_ROOT/agentic-resources.json" "$PROJECT_ROOT/dist/agentic-resources.json"; then
+    echo "ERROR: run ./bin/build-all.sh for the current Git revision and agentic catalogue." >&2
     exit 1
 fi

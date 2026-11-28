@@ -1,38 +1,18 @@
 import React, { useState } from 'react';
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
-
-/**
- * The CMS's one template editor: the name, the index, the Root and the sub-templates — the
- * Modify face of a `.temp.md` file, and of a class version's body in template mode.
- *
- * What is pinned here is the controlled contract both callers rely on: every edit is the whole
- * collection it makes, handed to `onChange`, and the editor holds nothing itself.
- */
-
-vi.mock('@kiao-dashboard-core', async importOriginal => ({
-    ...(await importOriginal<typeof import('@kiao-dashboard-core')>()),
-    VoiceInput: ({ value, onChange, placeholder }: {
-        value?: string; onChange?: (event: unknown) => void; placeholder?: string;
-    }) => (
-        <input value={value ?? ''} placeholder={placeholder} onChange={onChange} />
-    ),
-    VoiceTextArea: ({ value, onChange, placeholder }: {
-        value?: string; onChange?: (event: unknown) => void; placeholder?: string;
-    }) => (
-        <textarea value={value ?? ''} placeholder={placeholder} onChange={onChange} />
-    ),
-}));
+import { render as renderEditor, screen, fireEvent } from '@testing-library/react';
+import { VoiceInputProvider } from '@kiao-dashboard-core';
 
 import { TemplateCollectionEditor } from './TemplateCollectionEditor';
 import { TemplateCollectionV0 } from '@kiao-dashboard-kit/template-lang';
 
 const TEMPLATE: TemplateCollectionV0 = {
     name: 'Greeting',
-    index: '',
     rootTemplate: { id: 'root', textTemplate: 'Hello!' },
     subTemplates: [],
 };
+
+const render = (editor: React.ReactElement) => renderEditor(editor, { wrapper: VoiceInputProvider });
 
 const show = (onChange: (next: TemplateCollectionV0) => void) => render(
     <TemplateCollectionEditor template={TEMPLATE} onChange={onChange} />,
@@ -43,7 +23,8 @@ describe('TemplateCollectionEditor', () => {
         const onChange = vi.fn();
         show(onChange);
 
-        fireEvent.change(screen.getAllByPlaceholderText('Template Body')[0], {
+        expect(screen.getByLabelText('Name')).toHaveValue('Greeting');
+        fireEvent.change(screen.getByLabelText('Root Template'), {
             target: { value: 'Hello ${who:text}!' },
         });
 
@@ -51,6 +32,14 @@ describe('TemplateCollectionEditor', () => {
             ...TEMPLATE,
             rootTemplate: { id: 'root', textTemplate: 'Hello ${who:text}!' },
         });
+    });
+
+    it('allows a file template to be named even when it starts unnamed', () => {
+        const onChange = vi.fn();
+        render(<TemplateCollectionEditor template={{ ...TEMPLATE, name: undefined }} onChange={onChange} />);
+
+        fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Welcome' } });
+        expect(onChange).toHaveBeenCalledWith({ ...TEMPLATE, name: 'Welcome' });
     });
 
     it('adds a sub-template under the Root', () => {
@@ -80,7 +69,30 @@ describe('TemplateCollectionEditor', () => {
         render(<Held />);
 
         expect(screen.getAllByPlaceholderText('Template Body')).toHaveLength(2);
+        expect(screen.getAllByRole('button', { name: 'Syntax Help' })).toHaveLength(1);
         fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
         expect(onChange).toHaveBeenCalledWith(TEMPLATE);
+    });
+
+    it('moves only the sub-templates and keeps keyboard focus on the moved grip', () => {
+        const first = { id: '', textTemplate: 'First' };
+        const second = { id: '', textTemplate: 'Second' };
+        const third = { id: 'bye', textTemplate: 'Third' };
+        const Held = () => {
+            const [template, setTemplate] = useState({ ...TEMPLATE, subTemplates: [first, second, third] });
+            return <TemplateCollectionEditor template={template} onChange={setTemplate} />;
+        };
+        render(<Held />);
+
+        const grip = screen.getByRole('button', { name: 'Reorder sub template 1' });
+        grip.focus();
+        fireEvent.keyDown(grip, { key: 'ArrowDown' });
+        const movedGrip = screen.getByRole('button', { name: 'Reorder sub template 2' });
+        expect(movedGrip).toHaveFocus();
+        fireEvent.keyDown(movedGrip, { key: 'End' });
+
+        expect(screen.getByRole('button', { name: 'Reorder sub template 3' })).toHaveFocus();
+        expect(screen.getAllByPlaceholderText('Template Body').map(input => (input as HTMLTextAreaElement).value))
+            .toEqual(['Hello!', 'Second', 'Third', 'First']);
     });
 });

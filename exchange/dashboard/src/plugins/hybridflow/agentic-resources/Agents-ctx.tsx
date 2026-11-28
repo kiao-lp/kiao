@@ -15,6 +15,7 @@ interface AgentsValue {
     patch: (id: string, patch: AgentPatchDto) => Promise<AgentDto>;
     setDependency: (id: string, kind: AgentDependencyKind, name: string, linked: boolean, local: boolean) => Promise<void>;
     publish: (id: string, bump: ReleaseBump, confirmation?: string) => Promise<AgentDto>;
+    pull: (id: string) => Promise<AgentDto>;
     remove: (id: string, confirmation: string) => Promise<void>;
 }
 
@@ -42,6 +43,7 @@ const NO_AGENTS: AgentsValue = {
     patch: noService,
     setDependency: noService,
     publish: noService,
+    pull: noService,
     remove: () => noService() as Promise<void>,
 };
 
@@ -50,7 +52,6 @@ export const AgentsProvider: React.FC<{ children?: React.ReactNode }> = ({ child
     const client = useResourceClient();
     const [agents, setAgents] = useState<AgentDto[] | null>(null);
     const last = useRef<AgentDto[] | null>(null);
-    const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const reading = useRef<Promise<void> | null>(null);
 
@@ -68,7 +69,7 @@ export const AgentsProvider: React.FC<{ children?: React.ReactNode }> = ({ child
             await reading.current;
             return;
         }
-        setLoading(true);
+        if (last.current === null) setError(null);
         const read = (async () => {
             try {
                 keep(await client.agents());
@@ -76,7 +77,6 @@ export const AgentsProvider: React.FC<{ children?: React.ReactNode }> = ({ child
             } catch (cause) {
                 setError(cause instanceof Error ? cause.message : String(cause));
             } finally {
-                setLoading(false);
                 reading.current = null;
             }
         })();
@@ -129,9 +129,12 @@ export const AgentsProvider: React.FC<{ children?: React.ReactNode }> = ({ child
     const publish = useCallback((id: string, bump: ReleaseBump, confirmation?: string) => write(() => client!.publishAgent(id, bump,
         last.current?.find(agent => agent.id === id)?.revision, confirmation)), [client, write]);
 
+    const pull = useCallback((id: string) => write(() => client!.pullAgent(id)), [client, write]);
+
+    const loading = client !== null && agents === null && error === null;
     const value = useMemo(() => ({
-        agents: agents ?? [], loading, error, ensureLoaded, loaded, reload, create, patch, setDependency, publish, remove,
-    }), [agents, loading, error, ensureLoaded, loaded, reload, create, patch, setDependency, publish, remove]);
+        agents: agents ?? [], loading, error, ensureLoaded, loaded, reload, create, patch, setDependency, publish, pull, remove,
+    }), [agents, loading, error, ensureLoaded, loaded, reload, create, patch, setDependency, publish, pull, remove]);
 
     return <AgentsContext.Provider value={value}>{children}</AgentsContext.Provider>;
 };

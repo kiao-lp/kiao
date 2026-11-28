@@ -4,43 +4,43 @@ import {
 } from './boardFilter';
 import { newFlowNode, FlowNode } from './boardContent';
 
-/** A card wearing the words it is filed under. */
-const card = (title: string, ...tags: string[]): FlowNode => ({ ...newFlowNode(title), tags });
+/** A node wearing the words it is filed under. */
+const node = (title: string, ...tags: string[]): FlowNode => ({ ...newFlowNode(title), tags });
 
 const titles = (flowNodes: FlowNode[]) => flowNodes.map(flowNode => flowNode.title);
 
 describe('the words a board offers to filter on', () => {
-    it('gathers the words its cards wear, each once and alphabetically', () => {
-        const flowNodes = [card('One', 'ui', 'bug'), card('Two', 'bug'), card('Three', 'agent'), card('Four')];
+    it('gathers the words its nodes wear, each once and alphabetically', () => {
+        const flowNodes = [node('One', 'ui', 'bug'), node('Two', 'bug'), node('Three', 'agent'), node('Four')];
         expect(boardTags(flowNodes)).toEqual(['agent', 'bug', 'ui']);
     });
 
     it('reads a word written in two cases as one word', () => {
-        expect(boardTags([card('One', 'Bug'), card('Two', 'bug')])).toEqual(['Bug']);
+        expect(boardTags([node('One', 'Bug'), node('Two', 'bug')])).toEqual(['Bug']);
     });
 
-    it('has nothing to offer for a board of untagged cards', () => {
-        expect(boardTags([card('One'), card('Two')])).toEqual([]);
+    it('has nothing to offer for a board of untagged nodes', () => {
+        expect(boardTags([node('One'), node('Two')])).toEqual([]);
     });
 });
 
 describe('what a filter leaves on screen', () => {
-    it('shows every card while nothing is asked for', () => {
-        const flowNodes = [card('One', 'bug'), card('Two')];
+    it('shows every node while nothing is asked for', () => {
+        const flowNodes = [node('One', 'bug'), node('Two')];
         expect(filterFlowNodes(flowNodes, [])).toBe(flowNodes);
     });
 
-    it('shows a card carrying any of the words asked for', () => {
-        const flowNodes = [card('Bugged', 'bug'), card('Both', 'bug', 'ui'), card('Other', 'doc'), card('Bare')];
+    it('shows a node carrying any of the words asked for', () => {
+        const flowNodes = [node('Bugged', 'bug'), node('Both', 'bug', 'ui'), node('Other', 'doc'), node('Bare')];
         expect(titles(filterFlowNodes(flowNodes, ['bug', 'ui']))).toEqual(['Bugged', 'Both']);
     });
 
     it('matches whatever case the word was written in', () => {
-        expect(showsFlowNode(card('One', 'Bug'), ['bug'])).toBe(true);
+        expect(showsFlowNode(node('One', 'Bug'), ['bug'])).toBe(true);
     });
 
-    it('keeps the cards it shows in the order they come in', () => {
-        const flowNodes = [card('Last', 'bug'), card('Other'), card('First', 'bug')];
+    it('keeps the nodes it shows in the order they come in', () => {
+        const flowNodes = [node('Last', 'bug'), node('Other'), node('First', 'bug')];
         expect(titles(filterFlowNodes(flowNodes, ['bug']))).toEqual(['Last', 'First']);
     });
 });
@@ -56,7 +56,7 @@ describe('pressing a chip', () => {
     });
 });
 
-// A word untagged from its last card — here, or by a run rewriting the board underneath — would otherwise.
+// A word untagged from its last node — here, or by a run rewriting the board underneath — would otherwise.
 describe('a filter the board has outlived', () => {
     it('drops the words the board no longer wears', () => {
         expect(keptTags(['bug', 'ui'], ['ui', 'doc'])).toEqual(['ui']);

@@ -7,7 +7,7 @@
 #   bin/run-tests.sh --wait        # wait for the active run
 #
 # Use this wrapper: it bounds runtime, persists results, and reaps orphaned stacks
-# and runner trees before/after runs. KIAO_E2E=1 marks harness stacks;
+# and runner trees before/after runs. KIAO_E2E=1 marks test stacks;
 # KIAO_E2E_RUN=<pid> marks runner descendants and protects the current run.
 # Manually started verification stacks are deliberately reaped: they hold shard ports.
 
@@ -73,6 +73,7 @@ reap() {
     [ -n "${pids// /}" ] && kill -KILL $pids 2>/dev/null
   fi
   # Remove temporary stores after killing their stacks.
+  find /tmp/kiao-e2e-*/.kiao-config/agentic-packages -type d -exec chmod u+w {} + 2>/dev/null
   rm -rf /tmp/kiao-e2e-* 2>/dev/null
   return 0
 }

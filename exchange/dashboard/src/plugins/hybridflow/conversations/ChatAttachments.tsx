@@ -1,9 +1,8 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Button } from 'antd';
 import { CloseOutlined, FileOutlined, LoadingOutlined, WarningOutlined } from '@ant-design/icons';
 import type { HarnessAttachment } from 'kiao-worker';
-import { useWorkerClient, Tooltip } from '@kiao-dashboard-core';
+import { IconButton, useWorkerClient, Tooltip } from '@kiao-dashboard-core';
 
 /** How many files one message may carry. */
 export const MAX_ATTACHMENTS = 10;
@@ -184,15 +183,14 @@ const ComposerChip: React.FC<{ attachment: PendingAttachment; onRemove: () => vo
                 <span className="chat-attachment-size">
                     {state === 'uploading' ? <LoadingOutlined /> : formatBytes(attachment.size)}
                 </span>
-                <button
-                    type="button"
+                <IconButton
+                    type="plain"
+                    label={`Remove ${attachment.name}`}
+                    icon={<CloseOutlined />}
                     className="chat-attachment-remove"
-                    aria-label={`Remove ${attachment.name}`}
                     onClick={onRemove}
                     disabled={disabled}
-                >
-                    <CloseOutlined />
-                </button>
+                />
             </div>
         </Tooltip>
     );
@@ -299,12 +297,12 @@ export const ChatAttachButton: React.FC<{
                     e.target.value = '';
                 }}
             />
-            <Button
-                size="small"
+            <IconButton
+                label="Attach a file"
+                type="default"
                 icon={<span className="chat-attach-icon">📎</span>}
                 onClick={() => inputRef.current?.click()}
                 disabled={disabled}
-                aria-label="Attach a file"
             />
         </>
     );

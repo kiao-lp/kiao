@@ -10,7 +10,7 @@ The Muse integration implements the shared
 [`HarnessDriver`](../../internal/hybridflow-runner/harnesses/driver.go) port inside
 [`harnesses/muse`](../../internal/hybridflow-runner/harnesses/muse). One `muse serve`
 process runs each worker turn. A recovery may replace the native MSP turn on that same host.
-The execution engine consumes common harness events; MSP vocabulary, session storage,
+`turns.Engine` consumes common harness events. MSP vocabulary, session storage,
 configuration staging and account quota harvesting belong to Muse.
 
 ## Responsibilities and dependencies

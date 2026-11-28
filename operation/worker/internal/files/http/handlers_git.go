@@ -8,10 +8,33 @@ import (
 )
 
 // gitAt scopes Source Control to the requested folder. An omitted folder uses
-// the store root, including for the close-time commit prompt.
-// Every Git endpoint takes folder as a query parameter, including JSON-body requests.
+// the DCMS root, including for the close-time commit prompt.
+// Repository operations take folder as a query parameter, including JSON-body requests.
 func (s *Service) gitAt(r *http.Request) *git.GitService {
 	return s.git.At(r.URL.Query().Get("folder"))
+}
+
+func (s *Service) HandleGitConfig(w http.ResponseWriter, r *http.Request) {
+	identity, err := s.git.Identity()
+	if err != nil {
+		httpkit.WriteError(w, r, err)
+		return
+	}
+	httpkit.WriteJSON(w, http.StatusOK, identity)
+}
+
+func (s *Service) HandleSaveGitConfig(w http.ResponseWriter, r *http.Request) {
+	var identity git.Identity
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&identity); err != nil {
+		httpkit.WriteText(w, http.StatusBadRequest, "Expected a Git author name and email address.")
+		return
+	}
+	saved, err := s.git.SaveIdentity(identity)
+	if err != nil {
+		httpkit.WriteError(w, r, err)
+		return
+	}
+	httpkit.WriteJSON(w, http.StatusOK, saved)
 }
 
 func (s *Service) HandleGitStatus(w http.ResponseWriter, r *http.Request) {

@@ -1,0 +1,28 @@
+.codemirror-editor {
+    width: 100%;
+    min-width: 0;
+    min-height: 0;
+}
+
+.codemirror-editor .cm-editor,
+.codemirror-editor .cm-gutters {
+    background-color: var(--input-bg) !important;
+}
+
+.codemirror-editor .cm-activeLineGutter,
+.codemirror-editor .cm-activeLine {
+    background-color: var(--bg-hover) !important;
+}
+
+.codemirror-editor .cm-content,
+.codemirror-editor .cm-line {
+    color: var(--text) !important;
+}
+
+.codemirror-editor .cm-content {
+    caret-color: var(--link) !important;
+}
+
+.codemirror-editor .cm-gutterElement {
+    color: #838383 !important;
+}

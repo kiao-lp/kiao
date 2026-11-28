@@ -4,7 +4,7 @@ import { cleanup, render, screen, fireEvent, act } from 'src/test/render';
 import { existsSync, readFileSync } from 'fs';
 import { resolve } from 'path';
 import { boardOf } from '../test/fixtures';
-import { FakeHybridflowClient, HybridflowClientProvider, type ListedClassDto } from '../service';
+import { FakeHybridflowClient, HybridflowClientProvider } from '../service';
 import styles from '../Hybridflow.module.css';
 
 /** A click on a card opens the flow node panel. */
@@ -16,7 +16,11 @@ const board = await vi.hoisted(async () => {
     return createBoardMock();
 });
 
-const toolBars = vi.hoisted(() => ({ showTab: vi.fn() }));
+const toolBars = vi.hoisted(() => ({
+    showTab: vi.fn(),
+    placementOf: (id: string) => id === 'hybridflow-ui-board' ? 'center' : 'right',
+    activeIn: () => null,
+}));
 
 /** Whether this assembly plays flow nodes at all. */
 const config = vi.hoisted(() => ({ chatEnabled: false }));
@@ -37,21 +41,15 @@ vi.mock('@kiao-dashboard-core', async importOriginal => ({
 }));
 
 const clipboard = vi.hoisted(() => ({
-    copyFlowNodes: vi.fn(), cutFlowNodes: vi.fn(), pasteFlowNodes: vi.fn(),
+    copyFlowNodes: vi.fn(), cutFlowNodes: vi.fn(), copyWorkflow: vi.fn(), paste: vi.fn(), instantiateHere: vi.fn(),
 }));
 vi.mock('../useBoardClipboard', () => ({ useBoardClipboard: () => clipboard }));
 const deleteFlowNodes = vi.hoisted(() => vi.fn());
 vi.mock('../useFlowNodeDelete', () => ({ useFlowNodeDelete: () => deleteFlowNodes }));
 const archiveFlowNodes = vi.hoisted(() => vi.fn());
 vi.mock('../useFlowNodeArchive', () => ({ useFlowNodeArchive: () => archiveFlowNodes }));
-const instantiateClass = vi.hoisted(() => vi.fn());
-vi.mock('../useInstantiateClass', () => ({
-    useInstantiateClass: () => instantiateClass,
-    useInstantiateWorkflowClass: () => vi.fn(),
-}));
-
 /** What the board asks of the service's runs. */
-const runs = vi.hoisted(() => ({ play: vi.fn(), stop: vi.fn() }));
+const runs = vi.hoisted(() => ({ play: vi.fn(), stop: vi.fn(), resumeOn: vi.fn() }));
 vi.mock('../usePlayFlowNode', async importOriginal => ({
     ...(await importOriginal<typeof import('../usePlayFlowNode')>()),
     usePlayFlowNode: () => ({ runOn: () => null, documentAt: null, ...runs }),
@@ -78,145 +76,6 @@ const show = () => {
     return render(<BoardWithStrip handle="board" />);
 };
 
-describe('the instantiate menu catalogue', () => {
-    beforeEach(() => {
-        vi.clearAllMocks();
-        board.marked = [];
-        board.selected = null;
-    });
-    afterEach(cleanup);
-
-    const target = (instantiable: boolean, title = 'Review'): ListedClassDto => ({
-        id: 'review', title, type: 'human', instantiable, versions: [],
-        boardSlug: 'library', boardName: 'Library',
-        createdAt: '', updatedAt: '', revision: 1,
-    });
-
-    const showCatalogue = async (surface: 'empty' | 'canvas' | 'workflow') => {
-        const node = { ...newFlowNode('Task'), id: 'task', spot: { x: 0, y: 0 }, workflow: 'w1' };
-        board.content = boardOf(surface === 'empty' ? [] : [node]);
-        if (surface === 'workflow') board.content.workflows = [{ id: 'w1', name: 'Sprint' }];
-        const client = new FakeHybridflowClient(board.content);
-        client.classesList = [target(false)];
-        render(
-            <HybridflowClientProvider client={client.asClient()}>
-                <BoardWithStrip handle="board" />
-            </HybridflowClientProvider>,
-        );
-        await act(async () => {});
-        const menuSurface = surface === 'workflow'
-            ? screen.getByText('Sprint')
-            : screen.getByTestId('content-canvas');
-        return { client, menuSurface };
-    };
-
-    it.each(['empty', 'canvas', 'workflow'] as const)(
-        'offers a newly instantiable class when the %s menu opens without remounting',
-        async surface => {
-            const { client, menuSurface } = await showCatalogue(surface);
-            client.classesList = [target(true, 'Updated review')];
-
-            fireEvent.contextMenu(menuSurface);
-            fireEvent.mouseEnter(await screen.findByText('Instantiate class...'));
-
-            const entry = await screen.findByTestId(surface === 'workflow'
-                ? 'instantiate-in-workflow-review' : 'instantiate-review');
-            expect(entry).toHaveTextContent('Updated review (Library)');
-        },
-    );
-
-    it('refreshes workflow classes alongside node classes', async () => {
-        const { client, menuSurface } = await showCatalogue('canvas');
-        client.workflowClassesList = [{
-            id: 'release', name: 'Release', boardSlug: 'library', boardName: 'Library',
-            createdAt: '', updatedAt: '', revision: 1,
-        }];
-
-        fireEvent.contextMenu(menuSurface);
-        fireEvent.mouseEnter(await screen.findByText('Instantiate class...'));
-
-        expect(await screen.findByTestId('instantiate-workflow-release'))
-            .toHaveTextContent('Release (Library)');
-    });
-
-    it.each(['empty', 'canvas', 'workflow'] as const)(
-        'lists classes alphabetically in the %s submenu',
-        async surface => {
-            const { client, menuSurface } = await showCatalogue(surface);
-            client.classesList = ['Zebra', 'beta', '', 'Alpha'].map((title, index) => ({
-                ...target(true, title), id: `class-${index}`,
-            }));
-            client.workflowClassesList = ['Delta', 'aardvark'].map((name, index) => ({
-                id: `workflow-${index}`, name, boardSlug: 'library', boardName: 'Library',
-                createdAt: '', updatedAt: '', revision: 1,
-            }));
-
-            fireEvent.contextMenu(menuSurface);
-            fireEvent.mouseEnter(await screen.findByText('Instantiate class...'));
-            await screen.findByTestId(surface === 'workflow'
-                ? 'instantiate-in-workflow-class-0' : 'instantiate-class-0');
-
-            const entries = screen.getAllByTestId(/^instantiate-/);
-            expect(entries.map(entry => entry.textContent)).toEqual(
-                (surface === 'workflow'
-                    ? ['Alpha', 'beta', 'Untitled', 'Zebra']
-                    : ['aardvark', 'Alpha', 'beta', 'Delta', 'Untitled', 'Zebra'])
-                    .map(name => `${name} (Library)`),
-            );
-        },
-    );
-
-    it('keeps the latest menu refresh when an earlier listing finishes afterwards', async () => {
-        const { client, menuSurface } = await showCatalogue('canvas');
-        let answerEarlier!: (list: ListedClassDto[]) => void;
-        vi.spyOn(client, 'flowNodeClasses')
-            .mockImplementationOnce(() => new Promise(resolve => { answerEarlier = resolve; }))
-            .mockResolvedValueOnce([target(true, 'Latest review')]);
-
-        fireEvent.contextMenu(menuSurface);
-        fireEvent.contextMenu(menuSurface);
-        fireEvent.mouseEnter(await screen.findByText('Instantiate class...'));
-        const entry = await screen.findByTestId('instantiate-review');
-        expect(entry).toHaveTextContent('Latest review');
-
-        await act(async () => { answerEarlier([target(false)]); });
-
-        expect(screen.getByTestId('instantiate-review')).toHaveTextContent('Latest review');
-    });
-});
-
-describe('instantiating from a class card', () => {
-    beforeEach(() => {
-        vi.clearAllMocks();
-        board.marked = [];
-        board.selected = null;
-    });
-    afterEach(cleanup);
-
-    it('instantiates the class right-clicked below its position, regardless of marks or catalogue visibility', async () => {
-        const { newFlowNodeClass } = await import('../flowNodeClass');
-        const one = { ...newFlowNodeClass('human', { x: 100, y: 80 }), id: 'one', title: 'One' };
-        const two = { ...newFlowNodeClass('human', { x: 500, y: 80 }), id: 'two', title: 'Two' };
-        board.content = { ...boardOf([]), flowNodeClasses: [one, two] };
-        board.marked = ['one', 'two'];
-        const client = new FakeHybridflowClient(board.content);
-        render(
-            <HybridflowClientProvider client={client.asClient()}>
-                <BoardWithStrip handle="board" />
-            </HybridflowClientProvider>,
-        );
-        await act(async () => {});
-        const listing = vi.spyOn(client, 'flowNodeClasses');
-
-        fireEvent.contextMenu(screen.getAllByTestId('flow-node-class-card')[1]);
-        fireEvent.click(await screen.findByText('Instantiate...'));
-
-        expect(instantiateClass).toHaveBeenCalledExactlyOnceWith('two', { x: 500, y: 244 });
-        expect(listing).toHaveBeenCalledTimes(1);
-        expect(screen.queryByText('Instantiate class...')).not.toBeInTheDocument();
-    });
-});
-
 describe('a click on a card', () => {
     beforeEach(() => {
         vi.clearAllMocks();
@@ -226,7 +85,7 @@ describe('a click on a card', () => {
         show();
         fireEvent.click(screen.getByTestId('flow-node-card'));
 
-        expect(board.select).toHaveBeenCalledWith(FLOW_NODE_ID);
+        expect(board.openTask).toHaveBeenCalledWith(FLOW_NODE_ID);
         expect(toolBars.showTab).toHaveBeenCalledWith(FLOW_NODE_TAB_ID);
     });
 
@@ -237,18 +96,16 @@ describe('a click on a card', () => {
         fireEvent.click(card);
         fireEvent.doubleClick(card);
 
-        expect(board.select).toHaveBeenCalledWith(FLOW_NODE_ID);
+        expect(board.openTask).toHaveBeenCalledWith(FLOW_NODE_ID);
         expect(toolBars.showTab).toHaveBeenCalledWith(FLOW_NODE_TAB_ID);
     });
 });
-
 
 /** What a card offers a Play for. */
 describe('the Play a card offers', () => {
     const PLAYABLE = {
         agent: 'claude', model: 'opus', effort: 'high', permission: 'manualLive', folder: '/',
     };
-
 
     const showing = (over: Partial<ReturnType<typeof newFlowNode>>) => {
         const flowNode = {
@@ -260,13 +117,30 @@ describe('the Play a card offers', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+        runs.resumeOn.mockReturnValue(undefined);
         config.chatEnabled = true;
     });
     afterEach(() => { config.chatEnabled = false; });
 
-    it('offers one for a ready flow node with a description and the five settings', () => {
-        showing({});
+    it.each(['ready', 'done', 'interrupted'] as const)('offers Play for a configured %s AI task', status => {
+        showing({ status });
         expect(screen.getByTestId('play-flow-node')).toBeInTheDocument();
+    });
+
+    it('resumes a suspended run from its interrupted flow node', () => {
+        const resume = vi.fn();
+        runs.resumeOn.mockReturnValue(resume);
+        showing({ status: 'interrupted', chat: 'conversation-1' });
+
+        fireEvent.click(screen.getByRole('button', { name: 'Resume this task in its conversation' }));
+        expect(runs.resumeOn).toHaveBeenCalledWith(FLOW_NODE_ID, 'conversation-1');
+        expect(resume).toHaveBeenCalledOnce();
+        expect(screen.queryByTestId('chain-run-name')).toBeNull();
+    });
+
+    it('offers Work again for a completed human task', () => {
+        showing({ type: 'human', status: 'done', settings: {} });
+        expect(screen.getByRole('button', { name: 'Work on this task' })).toBeInTheDocument();
     });
 
     it.each(['draft', 'ready', 'todo', 'blocked', 'running', 'waiting-refresh', 'interrupted', 'done', 'error'] as const)(
@@ -307,7 +181,7 @@ describe('the Play a card offers', () => {
         expect(screen.queryByTestId('play-flow-node')).toBeNull();
 
         cleanup();
-        showing({ type: 'scheduler', body: '', settings: {}, at: '2026-09-03T22:00' });
+        showing({ type: 'scheduler', status: 'done', body: '', settings: {}, at: '2026-09-03T22:00' });
         expect(screen.getByTestId('play-flow-node')).toBeInTheDocument();
 
         cleanup();
@@ -319,17 +193,29 @@ describe('the Play a card offers', () => {
         expect(screen.queryByTestId('play-flow-node')).toBeNull();
     });
 
-    it('asks what the chain run is to be called before it starts one', async () => {
-        showing({});
+    it('offers Play and an outgoing link on an untitled Start event', async () => {
+        showing({ type: 'start', title: '', body: '', settings: {} });
+        expect(screen.getByRole('img', { name: 'Start event' })).toBeInTheDocument();
+        expect(screen.getByTestId('flow-node-card')).toHaveAttribute('data-shape', 'circle');
+        expect(screen.getByTestId('flow-node-card-chain')).toBeInTheDocument();
+        fireEvent.click(screen.getByTestId('play-flow-node'));
+        const box = await screen.findByTestId('chain-run-name');
+        fireEvent.change(box, { target: { value: 'From Start' } });
+        await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Start' })); });
+        expect(runs.play).toHaveBeenCalledWith(FLOW_NODE_ID, 'From Start');
+    });
+
+    it.each(['Nightly', ''])('asks for a run name before replaying a completed task (%j)', async name => {
+        showing({ status: 'done', chat: 'previous-conversation' });
         fireEvent.click(screen.getByTestId('play-flow-node'));
         expect(runs.play).not.toHaveBeenCalled();
 
         const box = await screen.findByTestId('chain-run-name');
         expect((box as HTMLInputElement).value).toMatch(/^Started /);
 
-        fireEvent.change(box, { target: { value: 'Nightly' } });
-        fireEvent.click(screen.getByText('Start'));
-        expect(runs.play).toHaveBeenCalledWith(FLOW_NODE_ID, 'Nightly');
+        fireEvent.change(box, { target: { value: name } });
+        await act(async () => { fireEvent.click(screen.getByText('Start')); });
+        expect(runs.play).toHaveBeenCalledWith(FLOW_NODE_ID, name);
     });
 
     it('starts nothing when the naming is cancelled', async () => {
@@ -346,7 +232,7 @@ describe('the Play a card offers', () => {
 describe('the filter in the tab strip', () => {
 
     const titles = new Map<string, string>();
-    const card = (title: string, ...tags: string[]) => {
+    const node = (title: string, ...tags: string[]) => {
         const made = { ...newFlowNode(title), tags };
         titles.set(made.id, title);
         return made;
@@ -354,7 +240,7 @@ describe('the filter in the tab strip', () => {
 
     const tagged = () => {
         board.content = boardOf([
-            card('Bugged', 'bug'), card('Bare'), card('Drawn', 'ui'), card('Both', 'bug', 'ui'),
+            node('Bugged', 'bug'), node('Bare'), node('Drawn', 'ui'), node('Both', 'bug', 'ui'),
         ]);
         return render(<BoardWithStrip handle="board" />);
     };
@@ -413,7 +299,6 @@ describe('the filter in the tab strip', () => {
     });
 });
 
-
 /** Several cards picked out with <kbd>Ctrl</kbd>-click, and what the gestures aimed at one of them. */
 describe('cards marked with Ctrl-click', () => {
 
@@ -422,7 +307,6 @@ describe('cards marked with Ctrl-click', () => {
         board.content = boardOf(flowNodes);
         return render(<BoardWithStrip handle="board" />);
     };
-
 
     const card = (title: string) =>
         screen.getAllByTestId('flow-node-card').find(element => element.textContent?.includes(title))!;
@@ -439,7 +323,7 @@ describe('cards marked with Ctrl-click', () => {
 
         expect(board.toggleMark).toHaveBeenCalledWith('flow-node-0');
         // Picking out five cards must not be five flow nodes opened in the panel on the way.
-        expect(board.select).not.toHaveBeenCalled();
+        expect(board.openTask).not.toHaveBeenCalled();
         expect(toolBars.showTab).not.toHaveBeenCalled();
     });
 
@@ -448,10 +332,10 @@ describe('cards marked with Ctrl-click', () => {
         fireEvent.click(card('Two'), { metaKey: true });
 
         expect(board.toggleMark).toHaveBeenCalledWith('flow-node-1');
-        expect(board.select).not.toHaveBeenCalled();
+        expect(board.openTask).not.toHaveBeenCalled();
     });
 
-    it('takes every marked card off at one press of Delete', () => {
+    it('takes every marked node off at one press of Delete', () => {
         board.marked = ['flow-node-0', 'flow-node-1'];
         showBoard();
 
@@ -499,7 +383,7 @@ describe('cards marked with Ctrl-click', () => {
         expect(board.cloneFlowNode).toHaveBeenCalledWith('flow-node-1');
     });
 
-    it('says in the menu how many cards its Delete takes', async () => {
+    it('says in the menu how many nodes it deletes', async () => {
         board.marked = ['flow-node-0', 'flow-node-1'];
         showBoard();
 
@@ -509,7 +393,7 @@ describe('cards marked with Ctrl-click', () => {
         expect(screen.getByText('Delete 2 nodes')).toBeTruthy();
     });
 
-    it('says in the menu how many cards its Archive takes', async () => {
+    it('says in the menu how many nodes it archives', async () => {
         board.marked = ['flow-node-0', 'flow-node-1'];
         showBoard();
 
@@ -519,7 +403,7 @@ describe('cards marked with Ctrl-click', () => {
         expect(screen.getByText('Archive 2 nodes')).toBeTruthy();
     });
 
-    it('archives every marked card from the menu', async () => {
+    it('archives every marked node from the menu', async () => {
         board.marked = ['flow-node-0', 'flow-node-1'];
         showBoard();
 
@@ -530,7 +414,7 @@ describe('cards marked with Ctrl-click', () => {
         expect(archiveFlowNodes).toHaveBeenCalledWith(['flow-node-0', 'flow-node-1']);
     });
 
-    it('archives the card the menu was opened on where it is not one of the marked', async () => {
+    it('archives the node represented by the clicked card where it is not one of the marked', async () => {
         board.marked = ['flow-node-0', 'flow-node-1'];
         showBoard();
 
@@ -542,7 +426,7 @@ describe('cards marked with Ctrl-click', () => {
     });
 
     // The clipboard is written out of sight, so the count in the item is the only thing that says what was taken before it is pasted in.
-    it('copies every marked card, and says in the menu how many', async () => {
+    it('copies every marked node, and says in the menu how many', async () => {
         board.marked = ['flow-node-0', 'flow-node-1'];
         showBoard();
 
@@ -564,7 +448,7 @@ describe('cards marked with Ctrl-click', () => {
         expect(clipboard.copyFlowNodes).toHaveBeenCalledWith(['flow-node-2']);
     });
 
-    it('cuts every marked card, and says in the menu how many', async () => {
+    it('cuts every marked node, and says in the menu how many', async () => {
         board.marked = ['flow-node-0', 'flow-node-1'];
         showBoard();
 
@@ -585,7 +469,6 @@ describe('copying, cutting and pasting from the keyboard', () => {
         return render(<BoardWithStrip handle="board" />);
     };
 
-
     const card = (title: string) =>
         screen.getAllByTestId('flow-node-card').find(element => element.textContent?.includes(title))!;
 
@@ -595,7 +478,7 @@ describe('copying, cutting and pasting from the keyboard', () => {
     });
     afterEach(() => { board.marked = []; });
 
-    it('copies every marked card on Ctrl+C', () => {
+    it('copies every marked node on Ctrl+C', () => {
         board.marked = ['flow-node-0', 'flow-node-1'];
         showBoard();
 
@@ -613,7 +496,7 @@ describe('copying, cutting and pasting from the keyboard', () => {
         expect(clipboard.copyFlowNodes).toHaveBeenCalledWith(['flow-node-2']);
     });
 
-    it('cuts every marked card on Ctrl+X', () => {
+    it('cuts every marked node on Ctrl+X', () => {
         board.marked = ['flow-node-0', 'flow-node-1'];
         showBoard();
 
@@ -656,7 +539,7 @@ describe('copying, cutting and pasting from the keyboard', () => {
 
         fireEvent.keyDown(card('One'), { key: 'v', ctrlKey: true });
 
-        expect(clipboard.pasteFlowNodes).toHaveBeenCalledWith();
+        expect(clipboard.paste).toHaveBeenCalledWith();
     });
 
     it('pastes with the focus nowhere at all', () => {
@@ -664,7 +547,7 @@ describe('copying, cutting and pasting from the keyboard', () => {
 
         fireEvent.keyDown(document.body, { key: 'v', ctrlKey: true });
 
-        expect(clipboard.pasteFlowNodes).toHaveBeenCalledWith();
+        expect(clipboard.paste).toHaveBeenCalledWith();
     });
 
     it('leaves a press in a box being typed in to the box', () => {
@@ -674,7 +557,7 @@ describe('copying, cutting and pasting from the keyboard', () => {
         try {
             fireEvent.keyDown(box, { key: 'v', ctrlKey: true });
 
-            expect(clipboard.pasteFlowNodes).not.toHaveBeenCalled();
+            expect(clipboard.paste).not.toHaveBeenCalled();
         } finally {
             box.remove();
         }
@@ -688,7 +571,7 @@ describe('copying, cutting and pasting from the keyboard', () => {
         try {
             fireEvent.keyDown(elsewhere, { key: 'v', ctrlKey: true });
 
-            expect(clipboard.pasteFlowNodes).not.toHaveBeenCalled();
+            expect(clipboard.paste).not.toHaveBeenCalled();
         } finally {
             elsewhere.remove();
         }
@@ -717,24 +600,33 @@ describe('the board', () => {
     });
     afterEach(cleanup);
 
+    const resizePointer = (type: string, target: Element, clientX: number, clientY: number) => {
+        const event = new MouseEvent(type, { bubbles: true, cancelable: true, clientX, clientY, button: 0 });
+        Object.defineProperty(event, 'pointerId', { value: 1 });
+        Object.defineProperty(event, 'pointerType', { value: 'mouse' });
+        fireEvent(target, event);
+    };
+
     it('draws the canvas, with every card on it', () => {
         showBoard();
         expect(screen.getByTestId('content-canvas')).toBeInTheDocument();
         expect(screen.getAllByTestId('content-card')).toHaveLength(3);
     });
 
-
-    it('makes a card of the kind picked, where the canvas was right-clicked', async () => {
+    it('creates a flow node of the selected kind, where the canvas was right-clicked', async () => {
         showBoard();
         fireEvent.contextMenu(screen.getByTestId('content-canvas'), { clientX: 140, clientY: 90 });
         await act(async () => { await Promise.resolve(); });
 
-        expect(screen.getAllByTestId('new-card').map(one => one.dataset.type))
-            .toEqual(['ai', 'human', 'shutdown', 'scheduler', 'gateway', 'note', 'value']);
+        expect(screen.getAllByTestId('new-flow-node').map(one => one.dataset.type))
+            .toEqual([
+                'ai', 'human', 'start', 'shutdown', 'scheduler', 'bitbucket-pr-status', 'bitbucket-commit-status',
+                'gateway', 'exclusive-gateway', 'limiter', 'note', 'value', 'role',
+            ]);
 
-        fireEvent.click(screen.getAllByTestId('new-card').find(one => one.dataset.type === 'scheduler')!);
+        fireEvent.click(screen.getAllByTestId('new-flow-node').find(one => one.dataset.type === 'exclusive-gateway')!);
 
-        expect(board.addFlowNode).toHaveBeenCalledWith('scheduler', { x: 132, y: 82 });
+        expect(board.addFlowNode).toHaveBeenCalledWith('exclusive-gateway', { x: 132, y: 82 });
         expect(toolBars.showTab).toHaveBeenCalledWith(FLOW_NODE_TAB_ID);
     });
 
@@ -743,19 +635,19 @@ describe('the board', () => {
         fireEvent.contextMenu(screen.getByTestId('content-canvas'), { clientX: 140, clientY: 90 });
         await act(async () => { await Promise.resolve(); });
 
-        fireEvent.click(screen.getByTestId('paste-flow-node'));
+        fireEvent.click(screen.getByTestId('paste-here'));
 
-        expect(clipboard.pasteFlowNodes).toHaveBeenCalledWith({ x: 132, y: 82 });
+        expect(clipboard.paste).toHaveBeenCalledWith({ x: 132, y: 82 }, undefined);
     });
 
     it('offers the same menu on a canvas with no card on it at all', async () => {
         showBoard({ content: boardOf([]) });
         expect(screen.getByTestId('content-canvas').textContent)
-            .toContain('right-click to make one');
+            .toContain('Right-click to add one.');
 
         fireEvent.contextMenu(screen.getByTestId('content-canvas'));
         await act(async () => { await Promise.resolve(); });
-        fireEvent.click(screen.getAllByTestId('new-card').find(one => one.dataset.type === 'ai')!);
+        fireEvent.click(screen.getAllByTestId('new-flow-node').find(one => one.dataset.type === 'ai')!);
 
         expect(board.addFlowNode).toHaveBeenCalledWith('ai', { x: 0, y: 0 });
     });
@@ -787,7 +679,7 @@ describe('the board', () => {
         expect(Number(drawn[0].getAttribute('x1'))).toBeLessThan(Number(drawn[0].getAttribute('x2')));
     });
 
-    it('draws a symbol narrower than a card, and chains into its shape', () => {
+    it('draws an event card narrower than a task card and links to its edge', () => {
         showBoard({
             content: boardOf([
                 {
@@ -830,8 +722,45 @@ describe('the board', () => {
         vi.useFakeTimers({ shouldAdvanceTime: true });
         showBoard();
         fireEvent.click(screen.getAllByTestId('flow-node-card')[0]);
-        expect(board.select).toHaveBeenCalledWith('flow-node-0');
+        expect(board.openTask).toHaveBeenCalledWith('flow-node-0');
         vi.useRealTimers();
+    });
+
+    it('offers the four edge handles on the selected card alone', () => {
+        showBoard({ selected: 'flow-node-0' });
+        expect(screen.getAllByTestId('card-resize-edge').map(edge => edge.dataset.edge))
+            .toEqual(['top', 'right', 'bottom', 'left']);
+
+        cleanup();
+        showBoard({ selected: null });
+        expect(screen.queryAllByTestId('card-resize-edge')).toHaveLength(0);
+    });
+
+    it('widens a selected card from its right edge, without moving it', () => {
+        showBoard({ selected: 'flow-node-0' });
+        const right = screen.getAllByTestId('card-resize-edge')
+            .find(edge => edge.dataset.edge === 'right')!;
+
+        resizePointer('pointerdown', right, 300, 180);
+        resizePointer('pointermove', right, 350, 180);
+        resizePointer('pointerup', right, 350, 180);
+
+        expect(board.editFlowNode).toHaveBeenCalledWith('flow-node-0', {
+            size: { w: CARD_WIDTH + 50 },
+            spot: { x: 0, y: 0 },
+        });
+    });
+
+    it('gives a resized card the box it was left with, and wraps its text in it', () => {
+        const one = {
+            ...newFlowNode('A long title that wraps in a narrow box'), id: 'flow-node-0',
+            spot: { x: 0, y: 0 }, size: { w: 180, h: 140 },
+        };
+        showBoard({ content: boardOf([one]) });
+
+        const placed = screen.getByTestId('content-card');
+        expect(placed.style.width).toBe('180px');
+        expect(placed.style.height).toBe('140px');
     });
 
     it('clears the selection on a click outside any card', () => {
@@ -846,7 +775,6 @@ describe('the board', () => {
         expect(board.select).not.toHaveBeenCalledWith(null);
     });
 
-
     describe('the zoom', () => {
         beforeEach(() => {
             vi.stubGlobal('ResizeObserver', class {
@@ -855,7 +783,6 @@ describe('the board', () => {
                 disconnect() { /* nothing to measure */ }
             });
         });
-
 
         const pickZoom = (label: string) => {
             const box = screen.getByTestId('board-filter').querySelector('.ant-select')!;
@@ -874,21 +801,22 @@ describe('the board', () => {
 
         it('draws the sheet at the size the strip asks for', () => {
             showBoard();
-            const full = Number.parseFloat(screen.getByTestId('content-sheet').style.width);
+            const sheet = screen.getByTestId('content-links').parentElement!;
+            const width = sheet.style.width;
 
             pickZoom('50%');
 
-            expect(screen.getByTestId('content-scaled').style.transform).toBe('scale(0.5)');
-            expect(Number.parseFloat(screen.getByTestId('content-sheet').style.width)).toBe(full / 2);
+            expect(sheet.style.zoom).toBe('0.5');
+            expect(sheet.style.width).toBe(width);
         });
 
-        it('makes the card where the pointer is at the size the board is read at', async () => {
+        it('places the new flow node where the pointer is at the size the board is read at', async () => {
             showBoard();
             pickZoom('50%');
 
             fireEvent.contextMenu(screen.getByTestId('content-canvas'), { clientX: 140, clientY: 90 });
             await act(async () => { await Promise.resolve(); });
-            fireEvent.click(screen.getAllByTestId('new-card').find(one => one.dataset.type === 'ai')!);
+            fireEvent.click(screen.getAllByTestId('new-flow-node').find(one => one.dataset.type === 'ai')!);
 
             expect(board.addFlowNode).toHaveBeenCalledWith('ai', { x: 272, y: 172 });
         });
@@ -940,10 +868,8 @@ describe('box selection on the canvas', () => {
 
     const canvasEl = () => screen.getByTestId('content-canvas');
 
-
     const card = (title: string) =>
         screen.getAllByTestId('flow-node-card').find(element => element.textContent?.includes(title))!;
-
 
     const pointer = (
         type: string, target: Element, clientX: number, clientY: number, ctrlKey = false,
@@ -953,7 +879,6 @@ describe('box selection on the canvas', () => {
         Object.defineProperty(event, 'pointerType', { value: 'mouse' });
         fireEvent(target, event);
     };
-
 
     const pullTo = (fromX: number, fromY: number, toX: number, toY: number, ctrlKey = false) => {
         pointer('pointerdown', canvasEl(), fromX, fromY, ctrlKey);
@@ -1033,18 +958,6 @@ describe('box selection on the canvas', () => {
         pointer('pointerup', canvas, 300, 130, true);
     });
 
-    it('picks out classes beside the nodes', async () => {
-        const { newFlowNodeClass } = await import('../flowNodeClass');
-        const flowNode = { ...newFlowNode('One'), id: 'flow-node-0' };
-        const flowNodeClass = { ...newFlowNodeClass('ai'), id: 'class-0', title: 'Shape' };
-        board.content = { flowNodes: [flowNode], flowNodeClasses: [flowNodeClass] };
-        render(<BoardWithStrip handle="board" />);
-
-        pullTo(0, 0, 300, 300);
-
-        expect(board.setMarked).toHaveBeenLastCalledWith(['flow-node-0', 'class-0']);
-    });
-
     it('is no box where the press started on a card', () => {
         showBoard();
         const one = card('One');
@@ -1082,12 +995,11 @@ describe('workflows on the canvas', () => {
             workflow: rank < 2 ? 'w1' : '',
         }));
         board.content = {
-            flowNodes, flowNodeClasses: [],
-            workflows: [{ id: 'w1', name: 'Sprint' }], workflowClasses: [],
+            flowNodes,
+            workflows: [{ id: 'w1', name: 'Sprint' }],
         };
         return render(<BoardWithStrip handle="board" />);
     };
-
 
     const card = (title: string) =>
         screen.getAllByTestId('flow-node-card').find(element => element.textContent?.includes(title))!;
@@ -1133,8 +1045,7 @@ describe('workflows on the canvas', () => {
     it('draws no rectangle where the workflow has no members on screen', () => {
         board.content = {
             flowNodes: [{ ...newFlowNode('One'), id: 'flow-node-0', spot: { x: 0, y: 0 } }],
-            flowNodeClasses: [],
-            workflows: [{ id: 'w1', name: 'Sprint' }], workflowClasses: [],
+            workflows: [{ id: 'w1', name: 'Sprint' }],
         };
         render(<BoardWithStrip handle="board" />);
 
@@ -1145,12 +1056,12 @@ describe('workflows on the canvas', () => {
         showGrouped();
         fireEvent.click(screen.getByTestId('content-workflow'));
 
-        expect(board.selectWorkflow).toHaveBeenCalledWith({ kind: 'workflow', id: 'w1' });
+        expect(board.selectWorkflow).toHaveBeenCalledWith('w1');
         expect(toolBars.showTab).toHaveBeenCalledWith(WORKFLOW_TAB_ID);
         expect(board.select).not.toHaveBeenCalled();
     });
 
-    it('files a workflow round the marked cards from the card menu', async () => {
+    it('groups the marked flow nodes from the card menu', async () => {
         board.marked = ['flow-node-0', 'flow-node-1'];
         const flowNodes = ['One', 'Two', 'Three'].map((title, rank) => ({ ...newFlowNode(title), id: `flow-node-${rank}` }));
         board.content = { flowNodes };
@@ -1164,7 +1075,7 @@ describe('workflows on the canvas', () => {
         expect(toolBars.showTab).toHaveBeenCalledWith(WORKFLOW_TAB_ID);
     });
 
-    it('files a workflow round a single card from the card menu', async () => {
+    it('groups a single flow node from the card menu', async () => {
         const flowNodes = ['One', 'Two'].map((title, rank) => ({ ...newFlowNode(title), id: `flow-node-${rank}` }));
         board.content = { flowNodes };
         render(<BoardWithStrip handle="board" />);
@@ -1198,13 +1109,10 @@ describe('the shared relation layer', () => {
                 },
                 { ...newFlowNode('Four'), id: 'flow-node-3', spot: { x: 1200, y: 0 } },
             ],
-            flowNodeClasses: [],
             workflows: [{ id: 'w1', name: 'First' }, { id: 'w2', name: 'Second' }],
-            workflowClasses: [],
         };
         return render(<BoardWithStrip handle="board" />);
     };
-
 
     const ruleOf = (selector: string): string | null => {
         const cssPath = [

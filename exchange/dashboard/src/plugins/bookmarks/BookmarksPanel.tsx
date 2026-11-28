@@ -1,14 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Button, Input, Popconfirm, Spin } from 'antd';
+import { Button, Input } from 'antd';
 import { CheckOutlined, DeleteOutlined, DownOutlined, EditOutlined, ReloadOutlined, RightOutlined, StarFilled, StarOutlined } from '@ant-design/icons';
-import { ConfiguredMarkdown, extractName, internalPathOf, resolveInternalLink, useFileBrowsingPersistenceContext, useGlobalViewState } from '@kiao-dashboard-core';
-import { ReorderHandle, type Reorderable, useReorderable } from '@kiao-dashboard-kit/reorder';
+import { AsyncList, IconButton, ConfiguredMarkdown, ReorderableList, extractName, internalPathOf, resolveInternalLink, useFileBrowsingPersistenceContext, useGlobalViewState, useConfirmation } from '@kiao-dashboard-core';
 import { BookmarkPatch, useBookmarks } from './Bookmarks-ctx';
 import { Bookmark, indexOfPath } from './bookmarksFile';
 import styles from './Bookmarks.module.css';
 
-// Store root has no name.
+// Display the DCMS root as '/'.
 const nameOfPath = (path: string): string => extractName(path) || '/';
+const bookmarkLabel = (bookmark: Bookmark): string => bookmark.title || 'Untitled';
 
 const rankAfterRemove = (rank: number, index: number): number | null =>
     rank === index ? null : rank > index ? rank - 1 : rank;
@@ -64,23 +64,13 @@ const BookmarkForm: React.FC<{
         </label>
         <div className={styles.hint}>The note is markdown.</div>
         <div className={styles.formActions}>
-            <Popconfirm
-                title="Delete this bookmark?"
-                description="Its entry leaves the file."
-                okText="Delete"
-                okButtonProps={{ danger: true }}
-                cancelText="Cancel"
-                onConfirm={onRemove}
-            >
-                <Button
-                    size="small"
-                    type="text"
-                    danger
-                    icon={<DeleteOutlined />}
-                    aria-label="Delete bookmark"
-                    data-testid="delete-bookmark"
-                />
-            </Popconfirm>
+            <IconButton
+                label="Delete bookmark"
+                danger
+                icon={<DeleteOutlined />}
+                data-testid="delete-bookmark"
+                onClick={onRemove}
+            />
             <Button
                 size="small"
                 icon={<CheckOutlined />}
@@ -96,37 +86,32 @@ const BookmarkForm: React.FC<{
 
 const BookmarkRow: React.FC<{
     bookmark: Bookmark;
-    index: number;
     open: boolean;
     editing: boolean;
-    reorder: Reorderable;
+    handle: React.ReactNode;
     onToggle: () => void;
     onEdit: () => void;
     onDone: () => void;
     onUpdate: (patch: BookmarkPatch) => void;
     onRemove: () => void;
-}> = ({ bookmark, index, open, editing, reorder, onToggle, onEdit, onDone, onUpdate, onRemove }) => {
-    const label = bookmark.title || 'Untitled';
+}> = ({ bookmark, open, editing, handle, onToggle, onEdit, onDone, onUpdate, onRemove }) => {
+    const confirm = useConfirmation();
+    const label = bookmarkLabel(bookmark);
     // External links must not replace the app.
     const href = bookmark.link ? resolveInternalLink(bookmark.link) : '';
     const external = href !== '' && internalPathOf(href) === null;
 
     return (
-        <div
-            {...reorder.rowProps(index, styles.row)}
-            data-testid="bookmark"
-        >
+        <>
             <div className={styles.rowHead}>
-                <Button
-                    size="small"
-                    type="text"
+                <IconButton
+                    label={`${open ? 'Close' : 'Open'} the note of ${label}`}
                     icon={open ? <DownOutlined /> : <RightOutlined />}
-                    aria-label={`${open ? 'Close' : 'Open'} the note of ${label}`}
                     aria-expanded={open}
                     data-testid="toggle-note"
                     onClick={onToggle}
                 />
-                <ReorderHandle {...reorder.handleProps(index)} label={`Move ${label}`} />
+                {handle}
                 {href ? (
                     <a
                         className={styles.rowLink}
@@ -142,11 +127,9 @@ const BookmarkRow: React.FC<{
                         <span className={styles.rowName}>{label}</span>
                     </span>
                 )}
-                <Button
-                    size="small"
-                    type="text"
+                <IconButton
+                    label={`Edit ${label}`}
                     icon={<EditOutlined />}
-                    aria-label={`Edit ${label}`}
                     data-testid="edit-bookmark"
                     onClick={onEdit}
                 />
@@ -158,7 +141,11 @@ const BookmarkRow: React.FC<{
                             bookmark={bookmark}
                             onUpdate={onUpdate}
                             onDone={onDone}
-                            onRemove={onRemove}
+                            onRemove={() => confirm({
+                                title: `Delete bookmark “${label}”?`,
+                                description: 'Its entry leaves the file.',
+                                onConfirm: onRemove,
+                            })}
                         />
                     ) : bookmark.note ? (
                         <ConfiguredMarkdown revealLinkTargets={false}>
@@ -169,7 +156,7 @@ const BookmarkRow: React.FC<{
                     )}
                 </div>
             )}
-        </div>
+        </>
     );
 };
 
@@ -189,8 +176,6 @@ export const BookmarksPanel: React.FC = () => {
 
     // Load on first panel view, not at app start.
     useEffect(() => { ensureLoaded(); }, [ensureLoaded]);
-
-    const reorder = useReorderable({ count: bookmarks.length, onMove: handleMove });
 
     const path = currentFile?.path ?? null;
     const bookmarked = path === null ? -1 : indexOfPath(bookmarks, path);
@@ -247,38 +232,39 @@ export const BookmarksPanel: React.FC = () => {
                 >
                     {bookmarked >= 0 ? 'Unbookmark this document' : 'Bookmark this document'}
                 </Button>
-                <Button
-                    size="small"
-                    type="text"
+                <IconButton
+                    label="Read the file again"
                     icon={<ReloadOutlined spin={loading} />}
-                    aria-label="Read the file again"
                     onClick={reload}
                 />
             </div>
 
             <div className={styles.list}>
-                {loading && bookmarks.length === 0 && <div className={styles.center}><Spin /></div>}
-                {!loading && bookmarks.length === 0 && (
-                    <div className={styles.hint}>No bookmarks yet.</div>
-                )}
-                {bookmarks.map((bookmark, index) => (
-                    <BookmarkRow
-                        key={index}
-                        bookmark={bookmark}
-                        index={index}
-                        open={open.has(index)}
-                        editing={editing === index}
-                        reorder={reorder}
-                        onToggle={() => toggle(index)}
-                        onEdit={() => {
-                            setOpen(prev => new Set(prev).add(index));
-                            setEditing(index);
-                        }}
-                        onDone={() => setEditing(null)}
-                        onUpdate={patch => update(index, patch)}
-                        onRemove={() => handleRemove(index)}
-                    />
-                ))}
+                <AsyncList loading={loading && !bookmarks.length} empty={!bookmarks.length && 'No bookmarks yet.'}>
+                    <ReorderableList
+                        items={bookmarks}
+                        onMove={handleMove}
+                        rowProps={{ className: styles.row, 'data-testid': 'bookmark' }}
+                        handleLabel={bookmark => `Move ${bookmarkLabel(bookmark)}`}
+                    >
+                        {(bookmark, index, handle) => (
+                            <BookmarkRow
+                                bookmark={bookmark}
+                                open={open.has(index)}
+                                editing={editing === index}
+                                handle={handle}
+                                onToggle={() => toggle(index)}
+                                onEdit={() => {
+                                    setOpen(prev => new Set(prev).add(index));
+                                    setEditing(index);
+                                }}
+                                onDone={() => setEditing(null)}
+                                onUpdate={patch => update(index, patch)}
+                                onRemove={() => handleRemove(index)}
+                            />
+                        )}
+                    </ReorderableList>
+                </AsyncList>
             </div>
         </div>
     );

@@ -1,9 +1,9 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Button, Input, Modal, Spin, message } from 'antd';
-import { CopyOutlined, LinkOutlined, LoginOutlined } from '@ant-design/icons';
+import { LinkOutlined, LoginOutlined } from '@ant-design/icons';
 import type { HarnessLoginOffer } from 'kiao-worker';
 import { WorkerError } from 'kiao-worker';
-import { useWorkerClient } from '@kiao-dashboard-core';
+import { CopyTextButton, useWorkerClient } from '@kiao-dashboard-core';
 
 /** How often the dialog asks whether the approval has landed while it waits. */
 export const DEVICE_POLL_MS = 2000;
@@ -33,58 +33,12 @@ export const ChatSignIn: React.FC<{
     const [key, setKey] = useState('');
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState('');
+    const submittingKey = useRef(false);
+    const deviceAttempt = useRef(0);
 
-    const startDevice = async () => {
-        setStep('starting');
-        setError('');
-        setUrl('');
-        setUserCode('');
-        try {
-            const result = await client.current.startHarnessDeviceLogin(harness);
-            if (!result.ok || !result.url) {
-                setError(result.message || 'The service returned no sign-in page.');
-                setStep('failed');
-                return;
-            }
-            setUrl(result.url);
-            setUserCode(result.userCode || '');
-            setStep('waiting');
-        } catch (e) {
-            setError(failureText(e));
-            setStep('failed');
-        }
-    };
-
-    useEffect(() => {
-        if (!open || view !== 'device' || step !== 'waiting') return;
-        const poll = async () => {
-            let status;
-            try {
-                status = await client.current.getHarnessDeviceLoginStatus(harness);
-            } catch (e) {
-                if (e instanceof WorkerError && (e.response.status === 409 || e.response.status === 404)) {
-                    setError(e.response.status === 409
-                        ? 'The sign-in ended before the approval landed.'
-                        : 'Sign-in from here is switched off on this service.');
-                    setStep('failed');
-                }
-                return;
-            }
-            if (status.pending) return;
-            if (status.ok) {
-                message.success(status.message || 'Signed in.');
-                close(false);
-                return;
-            }
-            setError(status.message || 'The approval did not land.');
-            setStep('failed');
-        };
-        const timer = setInterval(() => void poll(), DEVICE_POLL_MS);
-        return () => clearInterval(timer);
-    });
-
-
-    const close = (abandon = true) => {
+    const close = useCallback((abandon = true) => {
+        if (submittingKey.current) return;
+        deviceAttempt.current++;
         if (abandon && view === 'device' && (step === 'starting' || step === 'waiting')) {
             client.current.cancelHarnessDeviceLogin(harness).catch(() => undefined);
         }
@@ -94,9 +48,69 @@ export const ChatSignIn: React.FC<{
         setUrl('');
         setUserCode('');
         setKey('');
-        setSubmitting(false);
         setError('');
+    }, [harness, hasDevice, view, step]);
+
+    const startDevice = async () => {
+        const attempt = ++deviceAttempt.current;
+        setStep('starting');
+        setError('');
+        setUrl('');
+        setUserCode('');
+        try {
+            const result = await client.current.startHarnessDeviceLogin(harness);
+            if (attempt !== deviceAttempt.current) return;
+            if (!result.ok || !result.url) {
+                setError(result.message || 'The service returned no sign-in page.');
+                setStep('failed');
+                return;
+            }
+            setUrl(result.url);
+            setUserCode(result.userCode || '');
+            setStep('waiting');
+        } catch (e) {
+            if (attempt !== deviceAttempt.current) return;
+            setError(failureText(e));
+            setStep('failed');
+        }
     };
+
+    useEffect(() => {
+        if (!open || view !== 'device' || step !== 'waiting') return;
+        const attempt = deviceAttempt.current;
+        let cancelled = false;
+        let polling = false;
+        const poll = async () => {
+            if (polling) return;
+            polling = true;
+            try {
+                const status = await client.current.getHarnessDeviceLoginStatus(harness);
+                if (cancelled || attempt !== deviceAttempt.current || status.pending) return;
+                if (status.ok) {
+                    message.success(status.message || 'Signed in.');
+                    close(false);
+                } else {
+                    setError(status.message || 'The approval did not land.');
+                    setStep('failed');
+                }
+            } catch (e) {
+                if (cancelled || attempt !== deviceAttempt.current) return;
+                if (e instanceof WorkerError && (e.response.status === 409 || e.response.status === 404)) {
+                    setError(e.response.status === 409
+                        ? 'The sign-in ended before the approval landed.'
+                        : 'Sign-in from here is switched off on this service.');
+                    setStep('failed');
+                }
+            } finally {
+                polling = false;
+            }
+        };
+        const timer = setInterval(() => void poll(), DEVICE_POLL_MS);
+        return () => {
+            cancelled = true;
+            clearInterval(timer);
+        };
+    }, [open, view, step, harness, close]);
 
     const openDialog = () => {
         setView(hasDevice ? 'device' : 'key');
@@ -106,6 +120,7 @@ export const ChatSignIn: React.FC<{
 
 
     const showKey = () => {
+        deviceAttempt.current++;
         if (step === 'starting' || step === 'waiting') {
             client.current.cancelHarnessDeviceLogin(harness).catch(() => undefined);
         }
@@ -117,24 +132,17 @@ export const ChatSignIn: React.FC<{
     };
 
     const showDevice = () => {
+        if (submittingKey.current) return;
         setKey('');
         setError('');
         setView('device');
         void startDevice();
     };
 
-    const copyText = async (text: string, what: string) => {
-        try {
-            await navigator.clipboard.writeText(text);
-            message.success(`${what} copied`);
-        } catch {
-            message.error(`Could not copy the ${what.toLowerCase()}`);
-        }
-    };
-
     const submitKey = async () => {
         const value = key.trim();
-        if (!value || submitting) return;
+        if (!value || submittingKey.current) return;
+        submittingKey.current = true;
         setSubmitting(true);
         setError('');
         try {
@@ -144,10 +152,12 @@ export const ChatSignIn: React.FC<{
                 return;
             }
             message.success(result.message || 'Signed in.');
+            submittingKey.current = false;
             close(false);
         } catch (e) {
             setError(failureText(e));
         } finally {
+            submittingKey.current = false;
             setSubmitting(false);
         }
     };
@@ -175,6 +185,7 @@ export const ChatSignIn: React.FC<{
                 title={`Log in to ${label}`}
                 open={open}
                 onCancel={() => close()}
+                closable={!submitting}
                 maskClosable={false}
                 footer={footerFor(view, step, {
                     close, submitKey, startDevice,
@@ -206,20 +217,14 @@ export const ChatSignIn: React.FC<{
                                     >
                                         Open the sign-in page
                                     </Button>
-                                    <Button
-                                        icon={<CopyOutlined />}
-                                        onClick={() => void copyText(url, 'Link')}
-                                        aria-label="Copy the sign-in link"
-                                    />
+                                    <CopyTextButton text={url} label="Copy the sign-in link" size="middle" type="default"
+                                        successMessage="Link copied" errorMessage="Could not copy the link" />
                                 </div>
                                 {userCode && (
                                     <div className="chat-login-link-row">
                                         <code className="chat-login-text">{userCode}</code>
-                                        <Button
-                                            icon={<CopyOutlined />}
-                                            onClick={() => void copyText(userCode, 'Code')}
-                                            aria-label="Copy the sign-in code"
-                                        />
+                                        <CopyTextButton text={userCode} label="Copy the sign-in code" size="middle" type="default"
+                                            successMessage="Code copied" errorMessage="Could not copy the code" />
                                     </div>
                                 )}
                                 <div className="chat-login-waiting">
@@ -264,7 +269,7 @@ export const ChatSignIn: React.FC<{
                         )}
                         {hasDevice && (
                             <div>
-                                <Button type="link" size="small" onClick={showDevice}>
+                                <Button type="link" size="small" disabled={submitting} onClick={showDevice}>
                                     Back to the {label} sign-in
                                 </Button>
                             </div>
@@ -296,7 +301,7 @@ const footerFor = (
         submitting: boolean;
     },
 ): React.ReactNode => {
-    const cancel = <Button key="cancel" onClick={() => actions.close()}>Cancel</Button>;
+    const cancel = <Button key="cancel" disabled={actions.submitting} onClick={() => actions.close()}>Cancel</Button>;
     if (view === 'key') {
         return [
             cancel,
@@ -305,7 +310,8 @@ const footerFor = (
                 type="primary"
                 onClick={actions.submitKey}
                 loading={actions.submitting}
-                disabled={!actions.canSubmitKey}
+                disabled={!actions.canSubmitKey || actions.submitting}
+                aria-label="Log in" aria-busy={actions.submitting}
             >
                 Log in
             </Button>,

@@ -1,10 +1,10 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { Button, Empty } from 'antd';
+import { Empty } from 'antd';
 import {
     ClockCircleOutlined, DeleteOutlined, DownOutlined, LoadingOutlined, MessageOutlined,
     PauseCircleOutlined, PlayCircleOutlined, ReloadOutlined, RightOutlined, StopOutlined,
 } from '@ant-design/icons';
-import { useNavigation, Tooltip } from '@kiao-dashboard-core';
+import { IconButton, useNavigation } from '@kiao-dashboard-core';
 import type { HarnessChainRun, HarnessChainRunFlowNode } from 'kiao-worker';
 import { useChatChainRuns } from '../conversations/ChatChainRuns-ctx';
 import { useShowChat } from '../conversations/ChatShow-ctx';
@@ -19,9 +19,11 @@ import styles from './HybridflowPanel.module.css';
 const STATE_WORDS: Record<string, string> = {
     playing: 'Playing',
     compacting: 'Shortening the chat',
+    queued: 'Waiting for the flow node',
     waiting: 'Waiting to try again',
     refreshing: 'Held by the usage limit',
     scheduled: 'Waiting for the hour',
+    polling: 'Waiting for Bitbucket',
     stopping: 'Stopping after this node',
     suspended: 'Stopped in its chat',
     ended: 'Ended',
@@ -33,9 +35,11 @@ const stateGlyph = (state: string): React.ReactNode => {
         case 'playing':
         case 'compacting':
             return <LoadingOutlined />;
+        case 'queued':
         case 'waiting':
         case 'refreshing':
         case 'scheduled':
+        case 'polling':
             return <ClockCircleOutlined />;
         case 'stopping':
             return <StopOutlined />;
@@ -132,56 +136,43 @@ const RunRow: React.FC<RunRowProps> = ({ run, expanded, onToggle }) => {
                 </span>
                 <span className={styles.runActions}>
                     {run.chat && (
-                        <Button
-                            type="text"
-                            size="small"
+                        <IconButton
+                            label={`Open the chat of ${run.name}`}
                             icon={<MessageOutlined />}
-                            aria-label={`Open the chat of ${run.name}`}
                             data-testid={`chain-run-chat-${run.id}`}
                             onClick={() => showChat(run.chat)}
                         />
                     )}
                     {run.state === 'suspended' && (
-                        <Tooltip title="Carry on — the node it stopped on is played again in its chat">
-                            <Button
-                                type="text"
-                                size="small"
-                                icon={<PlayCircleOutlined />}
-                                aria-label={`Resume ${run.name}`}
-                                data-testid={`chain-run-resume-${run.id}`}
-                                onClick={() => resume(run.id)}
-                            />
-                        </Tooltip>
+                        <IconButton
+                            label={`Resume ${run.name}`}
+                            tooltip="Carry on — the node it stopped on is played again in its chat"
+                            icon={<PlayCircleOutlined />}
+                            data-testid={`chain-run-resume-${run.id}`}
+                            onClick={() => resume(run.id)}
+                        />
                     )}
                     {live && (
-                        <Tooltip title="Stop — the node under way is finished and marked, and nothing after it starts">
-                            <Button
-                                type="text"
-                                size="small"
-                                icon={<StopOutlined />}
-                                aria-label={`Stop ${run.name}`}
-                                data-testid={`chain-run-stop-${run.id}`}
-                                onClick={() => stop(run.id)}
-                            />
-                        </Tooltip>
+                        <IconButton
+                            label={`Stop ${run.name}`}
+                            tooltip="Stop — the node under way is finished and marked, and nothing after it starts"
+                            icon={<StopOutlined />}
+                            data-testid={`chain-run-stop-${run.id}`}
+                            onClick={() => stop(run.id)}
+                        />
                     )}
                     {!live && (
                         <>
-                            <Tooltip title="Play it again, from the card it started on">
-                                <Button
-                                    type="text"
-                                    size="small"
-                                    icon={<ReloadOutlined />}
-                                    aria-label={`Restart ${run.name}`}
-                                    data-testid={`chain-run-restart-${run.id}`}
-                                    onClick={() => restart(run.id)}
-                                />
-                            </Tooltip>
-                            <Button
-                                type="text"
-                                size="small"
+                            <IconButton
+                                label={`Restart ${run.name}`}
+                                tooltip="Restart from the original flow node"
+                                icon={<ReloadOutlined />}
+                                data-testid={`chain-run-restart-${run.id}`}
+                                onClick={() => restart(run.id)}
+                            />
+                            <IconButton
+                                label={`Forget ${run.name}`}
                                 icon={<DeleteOutlined />}
-                                aria-label={`Forget ${run.name}`}
                                 data-testid={`chain-run-forget-${run.id}`}
                                 onClick={() => forget(run.id)}
                             />

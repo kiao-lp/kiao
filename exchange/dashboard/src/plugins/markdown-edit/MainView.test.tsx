@@ -14,7 +14,8 @@ const client = vi.hoisted(() => ({
 const refreshFileList = vi.hoisted(() => vi.fn());
 const goToLine = vi.hoisted(() => vi.fn());
 
-vi.mock('@kiao-dashboard-core', () => ({
+vi.mock('@kiao-dashboard-core', async () => ({
+    IconButton: (await import('src/core/ui-foundation/toolbar/IconButton')).IconButton,
     extractFileNameFn: () => (file: { path: string }) => file.path,
     LayoutContent: ({ children, additionalPanels }: { children: React.ReactNode; additionalPanels?: React.ReactNode }) => (
         <div>{additionalPanels}{children}</div>

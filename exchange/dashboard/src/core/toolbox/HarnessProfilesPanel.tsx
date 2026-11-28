@@ -22,6 +22,7 @@ export const HarnessProfilesPanel: React.FC = () => {
     const [diagnostic, setDiagnostic] = useState<Diagnostic | null>(null);
     const [checkedModels, setCheckedModels] = useState<HarnessProfileModelOption[]>([]);
     const [checking, setChecking] = useState('');
+    const [keysBusy, setKeysBusy] = useState(false);
     const [external, setExternal] = useState({ id: '', path: '' });
 
     if (!doc || !state) return <div className={styles.panel}>{error ? <Alert type="error" title={error} /> : <div className={styles.row}><Spin /><span>Loading Pi configuration…</span></div>}</div>;
@@ -79,12 +80,12 @@ export const HarnessProfilesPanel: React.FC = () => {
     return <div data-testid="harness-profiles-panel" className={styles.panel}>
         <header className={styles.header}>
             <h2>Pi (harness)</h2>
-            <p className={styles.hint}>Choose how Pi connects to your model providers. Reuse a profile in harnesses and conversations. Changes apply to their next turn.</p>
+            <p className={styles.hint}>Choose how Pi connects to your model providers. Reuse profiles across agents and conversations. Changes apply from the next turn.</p>
             {error && <Alert type="error" showIcon title={error} />}
         </header>
         <ConfigProvider componentDisabled={!!checking}>
-        <Tabs activeKey={tab} onChange={next => { if (checking) return; setTab(next); if (next !== 'keys') setKeyTarget(null); }} destroyOnHidden items={[
-            { key: 'profiles', label: 'Profiles', children: <div>
+        <Tabs activeKey={tab} onChange={next => { if (checking || keysBusy) return; setTab(next); if (next !== 'keys') setKeyTarget(null); }} destroyOnHidden items={[
+            { key: 'profiles', label: 'Profiles', disabled: keysBusy, children: <div>
                 <div className={styles.section}>
                     <div className={styles.row}>
                         <Select aria-label="Execution profile" placeholder="Select a profile" value={selected || undefined} className={styles.grow}
@@ -158,15 +159,16 @@ export const HarnessProfilesPanel: React.FC = () => {
                     </section>
                 </>}
             </div> },
-            { key: 'keys', label: `API keys (${secrets.length})`, children: <PrivateKeysPanel secrets={keysWithDraftUses} suggestedId={keyTarget?.suggestedId ?? ''}
+            { key: 'keys', label: `API keys (${secrets.length})`, children: <PrivateKeysPanel secrets={keysWithDraftUses}
+                suggestedId={keyTarget?.suggestedId ?? ''} onBusyChange={setKeysBusy}
                 onStored={async reference => {
                     if (keyTarget) {
                         change({ ...doc, profiles: doc.profiles.map(one => one.id === keyTarget.profile ? { ...one, connections: one.connections.map((connection, index) => index === keyTarget.connection ? { ...connection, secretRef: reference } : connection) } : one) });
-                        setTab('profiles'); setKeyTarget(null);
                     }
                     setDiagnostic(null); setCheckedModels([]); await refresh(); window.dispatchEvent(new Event(TOOLBOX_CHANGED_EVENT));
+                    if (keyTarget) { setTab('profiles'); setKeyTarget(null); }
                 }} onDeleted={async () => { setDiagnostic(null); setCheckedModels([]); await refresh(); window.dispatchEvent(new Event(TOOLBOX_CHANGED_EVENT)); }} /> },
-            { key: 'advanced', label: 'Advanced', children: <section className={styles.section}>
+            { key: 'advanced', label: 'Advanced', disabled: keysBusy, children: <section className={styles.section}>
                 <h3>External Pi installation</h3>
                 <p className={styles.hint}>Use this only if you manage Pi outside Configuration. Provide the executable on the runner and its exact supported version.</p>
                 <div className={styles.fields}>

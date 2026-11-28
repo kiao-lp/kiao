@@ -99,6 +99,7 @@ export const RunnersProvider: React.FC<{ children?: React.ReactNode }> = ({ chil
         if (!client) throw new Error('This instance is not configured to reach a hybridflow store.');
         try {
             const out = await call();
+            if (reading.current) await reading.current;
             await reload();
             return out;
         } catch (cause) {

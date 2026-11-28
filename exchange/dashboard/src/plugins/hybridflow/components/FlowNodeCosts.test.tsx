@@ -19,7 +19,7 @@ beforeEach(() => {
 });
 
 describe('FlowNodeCosts', () => {
-    it('shows the cost and the tokens the card spent', async () => {
+    it('shows the cost and the tokens the node spent', async () => {
         service.usageTotalsByFlowNode['node-1'] = {
             reports: 2, inputTokens: 12400, outputTokens: 3100,
             cacheReadTokens: 8000, cacheWriteTokens: 1200, reasoningTokens: 500,
@@ -58,7 +58,7 @@ describe('FlowNodeCosts', () => {
         expect(costs.textContent).toBe('cost unknown · 500 in / 100 out');
     });
 
-    it('says so where the card spent nothing yet', async () => {
+    it('says so where the node spent nothing yet', async () => {
         show();
 
         await waitFor(() => expect(screen.getByText('Nothing spent yet')).toBeTruthy());
@@ -73,7 +73,7 @@ describe('FlowNodeCosts', () => {
         expect(screen.queryByTestId('flow-node-costs')).toBeNull();
     });
 
-    it('reads again when another card is opened in the editor', async () => {
+    it('reads again when another node is opened in the editor', async () => {
         service.usageTotalsByFlowNode['node-1'] = {
             reports: 1, inputTokens: 500, outputTokens: 100,
             cacheReadTokens: 0, cacheWriteTokens: 0, reasoningTokens: 0,

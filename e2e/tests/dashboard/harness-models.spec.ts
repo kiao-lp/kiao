@@ -1,3 +1,4 @@
+import type { Route } from '@playwright/test';
 import { test, expect, resetViewState, workerApi } from '../harness';
 import { publishTestAgent, removeTestAgent } from '../conversationAgents';
 
@@ -22,6 +23,62 @@ test('renders the harness title and model names in the panel', async ({ page }) 
     await expect(name).not.toHaveCSS('font-size', '0px');
     await expect(dialog.getByText('gpt-6.2-sol', { exact: true })).toBeVisible();
     await expect(dialog.getByText('Codex (harness)', { exact: true })).toBeVisible();
+});
+
+test('keeps the conversation picker usable while the agent catalogue refreshes', async ({ page }) => {
+    const published = {
+        agentId: 'reviewer', name: 'Reviewer', harness: 'claude', model: 'haiku',
+        version: '1.0.0', commit: 'a'.repeat(40),
+    };
+    const reviewer = { id: published.agentId, name: published.name, harness: published.harness, published };
+    const reads: Route[] = [];
+    const starts: Route[] = [];
+    await page.clock.install();
+    await page.route('**/api/agentic/agents', route => { reads.push(route); });
+    await page.route('**/hybridflow-runner/conversations', route => {
+        if (route.request().method() === 'POST') { starts.push(route); return; }
+        return route.continue();
+    });
+    await page.route('**/hybridflow-runner/options', route => route.fulfill({ json: {
+        harnesses: [{ value: 'claude', activeModels: ['haiku'] }],
+    } }));
+
+    await page.goto('works');
+    if (!await page.getByTestId('tool-bar-side-right').count()) {
+        await page.getByTestId('bar-toggle-right').click();
+    }
+    await page.getByRole('tab', { name: 'Conversations', exact: true }).click();
+    await page.getByRole('button', { name: 'New conversation', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'New conversation' });
+    const loading = dialog.getByRole('status', { name: 'Loading agent and model options' });
+    const choice = dialog.getByRole('button', { name: 'Reviewer · Claude Code / haiku' });
+    await expect(loading).toBeVisible();
+    await expect.poll(() => reads.length).toBe(1);
+    await reads[0].fulfill({ json: { agents: [reviewer] } });
+    await expect(choice).toBeVisible();
+
+    await page.clock.fastForward(20_000);
+    await expect.poll(() => reads.length).toBe(2);
+    await choice.click({ trial: true, timeout: 5000 });
+    await expect(loading).toHaveCount(0);
+
+    await reads[1].fulfill({ json: { agents: [] } });
+    const empty = dialog.getByText('Publish an agent in Agents.');
+    await expect(empty).toBeVisible();
+    await page.clock.fastForward(20_000);
+    await expect.poll(() => reads.length).toBe(3);
+    await expect(empty).toBeVisible();
+    await expect(loading).toHaveCount(0);
+    await reads[2].fulfill({ json: { agents: [reviewer] } });
+    await expect(choice).toBeVisible();
+
+    await choice.click();
+    await expect(choice).toHaveAttribute('aria-busy', 'true');
+    await expect(choice).toBeDisabled();
+    await expect(dialog.getByText('Starting conversation…')).toBeVisible();
+    await expect.poll(() => starts.length).toBe(1);
+    await starts[0].fulfill({ status: 503, json: { error: 'Service unavailable' } });
+    await expect(choice).toBeEnabled();
 });
 
 test('saves the active models and uses the chosen column for a conversation', async ({ page, request }) => {
@@ -93,11 +150,11 @@ test('persists the selected model on a task and reselects its column', async ({ 
         const { board } = await created.json();
         boardPath = `${boards}/${board.slug}`;
         const id = crypto.randomUUID();
-        const card = await request.post(`${boardPath}/flow-nodes`, { data: { flowNodes: [{
+        const node = await request.post(`${boardPath}/flow-nodes`, { data: { flowNodes: [{
             id, title: 'Review the result', type: 'ai', body: 'Review the proposed change.', spot: { x: 100, y: 100 },
             settings: { agent: agent.id, effort: 'low', permission: 'bypassPermissions', folder: '/' },
         }] } });
-        expect(card.ok(), await card.text()).toBe(true);
+        expect(node.ok(), await node.text()).toBe(true);
         await page.goto(`boards/${board.slug}`);
         await page.getByTestId('flow-node-card').dblclick();
         await page.getByTestId('flow-node-panel').getByRole('tab', { name: 'Options', exact: true }).click();

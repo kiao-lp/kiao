@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { WorkerClient, WorkerClientMockProvider, Toolbox, ToolboxComponent, ToolboxJob } from 'kiao-worker';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -45,6 +45,26 @@ describe('ToolboxPanel', () => {
         await userEvent.click(row.querySelector('button')!);
 
         await waitFor(() => expect(client.installToolboxComponents).toHaveBeenCalledWith(['fetch']));
+    });
+
+    it('shows installation progress before the service returns a job', async () => {
+        vi.mocked(client.getToolbox).mockResolvedValue(toolboxOf());
+        let finish!: (job: ToolboxJob) => void;
+        vi.mocked(client.installToolboxComponents).mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+        renderPanel();
+        const install = await screen.findByRole('button', { name: 'Install' });
+
+        fireEvent.click(install);
+        expect(screen.getByRole('status')).toHaveTextContent('Starting installation…');
+        expect(install).toBeDisabled();
+        fireEvent.click(install);
+        expect(client.installToolboxComponents).toHaveBeenCalledTimes(1);
+
+        await act(async () => {
+            finish({ id: 'j1', op: 'install', ids: ['fetch'], state: 'running', log: 'Downloading', startedAt: 'now' });
+        });
+        expect(screen.getByTestId('toolbox-job-log')).toHaveTextContent('Downloading');
+        expect(install).toHaveAttribute('aria-busy', 'true');
     });
 
     // The dependency prompt the panel exists to give: the closure comes from the catalogue the

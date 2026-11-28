@@ -9,7 +9,8 @@ export { Clipboard } from './ui-foundation';
 export { markInternalNavigation, internalReload } from './navigation/internal-navigation';
 // Store internal links bare; resolve against the app mount point for display.
 // Use these helpers whenever writing or rendering document links.
-export { toStoredLink, resolveInternalLink, internalPathOf, storedLinkOf } from './navigation/internal-links';
+export { encodedDcmsLinkOf, internalPathOf, normalizeDocumentLink, resolveInternalLink } from './navigation/internal-links';
+export { storedLinkOf, toStoredLink } from './navigation/internal-links';
 
 // Reusable UI lives in ui-foundation; Dashboard preference adapters live in dashboard-ui.
 export { VoiceInput, VoiceInputButton, VoiceTextArea } from './ui-foundation/voice-input';
@@ -70,10 +71,13 @@ export { usePluginHotkeys } from './hotkeys/usePluginHotkeys';
 export type { HotkeyDescriptor, CommandContext } from './hotkeys/HotkeyRegistry';
 export { useSelectionContext, useIsSelected, useElementSelection, Selectable } from './ui-foundation/interactions/selection';
 export { useSingleTargetElement, useCleanSelectionAndPointing } from './ui-foundation/interactions/selectionTarget';
-export { useIsCoarsePointer } from './ui-foundation/interactions/useLongPress';
+export { dispatchContextMenuAt, useIsCoarsePointer, useLongPress } from './ui-foundation/interactions/useLongPress';
 // Spread zoomable onto elements to enable Ctrl-click zoom and the top-banner slider.
 export { useZoomTarget, useZoomTargetOptional, zoomable, MIN_ZOOM, MAX_ZOOM } from './ui-foundation/zoom';
-// Use for all context menus, including plugin menus, to keep them in the viewport.
+export { ContextMenu } from './ui-foundation/interactions/ContextMenu';
+export { CardSurface } from './ui-foundation/interactions/CardSurface';
+export type { ContextMenuPoint } from './ui-foundation/interactions/ContextMenu';
+// Placement settings for plugins that use Ant Design's Dropdown directly.
 export { KEEP_MENU_IN_VIEWPORT } from './ui-foundation/interactions/menuPlacement';
 export { useRenameTarget } from './files/selection/RenameTarget-ctx';
 export { useFileSelection } from './files/selection/SelectionModel-ctx';
@@ -81,7 +85,7 @@ export { useFileSelection } from './files/selection/SelectionModel-ctx';
 export { holdsDraggedFiles, markdownLinkOf, markdownLinksOf, readDraggedFiles, writeDraggedFiles } from './files/dnd/dragPaths';
 export type { DraggedFile } from './files/dnd/dragPaths';
 export { markdownLinkDrop, markdownLinkDropHandlers } from './files/dnd/markdownLinkDrop';
-export { useFileDrop } from './files/dnd/useFileDrop';
+export { useFileDrop, useFilesDrop } from './files/dnd/useFileDrop';
 export type { FileDrop, FileDropProps } from './files/dnd/useFileDrop';
 export { RevealInTreeButton } from './files/nav-bar/RevealInTreeButton';
 export { useRevealInTree } from './files/nav-bar/RevealInTree-ctx';
@@ -119,22 +123,24 @@ export { useAppRoute, useAppRoutes, matchAppRoute } from './app-routes';
 export type { AppRouteDeclaration, AppRouteMatch } from './app-routes';
 
 export {
-    ErrorBoundary, InProgressFeedback, LanguageSelect, ConfirmModal, KeyValueMapEditor,
-    FormField, VerticalBar, AsyncImage, ImagePreview, PageNavigation, HighlightedText, UnicodeKeyboard,
-    CopyButton, CopyHtmlButton, CopySvgButton,
-    CodeMirrorCodeEditor, CodeMirrorJsonEditor, jsonSchemaExtensions,
+    AsyncList, ErrorBoundary, InProgressFeedback, LanguageSelect, ConfirmModal, ConfirmationDialog, useConfirmation, KeyValueMapEditor,
+    FormField, FormFields, CommitInput, NameDialog, VerticalBar, BlockFrame, AsyncImage, ImagePreview, PageNavigation, HighlightedText, UnicodeKeyboard,
+    CopyButton, CopyTextButton, CopyHtmlButton, CopySvgButton,
+    CodeMirrorEditor, CodeMirrorCodeEditor, CodeMirrorJsonEditor, jsonSchemaExtensions,
     JSON_SCHEMA_DRAFT_2020_12, JSON_SCHEMA_META_SCHEMA,
-    ReorderHandle, useReorderable, moveInArray, indexForSlot, slotAt,
+    ReorderableList, ReorderHandle, useReorderable, moveInArray, indexForSlot, slotAt,
     ROW_CLASS_DRAGGING, ROW_CLASS_DROP_BEFORE, ROW_CLASS_DROP_AFTER,
     useStickToBottom, useMouseOverViewport, languages, LANGUAGE_NAMES,
-    ZoomControl, useZoom, StyleInjector, ToolbarButton,
+    ZoomControl, ZoomSurface, useZoom, clampSurfaceZoom, stepSurfaceZoom, StyleInjector, IconButton, ToolbarButton,
+    DiagramToolbar,
     IconCopy, IconPaste, IconCopyFile, IconPasteFile, IconRefresh, IconDownload,
     IconZoomIn, IconZoomOut, IconCheck, IconFitToContent, IconNormalize,
     IconPicture, IconFile, IconSun, IconMoon, IconPlay,
 } from './ui-foundation';
 export type {
-    CodeMirrorCodeEditorRef, CodeMirrorCodeEditorProps,
+    CodeMirrorEditorProps, CodeMirrorCodeEditorRef, CodeMirrorCodeEditorProps,
     CodeMirrorJsonEditorRef, CodeMirrorJsonEditorProps, JsonSchema,
     Reorderable, ReorderableOptions, ReorderHandleProps, ReorderRowProps,
-    StickToBottom, UseZoomOptions, StyleInjectorProps, ToolbarButtonProps,
+    StickToBottom, UseZoomOptions, StyleInjectorProps, IconButtonProps, ToolbarButtonProps,
+    DiagramView,
 } from './ui-foundation';

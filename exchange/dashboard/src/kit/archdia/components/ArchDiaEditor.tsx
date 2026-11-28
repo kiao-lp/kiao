@@ -1,14 +1,20 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ArchDiaFile, DiagramScene } from '../lib/archdia-model';
 import { RelationBend } from '../lib/relation-geometry';
 import { ArchDiaSvgRenderer, ContentBox, DisplayOptions } from './ArchDiaSvgRenderer';
-import { ArchDiaToolbar, ArchDiaView } from './ArchDiaToolbar';
+import { IconMethods, IconProperties, IconTypes, IconTreemap, IconPlantUml } from './toolbar-icons';
 import { ArchDiaStyle } from './ArchDiaStyle';
 import { ArchDiaCodeEditor } from './ArchDiaCodeEditor';
-import { useZoom } from '@kiao-dashboard-kit/diagram-shared';
+import { DiagramToolbar, type DiagramView, IconRefresh, useZoom, ZoomSurface } from '@kiao-dashboard-core';
+
+const displayToggles = [
+    { key: 'showMethods', label: 'methods', icon: <IconMethods /> },
+    { key: 'showProperties', label: 'properties', icon: <IconProperties /> },
+    { key: 'showTypes', label: 'types', icon: <IconTypes /> },
+] as const;
 
 export interface ArchDiaViewState {
-    view?: ArchDiaView;
+    view?: DiagramView;
     zoom?: number;
     displayOptions?: DisplayOptions;
 }
@@ -68,8 +74,8 @@ export const ArchDiaEditor: React.FC<ArchDiaEditorProps> = ({
     className,
     style,
 }) => {
-    const [view, setViewInternal] = useState<ArchDiaView>(initialViewState?.view ?? 'diagram');
-    const setView = (next: ArchDiaView) => { setViewInternal(next); onViewStateChange?.({ view: next }); };
+    const [view, setViewInternal] = useState<DiagramView>(initialViewState?.view ?? 'diagram');
+    const setView = (next: DiagramView) => { setViewInternal(next); onViewStateChange?.({ view: next }); };
     const [displayOptions, setDisplayOptionsInternal] = useState<DisplayOptions>({
         showMethods: true,
         showProperties: true,
@@ -80,7 +86,7 @@ export const ArchDiaEditor: React.FC<ArchDiaEditorProps> = ({
         setDisplayOptionsInternal(next);
         onViewStateChange?.({ displayOptions: next });
     };
-    const { zoom, setZoom, canvasRef } = useZoom({
+    const { zoom, setZoom } = useZoom({
         initial: initialViewState?.zoom,
         onChange: z => onViewStateChange?.({ zoom: z }),
     });
@@ -98,21 +104,27 @@ export const ArchDiaEditor: React.FC<ArchDiaEditorProps> = ({
             style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', overflow: 'hidden', ...style }}
         >
             <ArchDiaStyle />
-            <ArchDiaToolbar
-                activeView={view}
-                onViewChange={setView}
+            <DiagramToolbar
+                view={{ active: view, fileLabel: 'Edit File (Raw)', onChange: setView }}
                 source={source}
                 onPasteSource={onPasteSource}
                 fileContent={fileContent}
                 onPasteFileContent={onPasteFileContent}
-                onRefreshLayout={onRefreshLayout}
-                onPlantUmlLayout={onPlantUmlLayout}
-                onTreemapLayout={onTreemapLayout}
+                layoutActions={[
+                    { text: 'Refresh layout', icon: <IconRefresh />, onClick: onRefreshLayout },
+                    { text: 'PlantUML layout', icon: <IconPlantUml />, tooltip: true, onClick: onPlantUmlLayout },
+                    { text: 'Treemap layout', icon: <IconTreemap />, tooltip: true, onClick: onTreemapLayout },
+                ]}
+                displayActions={displayToggles.map(({ key, label, icon }) => ({
+                    text: `Show ${label}`,
+                    tooltip: displayOptions[key] ? `Hide ${label}` : true,
+                    icon,
+                    active: displayOptions[key],
+                    onClick: () => setDisplayOptions({ ...displayOptions, [key]: !displayOptions[key] }),
+                }))}
                 onFitToContent={onFitToContent}
                 onNormalizePositions={onNormalizePositions}
                 onExportSVG={onExportSVG}
-                displayOptions={displayOptions}
-                onDisplayOptionsChange={setDisplayOptions}
                 zoom={zoom}
                 onZoomChange={setZoom}
                 diagramSize={diagramSize}
@@ -121,21 +133,19 @@ export const ArchDiaEditor: React.FC<ArchDiaEditorProps> = ({
                 onThemeChange={setCurrentTheme}
             />
             {view === 'diagram' && (
-                <div className="archdia-canvas" ref={canvasRef}>
-                    <div className="archdia-zoom-container" style={zoom !== 1.0 ? { transform: `scale(${zoom})`, transformOrigin: 'top left' } : undefined}>
-                        <ArchDiaSvgRenderer
-                            layout={archDiaFile.layout}
-                            descriptionsRaw={archDiaFile.descriptionsRaw}
-                            scene={scene}
-                            onPositionsChange={onPositionsChange}
-                            onBendsChange={onBendsChange}
-                            onDescriptionsRawChange={onDescriptionsRawChange}
-                            displayOptions={displayOptions}
-                            theme={currentTheme}
-                            onSizeChange={onSizeChange}
-                        />
-                    </div>
-                </div>
+                <ZoomSurface className="archdia-canvas" zoom={zoom} onZoomChange={setZoom}>
+                    <ArchDiaSvgRenderer
+                        layout={archDiaFile.layout}
+                        descriptionsRaw={archDiaFile.descriptionsRaw}
+                        scene={scene}
+                        onPositionsChange={onPositionsChange}
+                        onBendsChange={onBendsChange}
+                        onDescriptionsRawChange={onDescriptionsRawChange}
+                        displayOptions={displayOptions}
+                        theme={currentTheme}
+                        onSizeChange={onSizeChange}
+                    />
+                </ZoomSurface>
             )}
             {view === 'file' && (
                 <ArchDiaCodeEditor

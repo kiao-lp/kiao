@@ -5,10 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"kiao/agentic-resource-manager/core/entities"
 	"kiao/agentic-resource-manager/core/services"
@@ -72,6 +74,14 @@ func (a API) Handler() http.Handler {
 	mux.HandleFunc("GET /agents/{id}/versions", func(w http.ResponseWriter, r *http.Request) {
 		result, err := a.Agents.Versions(r.Context(), r.PathValue("id"))
 		respond(w, r, http.StatusOK, map[string]any{"versions": result}, err)
+	})
+	mux.HandleFunc("GET /agents/{id}/remote", func(w http.ResponseWriter, r *http.Request) {
+		result, err := a.Agents.Remote(r.Context(), r.PathValue("id"))
+		respond(w, r, http.StatusOK, result, err)
+	})
+	mux.HandleFunc("POST /agents/{id}/pull", func(w http.ResponseWriter, r *http.Request) {
+		result, err := a.Agents.Pull(r.Context(), r.PathValue("id"))
+		respond(w, r, http.StatusOK, result, err)
 	})
 	mux.HandleFunc("GET /agents/{id}/deletion", func(w http.ResponseWriter, r *http.Request) {
 		result, err := a.Agents.DeletionStatus(r.Context(), r.PathValue("id"))
@@ -185,12 +195,10 @@ func respond(w http.ResponseWriter, r *http.Request, status int, value any, err 
 		default:
 			status = http.StatusInternalServerError
 		}
-		message := err.Error()
 		if status >= 500 {
-			slog.Error("resource request failed", "path", r.URL.Path, "error", err)
-			message = "resource operation failed; see service logs"
+			slog.Error("resource request failed", "path", r.URL.Path, "error", err, "cause", errors.Unwrap(err))
 		}
-		answer := map[string]any{"error": message}
+		answer := map[string]any{"error": errorMessage(err, status)}
 		var confirmation *entities.PushConfirmation
 		if errors.As(err, &confirmation) {
 			answer["pushConfirmation"] = confirmation
@@ -203,6 +211,24 @@ func respond(w http.ResponseWriter, r *http.Request, status int, value any, err 
 		if err := json.NewEncoder(w).Encode(value); err != nil {
 			slog.Warn("response failed", "error", err)
 		}
+	}
+}
+
+func errorMessage(err error, status int) string {
+	var operation *entities.OperationError
+	switch {
+	case errors.As(err, &operation):
+		return operation.Message
+	case status < 500:
+		return err.Error()
+	case errors.Is(err, syscall.ENOSPC), errors.Is(err, syscall.EDQUOT):
+		return "The resource manager ran out of storage. Free space on its machine."
+	case errors.Is(err, fs.ErrPermission), errors.Is(err, syscall.EROFS):
+		return "The resource manager could not access a file. Check permissions on the resource or cache directory."
+	case errors.Is(err, fs.ErrNotExist):
+		return "A required file is missing. Check the resource's files and dependencies on the resource manager's machine."
+	default:
+		return "The resource manager encountered an unexpected error. Try again."
 	}
 }
 

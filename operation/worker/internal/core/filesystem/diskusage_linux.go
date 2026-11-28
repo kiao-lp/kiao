@@ -5,7 +5,7 @@ import (
 )
 
 // DiskUsage reports total, unallocated and unprivileged-usable bytes for the filesystem
-// holding the storage root. A failed stat returns zeroes.
+// holding the DCMS root. A failed stat returns zeroes.
 func (s *Storage) DiskUsage() (total, free, usable int64) {
 	var st syscall.Statfs_t
 	if err := syscall.Statfs(s.Root, &st); err != nil {

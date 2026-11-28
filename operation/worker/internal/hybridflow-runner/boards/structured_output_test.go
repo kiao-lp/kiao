@@ -2,9 +2,42 @@ package boards
 
 import (
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 )
+
+func TestFinishDistinguishesMissingOutputFromJSONNull(t *testing.T) {
+	posted := make(chan json.RawMessage, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			var payload struct{ Output json.RawMessage }
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Error(err)
+				http.Error(w, "invalid payload", http.StatusBadRequest)
+				return
+			}
+			posted <- payload.Output
+		}
+		_, _ = w.Write([]byte(`{"flowNodes":[]}`))
+	}))
+	t.Cleanup(server.Close)
+	store := NewHybridflowStore(server.URL, "")
+	for _, output := range []json.RawMessage{nil, json.RawMessage("null")} {
+		if _, err := store.Finish("board", "card", "run", PlayResult{Status: FlowNodeStatusDone, Output: output}); err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case got := <-posted:
+			if string(got) != string(output) {
+				t.Errorf("posted output %q, want %q", got, output)
+			}
+		default:
+			t.Fatal("no completion request was posted")
+		}
+	}
+}
 
 func TestOutputContract(t *testing.T) {
 	contract, err := CompileOutput(json.RawMessage(`{"type":"object","required":["message"],"properties":{"message":{"type":"string"}},"additionalProperties":false}`))
@@ -68,6 +101,7 @@ func TestOutputSchemaReferencesAndScalars(t *testing.T) {
 
 func TestRenderInput(t *testing.T) {
 	input := json.RawMessage(`{"message":"hello {{input.other}}","nested":{"items":["one",{"ok":false}]},"count":9007199254740993,"empty":"","nil":null}`)
+	context := NodeContext{Input: input}
 	for _, test := range []struct{ prompt, want string }{
 		{"Say {{input.message}}", "Say hello {{input.other}}"},
 		{"{{ input.nested.items.1.ok }} / {{input.count}} / {{input.nil}}", "false / 9007199254740993 / null"},
@@ -75,21 +109,56 @@ func TestRenderInput(t *testing.T) {
 		{"before{{input.empty}}after", "beforeafter"},
 		{"{{input.nested}}", `{"items":["one",{"ok":false}]}`},
 	} {
-		got, err := RenderInput(test.prompt, input)
+		got, err := context.Render(test.prompt)
 		if err != nil || got != test.want {
 			t.Errorf("render %q = %q, %v", test.prompt, got, err)
 		}
 	}
 	for _, prompt := range []string{"{{input.missing}}", "{{input.nested.items.9}}", "{{input.count.field}}"} {
-		if _, err := RenderInput(prompt, input); err == nil {
+		if _, err := context.Render(prompt); err == nil {
 			t.Errorf("accepted %q", prompt)
 		}
 	}
-	if _, err := RenderInput("{{input.message}}", nil); err == nil {
+	if _, err := (NodeContext{}).Render("{{input.message}}"); err == nil {
 		t.Error("missing predecessor accepted")
 	}
-	if got, err := RenderInput("No input", nil); err != nil || got != "No input" {
+	if got, err := (NodeContext{}).Render("No input"); err != nil || got != "No input" {
 		t.Fatal(got, err)
+	}
+}
+
+func TestRenderRole(t *testing.T) {
+	board := BoardContent{FlowNodes: []FlowNode{
+		{ID: "task"},
+		{Type: flowNodeTypeRole, RoleID: "Review-Team", People: []string{`"Alex Rivera" <alex@example.com>`, "{{input.name}}"}},
+		{Type: flowNodeTypeRole, RoleID: "empty"},
+		{Type: flowNodeTypeRole, RoleID: "hidden", Archived: true, People: []string{"Hidden"}},
+	}}
+	values := board.NodeContext(board.FlowNode("task"))
+	got, err := values.Render("People: {{ role.Review-Team }} ({{role.empty}})")
+	if want := `People: "Alex Rivera" <alex@example.com>, {{input.name}} ()`; got != want || err != nil {
+		t.Fatalf("render = %q, %v; want %q", got, err, want)
+	}
+	for _, id := range []string{"missing", "hidden", "review-team"} {
+		if _, err := values.Render("{{role." + id + "}}"); err == nil {
+			t.Errorf("resolved unknown role %q", id)
+		}
+	}
+}
+
+func TestRenderWorkflowFolder(t *testing.T) {
+	for _, test := range []struct{ folder, want string }{
+		{"/runs/release", "Folder /runs/release, copy /runs/release/brief.md"},
+		{"/", "Folder /, copy /brief.md"},
+	} {
+		values := NodeContext{Workflow: &Workflow{WorkflowFolder: test.folder}}
+		got, err := values.Render("Folder {{workflowFolder}}, copy {{ workflowFolder }}/brief.md")
+		if err != nil || got != test.want {
+			t.Errorf("render folder %q = %q, %v", test.folder, got, err)
+		}
+	}
+	if _, err := (NodeContext{}).Render("{{workflowFolder}}/brief.md"); err == nil {
+		t.Error("resolved a missing workflow folder")
 	}
 }
 

@@ -99,7 +99,7 @@ func newTestRepo(t *testing.T) (*GitService, string) {
 	t.Setenv("GIT_COMMITTER_EMAIL", "setup@example.com")
 
 	dir := t.TempDir()
-	cfg := &fileconfig.Config{Config: &coreconfig.Config{RootPath: dir}, GitUserName: "Committer", GitUserEmail: "committer@example.com"}
+	cfg := &fileconfig.Config{Config: &coreconfig.Config{DCMSRoot: dir}, GitUserName: "Committer", GitUserEmail: "committer@example.com"}
 	g := NewGitService(cfg)
 	mustGit(t, dir, "init", "-b", "main")
 	return g, dir
@@ -133,7 +133,7 @@ func TestGitStatusNonRepo(t *testing.T) {
 	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
 	t.Setenv("GIT_CONFIG_SYSTEM", os.DevNull)
 	// A plain temp dir with no repo above it.
-	g := NewGitService(&fileconfig.Config{Config: &coreconfig.Config{RootPath: t.TempDir()}})
+	g := NewGitService(&fileconfig.Config{Config: &coreconfig.Config{DCMSRoot: t.TempDir()}})
 	dto := g.Status()
 	if dto.Repo {
 		t.Errorf("status of non-repo: Repo = true, want false")
@@ -372,6 +372,26 @@ func TestGitRevertUntrackedDeletes(t *testing.T) {
 	}
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Errorf("revert of untracked should delete the file; stat err = %v", err)
+	}
+}
+
+func TestGitRevertPreservesAgentPackages(t *testing.T) {
+	g, root := newTestRepo(t)
+	g.statePath = filepath.Join(root, "managed-state")
+	path := filepath.Join(g.statePath, "agentic-packages", "release", "deployment", "apm.lock.yaml")
+	mustWrite(t, path, "locked\n")
+	mustWrite(t, filepath.Join(g.statePath, ".gitignore"), "*\n")
+	if err := os.Symlink(g.statePath, filepath.Join(root, "alias")); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, prefix := range []string{"managed-state", "alias"} {
+		if res := g.Revert(prefix + "/agentic-packages/release/deployment/apm.lock.yaml"); res.Ok {
+			t.Errorf("git revert accepted a package path under %s", prefix)
+		}
+	}
+	if got := mustRead(t, path); got != "locked\n" {
+		t.Errorf("git revert changed the package: %q", got)
 	}
 }
 

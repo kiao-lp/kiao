@@ -27,7 +27,7 @@ func TestHarnessMigrationPreservesAgentsAndPublishedConfigurations(t *testing.T)
 		t.Fatal(err)
 	}
 	for i := 0; i < 2; i++ {
-		if _, err := migrateBeforeRetirement(ctx, pool); err != nil {
+		if _, err := migrateThrough(ctx, pool, 35); err != nil {
 			t.Fatal(err)
 		}
 	}

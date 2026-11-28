@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-// ErrOutsideRoot is returned when a resolved path escapes the storage root.
+// ErrOutsideRoot is returned when a resolved path escapes the root passed to ResolvePath.
 var ErrOutsideRoot = faults.Invalid("subpath is outside the root path")
 
 // ResolvePath joins subpath onto root and verifies the result stays within root.

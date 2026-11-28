@@ -1,17 +1,16 @@
 /** Toolbar and zoom, with diagram and file views. */
 
 import React, { useState, useEffect } from 'react';
-import { useZoom } from '@kiao-dashboard-kit/diagram-shared';
+import { DiagramToolbar, type DiagramView, IconPlay, useZoom, ZoomSurface } from '@kiao-dashboard-core';
 import { GraphFile } from '../lib/graph-model';
 import { GraphSvgRenderer } from './GraphSvgRenderer';
-import { GraphToolbar, GraphView } from './GraphToolbar';
 import { GraphStyle } from './GraphStyle';
 import { GraphCodeEditor } from './GraphCodeEditor';
 
 // Props.
 
 export interface GraphViewState {
-    view?: GraphView;
+    view?: DiagramView;
     zoom?: number;
 }
 
@@ -67,9 +66,9 @@ export const GraphEditor: React.FC<GraphEditorProps> = ({
     className,
     style,
 }) => {
-    const [view, setViewInternal] = useState<GraphView>(initialViewState?.view ?? 'diagram');
-    const setView = (next: GraphView) => { setViewInternal(next); onViewStateChange?.({ view: next }); };
-    const { zoom, setZoom, canvasRef } = useZoom({
+    const [view, setViewInternal] = useState<DiagramView>(initialViewState?.view ?? 'diagram');
+    const setView = (next: DiagramView) => { setViewInternal(next); onViewStateChange?.({ view: next }); };
+    const { zoom, setZoom } = useZoom({
         initial: initialViewState?.zoom,
         onChange: z => onViewStateChange?.({ zoom: z }),
     });
@@ -87,16 +86,16 @@ export const GraphEditor: React.FC<GraphEditorProps> = ({
             style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', overflow: 'hidden', ...style }}
         >
             <GraphStyle />
-            <GraphToolbar
-                activeView={view}
-                onViewChange={setView}
+            <DiagramToolbar
+                view={{ active: view, fileLabel: 'Edit File (JSON)', onChange: setView }}
                 fileContent={fileContent}
                 onPasteFileContent={onPasteFileContent}
                 onExportSVG={onExportSVG}
                 onFitToContent={onFitToContent}
                 onNormalizePositions={onNormalizePositions}
-                algorithms={graph.algorithms}
-                onRunAlgorithms={onRunAlgorithms}
+                layoutActions={graph.algorithms?.length ? [
+                    { text: 'Run algorithms', icon: <IconPlay />, tooltip: true, onClick: onRunAlgorithms },
+                ] : undefined}
                 zoom={zoom}
                 onZoomChange={setZoom}
                 diagramSize={diagramSize}
@@ -105,18 +104,16 @@ export const GraphEditor: React.FC<GraphEditorProps> = ({
                 onThemeChange={setCurrentTheme}
             />
             {view === 'diagram' && (
-                <div className="graph-canvas" ref={canvasRef}>
-                    <div className="graph-zoom-container" style={zoom !== 1.0 ? { transform: `scale(${zoom})`, transformOrigin: 'top left' } : undefined}>
-                        <GraphSvgRenderer
-                            graph={graph}
-                            onPositionsChange={onPositionsChange}
-                            onTooltipChange={onTooltipChange}
-                            onNodeChange={onNodeChange}
-                            theme={currentTheme}
-                            onSizeChange={onSizeChange}
-                        />
-                    </div>
-                </div>
+                <ZoomSurface className="graph-canvas" zoom={zoom} onZoomChange={setZoom}>
+                    <GraphSvgRenderer
+                        graph={graph}
+                        onPositionsChange={onPositionsChange}
+                        onTooltipChange={onTooltipChange}
+                        onNodeChange={onNodeChange}
+                        theme={currentTheme}
+                        onSizeChange={onSizeChange}
+                    />
+                </ZoomSurface>
             )}
             {view === 'file' && (
                 <GraphCodeEditor

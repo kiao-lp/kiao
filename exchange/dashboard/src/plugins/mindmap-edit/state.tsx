@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createSimpleContext } from 'react-concise';
-import { DocumentCodec, useDocumentFileSync, useFileViewState } from '@kiao-dashboard-core';
+import { clampSurfaceZoom, DocumentCodec, useDocumentFileSync, useFileViewState } from '@kiao-dashboard-core';
 import { createEditorModeContext } from './lib/EditorMode-ctx';
 import { decodeMindmap, encodeMindmap, MindmapDocument, MindmapIdentity } from './mindmapDocument';
 import {
@@ -131,7 +131,7 @@ const useMindmapState = (props: MindmapStateProps): MindmapStateValue => {
     }, []);
 
     const setZoom = useCallback((newZoom: number) => {
-        setView({ zoom: Math.max(0.25, Math.min(2.0, newZoom)) });
+        setView({ zoom: clampSurfaceZoom(newZoom) });
     }, [setView]);
 
     const newNoteStyle = useMemo<NewNoteStyle>(() => ({

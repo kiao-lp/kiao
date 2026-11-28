@@ -1,7 +1,5 @@
-/** Flow-node . temp. */
 import { FileDto, WorkerClient } from 'kiao-worker';
-import { parseTempMd, TemplateCollectionV0 } from '@kiao-dashboard-kit/template-lang';
-import { TEMPLATE_EXTENSION } from '../template-edit/instantiationTarget';
+import { parseTempMd, serializeTempMd, TEMPLATE_EXTENSION, type TemplateCollectionV0 } from '@kiao-dashboard-kit/template-lang';
 import { FlowNodeType } from './flowNodeType';
 
 export const FLOW_NODE_TEMPLATES_PATH = 'kiao-user-config/flow-node-templates';
@@ -19,33 +17,22 @@ export const templateForType = (type: FlowNodeType): string | null => {
     return null;
 };
 
-/** Empty defaultText makes each clause optional, exposed as a checkbox. */
-type Clause = [title: string, text: string];
-
-/** Clauses carry their own paragraph spacing; headings determine their variable names. */
+/** Clauses carry their own paragraph spacing. */
 const AI_ROOT_TEXT = `\${noCode}
 \${colleague}
 \${${DESCRIPTION_VARIABLE}}
 \${commit}`;
 
-const AI_CLAUSES: Clause[] = [
-    ['No code', 'In your exchanges with me, be as concise as possible and favor the strategic and'
+const AI_CLAUSES: [id: string, text: string][] = [
+    ['noCode', 'In your exchanges with me, be as concise as possible and favor the strategic and'
         + ' tactical level (architecture and approach) over the code level (implementation). If you'
         + ' need to discuss code elements (intra-component), explain them in plain terms, clarifying'
         + ' their role and what they are.\n'],
-    ['Colleague', 'Write to me in the style of a colleague sending a teams message.\n'],
-    ['Commit', '\nOnce the work successfully completed, commit your changes, but do not push.'],
+    ['colleague', 'Write to me in the style of a colleague sending a teams message.\n'],
+    ['commit', '\nOnce the work successfully completed, commit your changes, but do not push.'],
 ];
 
 const HUMAN_ROOT_TEXT = `\${${DESCRIPTION_VARIABLE}}`;
-
-const block = (label: string, text: string): string =>
-    `### ${label}\n\n\`\`\`text\n${text}\n\`\`\`\n`;
-
-const tempMd = (name: string, root: string, clauses: Clause[] = []): string =>
-    `# ${name}\n\n## Root\n\n${block('textTemplate', root)}`
-    + clauses.map(([title, text]) =>
-        `\n## ${title}\n\n${block('defaultText', '')}\n${block('textTemplate', text)}`).join('');
 
 export const templateName = (path: string): string => {
     const name = path.slice(path.lastIndexOf('/') + 1);
@@ -65,8 +52,16 @@ export const listFlowNodeTemplates = async (client: WorkerClient): Promise<strin
 export const ensureDefaultFlowNodeTemplates = async (client: WorkerClient): Promise<string[]> => {
     const found = await listFlowNodeTemplates(client);
     const named: [path: string, text: string][] = [
-        [AI_TEMPLATE_PATH, tempMd('AI', AI_ROOT_TEXT, AI_CLAUSES)],
-        [HUMAN_TEMPLATE_PATH, tempMd('Human', HUMAN_ROOT_TEXT)],
+        [AI_TEMPLATE_PATH, serializeTempMd({
+            name: 'AI',
+            rootTemplate: { id: 'root', textTemplate: AI_ROOT_TEXT },
+            subTemplates: AI_CLAUSES.map(([id, textTemplate]) => ({ id, textTemplate, defaultText: '' })),
+        })],
+        [HUMAN_TEMPLATE_PATH, serializeTempMd({
+            name: 'Human',
+            rootTemplate: { id: 'root', textTemplate: HUMAN_ROOT_TEXT },
+            subTemplates: [],
+        })],
     ];
     const missing = named.filter(([path]) => !found.includes(path));
     if (!missing.length) return found;
@@ -85,11 +80,18 @@ export const ensureDefaultFlowNodeTemplates = async (client: WorkerClient): Prom
 export const loadFlowNodeTemplate = async (client: WorkerClient, path: string): Promise<TemplateCollectionV0> =>
     parseTempMd(await client.getFileText(path));
 
-/** Parse a class body as .temp.md, falling back to a plain-text Root to avoid losing unstructured. */
-export const versionBodyTemplate = (body: string, name: string): TemplateCollectionV0 => {
-    const parsed = parseTempMd(body);
-    if (parsed.rootTemplate.textTemplate === '' && parsed.subTemplates.length === 0 && body.trim() !== '') {
-        return { name, index: '', rootTemplate: { id: 'root', textTemplate: body }, subTemplates: [] };
+export const parseDescriptionTemplate = (body: string): TemplateCollectionV0 =>
+    parseTempMd(body, { fallbackToRoot: true });
+
+/** Without a Root textTemplate block, the parser returns the whole description as Root. */
+export const looksLikeDescriptionTemplate = (body: string): boolean =>
+    parseDescriptionTemplate(body).rootTemplate.textTemplate !== body;
+
+/** A description can contain ordinary Markdown headings even when it uses template variables. */
+export const flowNodeBodyTemplate = (body: string, multiPart: boolean): TemplateCollectionV0 => {
+    if (!multiPart) {
+        return { rootTemplate: { id: 'root', textTemplate: body }, subTemplates: [] };
     }
-    return { ...parsed, name: parsed.name || name };
+    const { rootTemplate, subTemplates } = parseDescriptionTemplate(body);
+    return { rootTemplate, subTemplates };
 };

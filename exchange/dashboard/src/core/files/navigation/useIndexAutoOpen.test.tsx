@@ -28,7 +28,7 @@ const file = (path: string): FileDto => ({ path, isDirectory: false, size: 0, la
 const browseTo = (dto: FileDto) => {
     h.browsing = { currentFile: dto, currentPath: dto.isDirectory ? dto.path : parentPath(dto.path) };
 };
-// The store root, as worker reports it: path ".", browsed as "".
+// The DCMS root, as worker reports it: path ".", browsed as "".
 const browseToRoot = () => {
     h.browsing = { currentFile: dir('.'), currentPath: '' };
 };

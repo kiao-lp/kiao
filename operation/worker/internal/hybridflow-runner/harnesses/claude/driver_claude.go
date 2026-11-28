@@ -96,7 +96,7 @@ type claudeRun struct {
 	settingSources string
 	// Open the whole store with --add-dir to avoid manual permission requests when
 	// a turn working in one folder reads another.
-	storeRoot string
+	dcmsRoot string
 	// Gate bypass again at flag construction so new callers fail closed.
 	allowBypass bool
 }
@@ -117,7 +117,7 @@ func (d *ClaudeDriver) runFor(run harnessapi.HarnessRun) claudeRun {
 		resumeAt:       run.ResumeAt,
 		mcpConfigPath:  run.MCPConfig,
 		settingSources: settingSources,
-		storeRoot:      run.StoreRoot,
+		dcmsRoot:       run.DCMSRoot,
 		allowBypass:    run.AllowBypass,
 	}
 }
@@ -135,12 +135,12 @@ func claudeArgs(run claudeRun) []string {
 		"--verbose",
 		"--model", run.model,
 		"--effort", run.effort,
-		"--append-system-prompt", briefing.HarnessBriefingWith(run.storeRoot, run.instructions),
+		"--append-system-prompt", briefing.HarnessBriefingWith(run.dcmsRoot, run.instructions),
 	}
 	if sources := strings.TrimSpace(run.settingSources); sources != "" {
 		args = append(args, "--setting-sources", sources)
 	}
-	if root := strings.TrimSpace(run.storeRoot); root != "" {
+	if root := strings.TrimSpace(run.dcmsRoot); root != "" {
 		args = append(args, "--add-dir", root)
 	}
 	// --strict-mcp-config prevents loading additional servers from the writable
@@ -268,7 +268,7 @@ func (d *ClaudeDriver) Spawn(run harnessapi.HarnessRun) error {
 
 	harnessapi.LogClaudeWS.Info("spawned",
 		"conversation", run.Conversation, "turn", run.Turn, "pid", cmd.Process.Pid,
-		"work_dir", run.WorkDir, "store_root", run.StoreRoot)
+		"work_dir", run.WorkDir, "store_root", run.DCMSRoot)
 	run.Trace.Exec(d.execRecord(cmd))
 
 	go d.read(pr)

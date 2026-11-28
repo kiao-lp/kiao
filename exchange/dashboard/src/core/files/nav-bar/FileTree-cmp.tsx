@@ -38,7 +38,6 @@ const TreeRowCmp: React.FC<TreeRowProps> = ({ row, current, onToggle }) => {
                 <div
                     className={`cms-nav-tree-row${current ? ' cms-nav-tree-row-current' : ''}`}
                     style={{ paddingLeft: 4 + row.depth * INDENT }}
-                    onContextMenu={e => e.stopPropagation()}
                     draggable={draggable}
                     onDragStart={draggable
                         ? e => writeDraggedFiles(e.dataTransfer, [{ path: row.path, isDirectory: row.file.isDirectory }])

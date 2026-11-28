@@ -14,8 +14,8 @@ See [PROTOCOL.md](PROTOCOL.md) for request and response contracts.
 Two of its service families are backend halves of functional features that cut across containers.
 `internal/files` is the backend half of **DCMS** — *document and content management system* —
 the document management feature it forms together with the file-oriented views of
-[`exchange/dashboard`](/exchange/dashboard/README.md). `internal/hybridflow-runner` is the
-engine of **hybridflow** — conversations, turns, the play loop — beside the boards and
+[`exchange/dashboard`](/exchange/dashboard/README.md). `internal/hybridflow-runner` handles
+conversations, harness dispatch and the play loop for **hybridflow**, alongside the boards and
 conversations UI in Dashboard and the hybridflow-store backend. All are developed, delivered
 and deployed as one thing (the `kiao` Docker image, `bin/local-start-kiao.sh`, the installed
 `kiao` executable). See
@@ -23,7 +23,7 @@ and deployed as one thing (the `kiao` Docker image, `bin/local-start-kiao.sh`, t
 
 The service listens on `SERVER_PORT` and never faces the browser directly: whatever fronts
 it — nginx in the image, the launcher in the installed executable — routes `/api/files/` to
-the worker root and `/api/ws/…` to `/ws/…` on that port.
+the worker's HTTP base path `/` and `/api/ws/…` to `/ws/…` on that port.
 
 ## Runtime requirements
 
@@ -105,7 +105,7 @@ Where conversations live on disk, how forking branches a session, how a turn run
 
 ### [Playing a board](/operation/worker/docs/solution-design/playing-board.md)
 Read when: touching chain runs, the run list, or board marking.
-How a chain run plays cards without a browser, what each card type does, how usage limits and retries wait, and how answers are filed and marked.
+How a chain run plays flow nodes without a browser, what each flow node type does, how usage limits and retries wait, and how answers are filed and marked.
 
 <a id="file-actions-and-the-toolbox"></a>
 ### [File actions](/docs/solution-design/partitions/dcms/file-actions.md)

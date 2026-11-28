@@ -1,4 +1,5 @@
-import { Button, Input } from "antd";
+import { IconButton } from '../toolbar/IconButton';
+import { Input } from "antd";
 import { PlusOutlined, DeleteOutlined } from "@ant-design/icons";
 import React, { useState } from "react";
 
@@ -40,7 +41,12 @@ export const KeyValueMapEditor: React.FC<KeyValueMapEditorProps> = ({ title, obj
                     <div className="flex-1">{k}</div>
                     <div className="flex-1 row">
                         <Input type='text' value={v || ""} onChange={event => setKV(k, event.target.value)} className="flex-1" />
-                        <Button icon={<DeleteOutlined />} onClick={() => deleteK(k)} danger />
+                        <IconButton
+                            label="Remove entry"
+                            size="middle"
+                            type="default"
+                            icon={<DeleteOutlined />} onClick={() => deleteK(k)} danger
+                        />
                     </div>
                 </div>
             ))
@@ -50,7 +56,12 @@ export const KeyValueMapEditor: React.FC<KeyValueMapEditorProps> = ({ title, obj
                 <Input type='text' value={keyName} onChange={event => setKeyName(event.target.value)} className="flex-1" />
             </div>
             <div className="flex-1">
-                {keyName && !Object.prototype.hasOwnProperty.call(object, keyName) && <Button icon={<PlusOutlined />} onClick={addK} />}
+                {keyName && !Object.prototype.hasOwnProperty.call(object, keyName) && <IconButton
+                    label="Add entry"
+                    size="middle"
+                    type="default"
+                    icon={<PlusOutlined />} onClick={addK}
+                />}
             </div>
         </div>
     </div>;

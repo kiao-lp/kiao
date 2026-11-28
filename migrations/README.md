@@ -54,29 +54,31 @@ Directories, examples, tests and the template are not migrations. Duplicate nume
 a source are errors, including differently padded spellings of the same number.
 
 ```sh
-node V020__example.js <absolute-data-root>
+node V020__example.js <absolute-dcms-root>
 ```
 
-The working directory is the store root. Environment:
+The script starts in the DCMS root with these environment variables.
 
 | Variable | Value |
 | --- | --- |
-| `KIAO_DATA_ROOT` | store root, also argv[2] |
+| `KIAO_DATA_ROOT` | DCMS root, also passed as `argv[2]` |
+| `KIAO_WORKER_STATE_PATH` | configured worker state directory excluded from migration walks |
 | `KIAO_MIGRATION_SOURCE` | stable source ID |
 | `KIAO_MIGRATION_VERSION` | version within that source |
 | `KIAO_MIGRATION_LIB` | base source's `lib/`, including in installed deliveries |
 
 Keep additional helpers in the source's own `lib/` and require them relative to the script.
-Use `KIAO_MIGRATION_LIB` for shared helpers. A manual run must supply that variable when needed.
+Use `KIAO_MIGRATION_LIB` for shared helpers. The `dcmsRoot()` helper reads the path from
+`argv[2]`, then `KIAO_DATA_ROOT`, then the current working directory. A manual run must supply
+`KIAO_MIGRATION_LIB` when needed.
 Shared helpers must remain compatible with all active scripts; do not change their meaning under an
 already-applied migration. A changed script includes changed comments in its SHA-256.
 
-`<state>/files-migrations.json` has format version 2, a store root and a `sources` map. Each source
-records `baseline`, `schemaVersion` and its own `applied` entries (script, name, SHA-256, time,
-duration). A missing ledger means the operator selected the supported baseline; it is **not** an
-upgrade route for documents in unknown old formats. A ledger for another store is refused. To
-rehearse a copied store, explicitly rebind **the copied ledger's** `dataRoot` to the copy; do not point a rehearsal at
-the original state directory.
+`<state>/files-migrations.json` has format version 2, the DCMS root (`dataRoot`) and a `sources`
+map. Each source records `baseline`, `schemaVersion` and its own `applied` entries (script, name,
+SHA-256, time, duration). A missing ledger means the documents must already be at the supported
+baseline. The worker refuses a ledger bound to a different DCMS root. For a rehearsal, use a
+copy of the store and its state and set **the copied ledger's** `dataRoot` to the copied DCMS root.
 
 One `files-migrations.lock` covers discovery, loading/converting the ledger, validation, all sources
 and persistence. The serving process also holds `state.lock` for its lifetime. Every configured
@@ -109,11 +111,12 @@ file migrations, and exits. It requires enabled, configured sources. Use the sam
    files or blindly replace substrings. Ask with the path list if the intended document format is uncertain.
 4. Leave unrelated, invalid and already-current documents unchanged. A second run must preserve
    their bytes. Report changed paths/counts, unresolved references, collisions and skipped shapes.
-5. For renames use [the shared link fixer](lib/link-fix.js): only leading-slash tokens, raw and
-   percent-encoded spellings, token boundaries and child suffixes. Relative Markdown destinations
-   stay relative. Newly introduced spaces in inline destinations are escaped; JSON paths stay raw.
+5. For renames, use the shared link fixer to match DCMS links at token boundaries, with support
+   for raw and percent-encoded spellings and child suffixes. It encodes new spaces in Markdown
+   destinations and preserves raw JSON values.
    Decide collisions **before** rewriting links, then rewrite links before moves so retries can
    reconstruct unfinished moves. Never overwrite an occupied destination.
+   [Shared link fixer](lib/link-fix.js)
 6. Add focused fixtures/tests under `test/` and pin the script in `test/active-checksums.json` before
    delivery. Applied scripts and their meaning are immutable outside the coordinated exception above.
 7. Rehearse on a copy of a real store, read the document diff, exercise a failed run and restart.
@@ -133,7 +136,7 @@ the Docker image requires an explicit path/manifest setting. Neither target opts
 ## `.kiao-files`
 
 A folder's declaration of paths excluded from automatic document passes, in it and below. It
-complements checks of each migration's target format: the person who chose the store root decides
+complements checks of each migration's target format: the person who chose the DCMS root decides
 which paths require separate handling, including dependencies, build outputs or nested checkouts.
 The declaration scopes operations; it does not determine whether an artifact is a document.
 
@@ -142,7 +145,7 @@ living inside a store carries its own next to its `.gitignore`, and a store that
 unrelated repositories, or no repository at all, is still declared correctly. A nested file adds to
 what its ancestors said; nothing can re-include what an ancestor excluded.
 
-worker seeds one at the store root on first start, with the common machinery names **already
+worker seeds one at the DCMS root on first start, with the common machinery names **already
 in force** — unlike the `migration-ignore` it replaces, which was seeded fully commented out. The
 asymmetry is deliberate: a migration that rewrites too much costs a restore from git, while an
 exclusion that is too broad costs some links not being updated. Only the first is worth making an
@@ -159,7 +162,9 @@ The runner cannot enforce any of it — a migration is a Node script with full f
 Normal startup logs the declarations; scripts must report their own scope, and the helpers honour it:
 `scan()` skips declared files and does not descend into declared directories, and `loadIgnore()`
 gives a hand-rolled walk the same matcher. Nothing names the file to a script any more: it has a
-fixed name at a known place, so `KIAO_DATA_ROOT` is all a script needs to find the whole set.
+fixed name at a known place, so `KIAO_DATA_ROOT` locates the declarations. The matcher also excludes
+the configured state directory and its physical location. If state is inside the DCMS root, the
+matcher excludes the installed `agentic-packages/` directory.
 
 ### Three concerns, declared separately
 
@@ -219,7 +224,7 @@ to the grammar goes there first.**
 
 ### The worked example: this repository
 
-**This checkout is itself a supported store root** — [`bin/local-start-kiao.sh`](../bin/local-start-kiao.sh)
+**This checkout is itself a supported DCMS root** — [`bin/local-start-kiao.sh`](../bin/local-start-kiao.sh)
 may serve it with the migration runner enabled. So the checkout
 carries its own declaration, committed, at [`.kiao-files`](../.kiao-files):
 

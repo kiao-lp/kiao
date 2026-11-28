@@ -19,9 +19,9 @@ import (
 func newTestServer(t *testing.T) (*Server, string) {
 	t.Helper()
 	root := t.TempDir()
-	// The state directory is a temp directory of its own: these tests list and count the store root,
+	// The state directory is a temp directory of its own: these tests list and count the DCMS root,
 	// and service state appearing there would break them for a reason they are not about.
-	shared := &coreconfig.Config{AuthMode: "debug", RootPath: root, StatePath: t.TempDir(), MaxUploadBytes: 1 << 20}
+	shared := &coreconfig.Config{AuthMode: "debug", DCMSRoot: root, StatePath: t.TempDir(), MaxUploadBytes: 1 << 20}
 	fileSvc, err := fileshttp.Start(fileconfig.LoadConfig(shared))
 	if err != nil {
 		t.Fatalf("files.Start: %v", err)

@@ -80,7 +80,7 @@ func (s *AgentStore) ListAgents(ctx context.Context) ([]entities.Agent, error) {
 
 func (s *AgentStore) FindAgent(ctx context.Context, id string) (*entities.Agent, error) {
 	// Compared as text rather than cast: an id that is not a uuid misses rather than failing the
-	// cast, which is what a card naming an engine — a board written before agents — must do.
+	// cast, which is what a flow node naming a harness — a board written before agents — must do.
 	row := s.pool.QueryRow(ctx, `SELECT `+agentColumns+` FROM agent WHERE id::text = $1`, id)
 	agent, err := scanAgent(row)
 	if err != nil {

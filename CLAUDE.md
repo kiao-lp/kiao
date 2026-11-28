@@ -6,9 +6,8 @@ document:
 
 # CLAUDE.md
 
-Guidance for Claude Code (claude.ai/code) working with code in this tree — and only what is
-specific to it. Start with [AGENTS.md](AGENTS.md): everything common to all agents lives there.
-What follows assumes it.
+Guidance for the Claude Code harness (claude.ai/code). Start with the shared repository guidance.
+[AGENTS.md](AGENTS.md)
 
 ## The verdict hooks
 

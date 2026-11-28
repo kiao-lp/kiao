@@ -7,7 +7,7 @@ export interface KeepChoice {
     name?: string;
 }
 
-/** The store root is represented by "". */
+/** The DCMS root is represented by "". */
 export const folderOf = (path: string): string => {
     const slash = path.lastIndexOf('/');
     return slash < 0 ? '' : path.slice(0, slash);

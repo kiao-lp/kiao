@@ -55,13 +55,13 @@ export const toStoreName = (title: string, fallback = ''): string => {
 };
 
 /**
- * Stored links start with / so the link fixer can distinguish references from ordinary text.
- * Bare markdown destinations are document-relative and must not be converted here.
- * The API accepts either form but returns bare FileDto.path; convert at document boundaries.
- * Both conversions are idempotent.
+ * Turn a file API path such as `units/abc/cadre.md` into a raw DCMS link, `/units/abc/cadre.md`.
+ * The empty path becomes `/`. Document-relative Markdown destinations use their own base.
  */
-/** Store path to link: units/abc/cadre.md → /units/abc/cadre.md. */
-export const storeLinkOf = (path: string): string => `/${path.replace(/^\/+/, '')}`;
+export const dcmsLinkOf = (path: string): string => `/${path.replace(/^\/+/, '')}`;
 
-/** Store link to path: /units/abc/cadre.md → units/abc/cadre.md; root → empty string. */
+/** @deprecated Use dcmsLinkOf. */
+export const storeLinkOf = dcmsLinkOf;
+
+/** Convert the raw path of a DCMS link to the slashless form returned as `FileDto.path`. */
 export const storePathOf = (link: string): string => link.replace(/^\/+/, '');

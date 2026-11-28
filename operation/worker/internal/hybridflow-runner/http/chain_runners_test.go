@@ -24,14 +24,14 @@ func (s stubRunners) Runner(id string) (*pkgBoards.ManagedRunner, error) {
 	return nil, pkgBoards.ErrRunnerUnknown
 }
 
-func TestRunnerRefusalLetsUnpinnedCardsThrough(t *testing.T) {
+func TestRunnerRefusalLetsUnpinnedFlowNodesThrough(t *testing.T) {
 	rt := newRunnerTest(t, `{"flowNodes":[]}`)
 	rt.cfg.RunnerID = "runner-1"
 	if refusal := rt.runner.RunnerRefusal(pkgBoards.FlowNode{
 		Type: pkgBoards.FlowNodeTypeAI, Title: "Do it",
 		Settings: pkgBoards.FlowNodeSettings{Agent: "agent-1"},
 	}); refusal != "" {
-		t.Errorf("refusal = %q, want a card pinned nowhere played anywhere", refusal)
+		t.Errorf("refusal = %q, want a flow node pinned nowhere played anywhere", refusal)
 	}
 }
 
@@ -42,11 +42,11 @@ func TestRunnerRefusalLetsItsOwnRunnerThrough(t *testing.T) {
 		Type: pkgBoards.FlowNodeTypeAI, Title: "Do it",
 		Settings: pkgBoards.FlowNodeSettings{Agent: "agent-1", Runner: "runner-1"},
 	}); refusal != "" {
-		t.Errorf("refusal = %q, want the card pinned here played", refusal)
+		t.Errorf("refusal = %q, want the flow node pinned here played", refusal)
 	}
 }
 
-// A card pinned to another runner is refused by the runners' names rather than by ids nobody
+// A flow node pinned to another runner is refused by the runners' names rather than by ids nobody
 // reads.
 func TestRunnerRefusalNamesTheRunners(t *testing.T) {
 	rt := newRunnerTest(t, `{"flowNodes":[]}`)
@@ -67,7 +67,7 @@ func TestRunnerRefusalNamesTheRunners(t *testing.T) {
 	}
 }
 
-// A service naming no runner is none of them: it plays unpinned cards and refuses every pinned
+// A service naming no runner is none of them: it plays unpinned flow nodes and refuses every pinned
 // one.
 func TestRunnerRefusalWithoutAnOwnRunner(t *testing.T) {
 	rt := newRunnerTest(t, `{"flowNodes":[]}`)
@@ -83,7 +83,7 @@ func TestRunnerRefusalWithoutAnOwnRunner(t *testing.T) {
 	}
 }
 
-// Where nothing resolves a name — no store is named — the refusal carries the id the card
+// Where nothing resolves a name — no store is named — the refusal carries the id the flow node
 // named, which is still the truth about it.
 func TestRunnerRefusalCarriesTheIDWhereNothingResolves(t *testing.T) {
 	rt := newRunnerTest(t, `{"flowNodes":[]}`)
@@ -100,9 +100,9 @@ func TestRunnerRefusalCarriesTheIDWhereNothingResolves(t *testing.T) {
 	}
 }
 
-// The play itself is refused before the agent is even resolved: where a card runs is asked ahead
+// The play itself is refused before the agent is even resolved: where a flow node runs is asked ahead
 // of what runs it.
-func TestPlayableRefusesACardPinnedElsewhere(t *testing.T) {
+func TestPlayableRefusesAFlowNodePinnedElsewhere(t *testing.T) {
 	rt := newRunnerTest(t, `{"flowNodes":[]}`)
 	rt.cfg.RunnerID = "runner-1"
 	rt.runner.Runners = stubRunners{byID: map[string]*pkgBoards.ManagedRunner{
@@ -115,9 +115,9 @@ func TestPlayableRefusesACardPinnedElsewhere(t *testing.T) {
 			Agent: "ghost", Effort: "high", Permission: "manualLive", Folder: "/",
 			Runner: "runner-2",
 		},
-	})
+	}, false)
 	if err == nil {
-		t.Fatal("a card pinned to another runner plays, want it refused")
+		t.Fatal("a flow node pinned to another runner plays, want it refused")
 	}
 	if !strings.Contains(err.Error(), "Server") {
 		t.Errorf("playable = %v, want the runner named", err)

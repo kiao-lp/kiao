@@ -58,3 +58,20 @@ test('JSON Schema edits autosave and survive a reload', async ({ page }) => {
     await page.reload();
     await expect(page.locator('.json-schema-editor .cm-content')).toContainText(marker, { timeout: TIMEOUT });
 });
+
+for (const script of [
+    { path: 'smoke/hello.ps1', selector: '.code-codemirror-editor .cm-content', command: 'Write-Output' },
+    { path: 'smoke/hello.cmd', selector: '.text-codemirror-editor .cm-content', command: 'echo' },
+]) {
+    test(`${script.path} edits autosave and survive a reload`, async ({ page }) => {
+        const marker = `script-roundtrip-${Date.now()}`;
+        await page.goto(script.path);
+        const editor = page.locator(script.selector);
+        await expect(editor).toContainText('Hello', { timeout: TIMEOUT });
+        await editor.fill(`${script.command} "Hello ${marker}"`);
+        await expect.poll(() => fetch(fileUrl(script.path)).then(r => r.text()), { timeout: TIMEOUT })
+            .toContain(marker);
+        await page.reload();
+        await expect(editor).toContainText(marker, { timeout: TIMEOUT });
+    });
+}

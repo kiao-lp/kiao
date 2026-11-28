@@ -26,7 +26,11 @@ const ErrCodeTooManyTurns = "too_many_turns"
 
 const ErrCodeBadAttachment = "bad_attachment"
 
+const ErrCodeBadResponseTokenLimit = "bad_response_token_limit"
+
 const ErrCodeSpawnFailed = "spawn_failed"
+
+const ErrCodeResumeFailed = "resume_failed"
 
 const ErrCodeNotPermitted = "not_permitted"
 

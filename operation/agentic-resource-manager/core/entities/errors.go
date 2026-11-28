@@ -12,14 +12,23 @@ var (
 	ErrAgentNameTaken = errors.New("agent name is taken")
 )
 
+// OperationError carries an explanation suitable for a resource API response.
+type OperationError struct {
+	Message string
+	Cause   error
+}
+
+func (e *OperationError) Error() string { return e.Message }
+func (e *OperationError) Unwrap() error { return e.Cause }
+
 func NotFoundf(format string, args ...any) error {
-	return fmt.Errorf("%s: %w", fmt.Sprintf(format, args...), ErrNotFound)
+	return &OperationError{Message: fmt.Sprintf(format, args...), Cause: ErrNotFound}
 }
 func Invalidf(format string, args ...any) error {
-	return fmt.Errorf("%s: %w", fmt.Sprintf(format, args...), ErrInvalid)
+	return &OperationError{Message: fmt.Sprintf(format, args...), Cause: ErrInvalid}
 }
 func Conflictf(format string, args ...any) error {
-	return fmt.Errorf("%s: %w", fmt.Sprintf(format, args...), ErrConflict)
+	return &OperationError{Message: fmt.Sprintf(format, args...), Cause: ErrConflict}
 }
 
 type DeletionStatus struct {

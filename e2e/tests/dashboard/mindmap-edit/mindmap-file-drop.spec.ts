@@ -19,9 +19,9 @@ import { test, expect, APIRequestContext, Locator, Page, workerApi, flushViewSta
 const TIMEOUT = 15000;
 
 const MAP = 'folder-a/Mindmap.mmap.json';
-/** A file at the store root: the tree shows it with only the root branch open. */
+/** A file at the DCMS root: the tree shows it with only the root branch open. */
 const DROPPED = 'welcome.md';
-/** What the drop writes — the file's name as the text, its store path as the destination. */
+/** A drop writes the filename as link text and a DCMS link as the destination. */
 const LINK = `[${DROPPED}](/${DROPPED})`;
 
 const NOTE_A = '# Note A\n\n---\n\nText';
@@ -38,7 +38,7 @@ test.afterEach(async ({ page }) => {
 });
 
 /**
- * The navigation tree down the left column with the store root open — the half of the app the drag
+ * The navigation tree down the left column with the DCMS root open — the half of the app the drag
  * starts in. Seeded rather than clicked: the arrangement is a document, and writing it is exact.
  */
 const seedState = async () => {

@@ -54,6 +54,8 @@ keeps prepared execution packages locally.
 | `PUT,DELETE /agents/{id}/{skills,mcp}/{name}` | Link or unlink the repository. PUT accepts `{"local":true}` to use its working tree for draft conversations. An empty PUT or `{"local":false}` selects the Git remote when configured. |
 | `POST /agents/{id}/publish` | Bump the agent version, resolve and compile the package, commit and tag the release, and push if a remote exists. |
 | `GET /agents/{id}/versions` | Publications, oldest first. |
+| `GET /agents/{id}/remote` | `hasRemote`, the remote commits missing from the working tree (`behind`) and, when the remote cannot be read, a `problem`. |
+| `POST /agents/{id}/pull` | Fetch the remote branch and fast-forward the working tree to it. |
 | `GET /agents/{id}/packages/{commit}` | Prepared deployment of a published full Git commit. |
 | `POST /agents/{id}/packages/draft` | Snapshot the agent and prepare its working-tree deployment. Returns `agent` and `package` with the same `draftId`. |
 | `GET /agents/{id}/deletion` | Deletion warnings and current-state confirmation fingerprint. |

@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { IconButton } from '../../ui-foundation/toolbar/IconButton';
 import { createPortal } from 'react-dom';
-import { Button } from 'antd';
 import { CloseOutlined } from '@ant-design/icons';
 import { DOCUMENT_TAB_ID } from './DocumentContent-ctx';
 import './Documents.css';
@@ -136,12 +136,12 @@ export const CentralStackView: React.FC<{ host?: string }> = ({ host }) => {
                         {panel.title !== undefined && (
                             <div className="cms-stack-header">{panel.title}</div>
                         )}
-                        <Button
+                        <IconButton
+                            label={dismiss}
+                            size="middle"
                             className="cms-stack-close"
-                            type="text"
                             icon={<CloseOutlined />}
                             onClick={() => close(panel.id)}
-                            aria-label={dismiss}
                             data-testid={`central-panel-${panel.id}-close`}
                         />
                         <CentralPanelContext.Provider value={panel.id}>

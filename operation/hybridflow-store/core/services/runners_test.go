@@ -150,9 +150,9 @@ func TestHeartbeatOfAGoneRunnerIsNotFound(t *testing.T) {
 	}
 }
 
-// A card naming a runner nothing holds is refused at the write, like a card naming no such
+// A flow node naming a runner nothing holds is refused at the write, like a flow node naming no such
 // agent — and one naming a runner there is goes in with the pin on it.
-func TestCardNamingAnUnknownRunnerIsRefused(t *testing.T) {
+func TestFlowNodeNamingAnUnknownRunnerIsRefused(t *testing.T) {
 	boards, flowNodes, _, _ := newCore()
 	ctx := context.Background()
 	board, err := boards.Create(ctx, services.NewBoardRequest{Name: "Major"}, "alex")
@@ -168,7 +168,7 @@ func TestCardNamingAnUnknownRunnerIsRefused(t *testing.T) {
 	}
 }
 
-func TestCardKeepsTheRunnerItNames(t *testing.T) {
+func TestFlowNodeKeepsTheRunnerItNames(t *testing.T) {
 	boards, flowNodes, _, store := newCore()
 	ctx := context.Background()
 	clock := fixedClock{at: time.Now()}

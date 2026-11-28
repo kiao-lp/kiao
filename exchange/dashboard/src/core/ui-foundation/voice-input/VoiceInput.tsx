@@ -1,62 +1,32 @@
-import React, { MouseEvent, useState } from 'react';
-import { Input } from 'antd';
-import { AudioOutlined } from '@ant-design/icons';
-import type { InputProps } from 'antd';
-import { useVoiceInput as useVoiceInputContext } from './VoiceInputContext';
-import { useVoiceInputHook } from './useVoiceInputHook';
+import React from 'react';
+import { Input, type InputProps, type InputRef } from 'antd';
+import { VoiceInputButton } from './VoiceInputButton';
+import { useVoiceField } from './useVoiceField';
 import './VoiceInput.css';
 
-export interface VoiceInputProps extends InputProps { }
+export type VoiceInputProps = InputProps;
 
-const stopEvent = (event: MouseEvent) => {
-    event.stopPropagation();
-    event.preventDefault();
-};
-
-export const VoiceInput: React.FC<VoiceInputProps> = (props) => {
-    const { defaultValue, value, onChange, ...restProps } = props;
-    const { language } = useVoiceInputContext();
-
-    const isControlled = value !== undefined;
-    const [internalValue, setInternalValue] = useState<string | number | readonly string[] | undefined>(defaultValue);
-
-    const effectiveValue = isControlled ? value : internalValue;
-
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (!isControlled) {
-            setInternalValue(e.target.value);
-        }
-        if (onChange) {
-            onChange(e);
-        }
-    };
-
-    const { showMic, listening, toggleListening } = useVoiceInputHook(
-        handleChange as any, effectiveValue, language, !props.disabled && !props.readOnly);
+export const VoiceInput = React.forwardRef<InputRef, VoiceInputProps>(function VoiceInput(
+    { value, defaultValue, onChange, suffix, ...props }, ref,
+) {
+    const field = useVoiceField({ value, defaultValue, onChange });
 
     return (
-        <Input
-            {...restProps}
-            value={effectiveValue}
-            onChange={handleChange}
-            suffix={
-                showMic ? (
-                    <div className="voice-input-suffix">
-                        {props.suffix}
-                        <span
-                            onMouseDown={stopEvent}
-                            onMouseUp={stopEvent}
-                            onClick={toggleListening}
-                            className="voice-input-mic-icon"
-                            aria-label="Voice Input"
-                        >
-                            <AudioOutlined className={listening ? 'voice-input-mic-active' : ''} />
-                        </span>
-                    </div>
-                ) : (
-                    props.suffix
-                )
-            }
-        />
+        <VoiceInputButton
+            value={field.text}
+            onChange={field.dictate}
+            disabled={props.readOnly || props.disabled}
+            inline
+        >
+            {button => (
+                <Input
+                    {...props}
+                    ref={ref}
+                    value={field.value}
+                    onChange={field.onChange}
+                    suffix={button ? <span className="voice-input-suffix">{suffix}{button}</span> : suffix}
+                />
+            )}
+        </VoiceInputButton>
     );
-};
+});

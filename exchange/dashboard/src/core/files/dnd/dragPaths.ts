@@ -1,7 +1,7 @@
 // text/plain is export-only; store drags use the x-kiao MIME types.
 
 import { extractName, FileDto } from '../service';
-import { storedLinkOf } from '../../navigation/internal-links';
+import { encodedDcmsLinkOf } from '../../navigation/internal-links';
 
 const PATHS_MIME = 'application/x-kiao-paths';
 const FOLDERS_MIME = 'application/x-kiao-folders';
@@ -52,7 +52,7 @@ export const holdsDraggedFiles = (data: DataTransfer | null): boolean =>
 
 /** Strip brackets from the label so entry names cannot break the markdown link. */
 export const markdownLinkOf = ({ path }: DraggedFile): string =>
-    `[${(extractName(path) || '/').replace(/[[\]]/g, '')}](${storedLinkOf(path)})`;
+    `[${(extractName(path) || '/').replace(/[[\]]/g, '')}](${encodedDcmsLinkOf(path)})`;
 
 export const markdownLinksOf = (files: DraggedFile[]): string =>
     files.map(markdownLinkOf).join(' ');

@@ -87,7 +87,7 @@ func TestChainRunLogRecords(t *testing.T) {
 	store.Note(id, "flow-node-1", "conv-1", runstate.NoticeWarning, "played again at 12:20")
 	store.State(id, "flow-node-1", "conv-1", playback.ChainRunStateWaiting)
 	store.Turn(id, "flow-node-1", "conv-1", playback.ChainRunTurnOutcome{
-		Prompt: playback.ChainRunPromptCard, Harness: "claude", Model: "sonnet",
+		Prompt: playback.ChainRunPromptFlowNode, Harness: "claude", Model: "sonnet",
 		Effort: "high", Permission: "bypassPermissions", ExitCode: &exit,
 		Fault: &harnessfaults.TurnFault{Summary: "the API is at capacity", Retry: true},
 	})
@@ -108,7 +108,7 @@ func TestChainRunLogRecords(t *testing.T) {
 		t.Fatalf("kinds = %v, want one record of each kind after the start", kinds)
 	}
 	turn := records[3]
-	if turn["prompt"] != playback.ChainRunPromptCard || turn["harness"] != "claude" || turn["model"] != "sonnet" {
+	if turn["prompt"] != "card" || turn["harness"] != "claude" || turn["model"] != "sonnet" {
 		t.Errorf("turn = %v, want what the turn ran on", turn)
 	}
 	if turn["fault"] != "the API is at capacity" || turn["faultRetry"] != true {
@@ -119,13 +119,13 @@ func TestChainRunLogRecords(t *testing.T) {
 	}
 	chain := records[4]
 	if chain["next"] != "flow-node-2" || chain["mode"] != pkgBoards.TransitionContinue {
-		t.Errorf("chain = %v, want what the finished card says comes after it", chain)
+		t.Errorf("chain = %v, want what the finished flow node says comes after it", chain)
 	}
 	if chain["fromFolder"] != "corpora" || chain["decision"] != playback.ChainRunChainFolderMismatch {
 		t.Errorf("chain = %v, want the normalised folders and the branch taken", chain)
 	}
 	if _, ok := chain["toFolder"]; ok {
-		t.Errorf("chain = %v, want the store root left out rather than sent as an empty folder", chain)
+		t.Errorf("chain = %v, want the DCMS root left out rather than sent as an empty folder", chain)
 	}
 	wait := records[5]
 	if wait["until"] != "2026-09-24T12:20:00.000Z" || wait["reason"] != "the API is at capacity" {
@@ -149,7 +149,7 @@ func TestChainRunLogNeverFailsARun(t *testing.T) {
 	store.Note("run-1790179938262-9742", "f", "c", runstate.NoticeInfo, "hi")
 	store.Note("run-1790179938262-9742", "f", "c", runstate.NoticeInfo, "   ")
 	store.State("run-1790179938262-9742", "f", "c", playback.ChainRunStatePlaying)
-	store.Turn("run-1790179938262-9742", "f", "c", playback.ChainRunTurnOutcome{Prompt: playback.ChainRunPromptCard})
+	store.Turn("run-1790179938262-9742", "f", "c", playback.ChainRunTurnOutcome{Prompt: playback.ChainRunPromptFlowNode})
 	store.Chain("run-1790179938262-9742", "f", playback.ChainRunChainDecision{Decision: playback.ChainRunChainEnd})
 	store.Wait("run-1790179938262-9742", "f", "c", playback.ChainRunStateWaiting, now, "")
 	store.WriteMeta("run-1790179938262-9742", nil)
@@ -345,7 +345,7 @@ func TestChainRunWritesItsLog(t *testing.T) {
 		switch rec["kind"] {
 		case playback.ChainRunLogKindTurn:
 			turns++
-			if rec["prompt"] != playback.ChainRunPromptCard || rec["harness"] == "" {
+			if rec["prompt"] != playback.ChainRunPromptFlowNode || rec["harness"] == "" {
 				t.Errorf("turn = %v, want what the turn was sent as and ran on", rec)
 			}
 		case playback.ChainRunLogKindChain:
@@ -355,7 +355,7 @@ func TestChainRunWritesItsLog(t *testing.T) {
 	if turns != 2 {
 		t.Errorf("turns = %d, want one record per flow node played", turns)
 	}
-	// Every card files its handoff: the fork the first card took, and the chain running out on
+	// Every flow node files its handoff: the fork the first flow node took, and the chain running out on
 	// the second.
 	if len(chains) != 2 || chains[0]["decision"] != playback.ChainRunChainForked ||
 		chains[1]["decision"] != playback.ChainRunChainEnd || chains[1]["flowNode"] != "flow-node-2" {
@@ -376,8 +376,8 @@ func TestChainRunWritesItsLog(t *testing.T) {
 	}
 }
 
-// The compact + continue stop: the first card shortens its chat, and the chain then refuses to
-// hand that chat to a card running in another folder. The log carries the compaction, the two
+// The compact + continue stop: the first flow node shortens its chat, and the chain then refuses to
+// hand that chat to a flow node running in another folder. The log carries the compaction, the two
 // folders as the guard compared them, and the branch the chain ended on.
 func TestChainRunLogsTheFolderMismatch(t *testing.T) {
 	rt := newRunnerTest(t, chainBoardCompacting(pkgBoards.TransitionContinue))
@@ -418,7 +418,7 @@ func TestChainRunLogsTheFolderMismatch(t *testing.T) {
 		t.Errorf("chain = %v, want the mismatch and the two folders it compared", mismatch)
 	}
 	if _, ok := mismatch["toFolder"]; ok {
-		t.Errorf("chain = %v, want the store root read as the empty folder", mismatch)
+		t.Errorf("chain = %v, want the DCMS root read as the empty folder", mismatch)
 	}
 }
 

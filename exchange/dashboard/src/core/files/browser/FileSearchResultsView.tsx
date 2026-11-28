@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo } from 'react';
 import { Table, type TableProps } from 'antd';
 import { useCentralStack } from '../../dashboard-ui/documents/CentralStack-ctx';
 import { useFileSearchContext } from '../core/FileSearch-ctx';
+import { AsyncList } from '../../ui-foundation/feedback/AsyncList';
 import { BrowserRow, searchResultToItem } from './folderBrowserRows';
 import { SearchTruncatedNotice } from './SearchSnippets-cmp';
 import './FileSearchResultsView.css';
@@ -46,8 +47,9 @@ export const FileSearchResultsBody: React.FC = () => {
                     pagination={false}
                     showHeader={false}
                     size="small"
-                    loading={isSearching}
-                    locale={{ emptyText: isSearching ? 'Searching…' : 'No files match this search.' }}
+                    loading={isSearching && results.length > 0}
+                    locale={{ emptyText: <AsyncList loading={isSearching} loadingLabel="Searching"
+                        empty="No files match this search." /> }}
                 />
             </div>
         </div>

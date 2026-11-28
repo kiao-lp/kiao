@@ -132,16 +132,16 @@ func (s *ChangeStore) Since(ctx context.Context, seq int64, boardID string, limi
 	where := "seq > $1"
 	if boardID != "" {
 		args = append(args, boardID)
-		// A client watching one board is told about that board and the cards on it, and about
+		// A client watching one board is told about that board and the flow nodes on it, and about
 		// nothing else — which is what keeps a tab showing one board idle while another plays.
 		where += " AND board_id::text = $3"
 	}
 	rows, err := s.pool.Query(ctx, `
 		SELECT seq, at, scope, kind, coalesce(board_id::text, ''),
-			coalesce(flow_node_id::text, ''), coalesce(flow_node_class_id::text, ''),
+			coalesce(flow_node_id::text, ''),
 			coalesce(agent_id::text, ''),
 			coalesce(runner_id::text, ''),
-			coalesce(workflow_id::text, ''), coalesce(workflow_class_id::text, ''),
+			coalesce(workflow_id::text, ''),
 			actor, coalesce(revision, 0)
 		FROM change_event_feed WHERE `+where+` ORDER BY seq LIMIT $2`, args...)
 	if err != nil {
@@ -152,8 +152,7 @@ func (s *ChangeStore) Since(ctx context.Context, seq int64, boardID string, limi
 	for rows.Next() {
 		var change entities.Change
 		if err := rows.Scan(&change.Seq, &change.At, &change.Scope, &change.Kind, &change.BoardID,
-			&change.FlowNodeID, &change.FlowNodeClassID, &change.AgentID, &change.RunnerID,
-			&change.WorkflowID, &change.WorkflowClassID,
+			&change.FlowNodeID, &change.AgentID, &change.RunnerID, &change.WorkflowID,
 			&change.Actor, &change.Revision); err != nil {
 			return nil, 0, err
 		}

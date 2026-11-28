@@ -46,6 +46,8 @@ func (s *Service) Routes() []httpkit.Route {
 		{Pattern: "DELETE /media/jobs/{id}", Handler: s.HandleStopMediaJob},
 
 		// Git (Source Control)
+		{Pattern: "GET /git/config", Handler: s.HandleGitConfig},
+		{Pattern: "PUT /git/config", Handler: s.HandleSaveGitConfig},
 		{Pattern: "GET /git/status", Handler: s.HandleGitStatus},
 		{Pattern: "POST /git/fetch", Handler: s.HandleGitFetch},
 		{Pattern: "GET /git/branches", Handler: s.HandleGitBranches},

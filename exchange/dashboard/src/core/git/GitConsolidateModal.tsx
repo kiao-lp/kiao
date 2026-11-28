@@ -37,10 +37,11 @@ export const GitConsolidateModal: React.FC<GitConsolidateModalProps> = ({
         <Modal
             title="Consolidate repository"
             open={open}
-            onOk={() => onConfirm(message, !!upstream && pushRemote)}
-            onCancel={onCancel}
+            onOk={() => { if (!busy) onConfirm(message, !!upstream && pushRemote); }}
+            onCancel={() => { if (!busy) onCancel(); }}
+            closable={!busy}
             okText="Consolidate"
-            okButtonProps={{ danger: true, loading: busy }}
+            okButtonProps={{ danger: true, loading: busy, disabled: busy }}
             cancelButtonProps={{ disabled: busy }}
             destroyOnHidden
         >

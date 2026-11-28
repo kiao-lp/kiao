@@ -52,10 +52,12 @@ func (svc *FileService) Delete(rel string) (refactor.LinkFixReport, error) {
 
 // removeOne is delete without the link fix: the entry, its subsidiaries and its sidecars.
 func (svc *FileService) removeOne(rel string) error {
-	if abs, err := svc.storage.Resolve(rel); err == nil {
-		deleteSubsidiaries(abs)
-		deleteSidecars(abs)
+	abs, err := svc.storage.ResolveForRemoval(rel)
+	if err != nil {
+		return err
 	}
+	deleteSubsidiaries(abs)
+	deleteSidecars(abs)
 	return svc.storage.DeleteFile(rel)
 }
 
@@ -138,7 +140,7 @@ func pathsCoveredByAnAncestor(paths []string) []bool {
 }
 
 // list returns the directory's entries, hiding subsidiaries whose main file is present and
-// flagging entries that have a search index. Paths are relative to the storage root.
+// flagging entries that have a search index. Paths are relative to the DCMS root.
 func (svc *FileService) List(dirPath string) ([]FileDto, error) {
 	entries, err := svc.storage.ListFiles(dirPath)
 	if err != nil {
@@ -328,7 +330,7 @@ func (svc *FileService) RenameFile(oldPath, newPath string) (refactor.LinkFixRep
 
 // moveOne is renameFile without the link fix: the entry and its subsidiaries.
 func (svc *FileService) moveOne(oldPath, newPath string) error {
-	oldAbs, err := svc.storage.Resolve(oldPath)
+	oldAbs, err := svc.storage.ResolveForRemoval(oldPath)
 	if err != nil {
 		return err
 	}
@@ -409,12 +411,8 @@ func (svc *FileService) copyOne(from, to string) error {
 	if err != nil {
 		return err
 	}
-	dstAbs, err := svc.storage.Resolve(to)
-	if err != nil {
-		return err
-	}
 	if !filesystem.IsDir(srcAbs) {
-		copySubsidiaries(srcAbs, dstAbs)
+		copySubsidiaries(svc.storage, from, to)
 	}
 	return nil
 }
@@ -461,7 +459,7 @@ func copyWouldRecurse(from, to string) bool {
 	src := filesystem.NormaliseVirtual(from)
 	dst := filesystem.NormaliseVirtual(to)
 	if src == "" {
-		return true // the storage root contains everything, including any destination
+		return true // the DCMS root contains everything, including any destination
 	}
 	return dst == src || strings.HasPrefix(dst, src+"/")
 }
@@ -596,11 +594,11 @@ func (svc *FileService) DiskUsage() DiskUsageDto {
 	return DiskUsageDto{TotalSpace: total, FreeSpace: free, UsableSpace: usable}
 }
 
-// Return an absolute root for use by external tools, falling back to the configured path.
+// StoreInfo gives local tools the absolute path of the DCMS root when it can be resolved.
 func (svc *FileService) StoreInfo() StoreInfoDto {
-	root := svc.storage.Root
-	if abs, err := filepath.Abs(root); err == nil {
-		root = abs
+	dcmsRoot := svc.storage.Root
+	if abs, err := filepath.Abs(dcmsRoot); err == nil {
+		dcmsRoot = abs
 	}
-	return StoreInfoDto{RootPath: root}
+	return StoreInfoDto{DCMSRoot: dcmsRoot}
 }

@@ -3,12 +3,12 @@ export { HybridflowClientProvider, useHybridflowClient } from './HybridflowClien
 // Exported from the barrel: tests in three folders use it without deep imports.
 export { FakeHybridflowClient, fakeClientOf, fakeClientFor } from './fakeClient';
 export type {
-    AgentDto, AgentPatchDto, AgentVersionDto, BoardSummary, ChangeDto, ChangesDto, ClassRefDto, ClassVersionDto,
-    ClassVersionPatchDto, CriterionDto, InstantiateBodies, InstantiateWorkflowResult,
-    ListedClassDto, ListedWorkflowClassDto,
-    NewAgentDto, NewClassVersionDto, NewFlowNodeClassDto, NewFlowNodeDto, NewRunnerDto,
-    NewWorkflowClassDto, NewWorkflowDto, RunnerDto, RunnerPatchDto,
-    SettingsDto, SpotDto, SuccessDto, FlowNodeClassDto, FlowNodeClassPatchDto,
+    AgentDto, AgentPatchDto, AgentVersionDto, BoardSummary, ChangeDto, ChangesDto,
+    CriterionDto, GatewayRoute, WorkflowWithFlowNodesDto,
+    FolderDto,
+    NewAgentDto, NewFlowNodeDto, NewRunnerDto,
+    NewWorkflowDto, RunnerDto, RunnerPatchDto,
+    SettingsDto, SizeDto, SpotDto, SuccessDto,
     FlowNodeDto, FlowNodePatchDto, FlowNodeUsageTotalsDto, BoardDetailDto,
-    WorkflowClassDto, WorkflowClassPatchDto, WorkflowDto, WorkflowPatchDto,
+    WorkflowDto, WorkflowPatchDto,
 } from './types';

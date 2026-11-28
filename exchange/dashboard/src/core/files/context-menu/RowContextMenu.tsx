@@ -1,11 +1,10 @@
 import React, { useMemo } from 'react';
-import { Dropdown } from 'antd';
 import { useContextMenuItemsAt } from './ContextMenuRegistry-ctx';
 import { useFileSelection } from '../selection/SelectionModel-ctx';
 import { useFileBrowsingPersistenceContext } from '../core/FileBrowsingPersistence-ctx';
 import { PointedFileInfo } from './ContextMenuRegistry';
 import { creationTargetOf, useMenuItemsWithNew } from './useMenuItemsWithNew';
-import { KEEP_MENU_IN_VIEWPORT } from '../../ui-foundation/interactions/menuPlacement';
+import { ContextMenu } from '../../ui-foundation/interactions/ContextMenu';
 import { useClipboardOptional } from '../clipboard/ClipboardModel-ctx';
 
 interface RowContextMenuProps {
@@ -38,17 +37,15 @@ export const RowContextMenu: React.FC<RowContextMenuProps> = ({ path, isDirector
     const items = useMenuItemsWithNew(registryItems, creationTargetOf(path, isDirectory));
 
     return (
-        <Dropdown
-            menu={{ items }}
-            trigger={['contextMenu']}
+        <ContextMenu
+            items={items}
             open={open}
             onOpenChange={open => {
                 onOpenChange?.(open);
                 if (open && isDirectory) void clipboard?.refreshTextFiles();
             }}
-            {...KEEP_MENU_IN_VIEWPORT}
         >
             {children}
-        </Dropdown>
+        </ContextMenu>
     );
 };

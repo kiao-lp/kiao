@@ -33,6 +33,10 @@ const files = await vi.hoisted(async () => {
 vi.mock('@kiao-dashboard-core', async () => {
     const { useState } = await import('react');
     return {
+        AsyncList: (await import('src/core/ui-foundation/feedback/AsyncList')).AsyncList,
+        CommitInput: (await import('src/core/ui-foundation/forms/CommitInput')).CommitInput,
+        IconButton: (await import('src/core/ui-foundation/toolbar/IconButton')).IconButton,
+        useConfirmation: (await import('src/core/ui-foundation/forms/ConfirmationDialog')).useConfirmation,
         useWorkerClient: () => files.client,
         useRefreshFileList: () => files.refresh,
         useAuthenticatedFileUrl: (path: string) => `/api/files/getFile?path=${encodeURIComponent(path)}`,

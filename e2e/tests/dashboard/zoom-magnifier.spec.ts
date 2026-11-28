@@ -35,7 +35,7 @@ const expectSameBox = (actual: Box | null, expected: Box, what: string) => {
 const overlaps = (a: Box, b: Box) =>
     a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
 
-/** The rendered half of the markdown editor — the source pane holds the same words. */
+/** The rendered pane of the markdown editor. */
 const openDocument = async (page: Page, viewport = VIEWPORT): Promise<Locator> => {
     await page.setViewportSize(viewport);
     await page.goto(FILE);
@@ -43,6 +43,14 @@ const openDocument = async (page: Page, viewport = VIEWPORT): Promise<Locator> =
     await expect(page.locator('.archdia-svg').first()).toBeVisible({ timeout: TIMEOUT });
     await page.waitForTimeout(500); // both diagrams laid out before anything is measured
     return page.locator('.configured-markdown-container').first();
+};
+
+const openSplitDocument = async (page: Page) => {
+    const preview = await openDocument(page);
+    // Leave room in the viewport for the entire block at twice its width.
+    await page.getByRole('button', { name: 'Show Editor' }).click();
+    await expect(page.getByRole('button', { name: 'Hide Editor' })).toBeVisible();
+    return preview;
 };
 
 /** How the reader picks a target: Ctrl held down — Cmd on a Mac — and one click. */
@@ -87,7 +95,7 @@ const resize = async (page: Page, edge: string, dx: number, dy: number) => {
 };
 
 test('magnifies a diagram over the page without moving the page', async ({ page }) => {
-    const preview = await openDocument(page);
+    const preview = await openSplitDocument(page);
     const diagram = preview.locator('.code-block-wrapper').first();
     const behind = preview.getByText('A prose paragraph between the diagrams.');
 
@@ -329,7 +337,7 @@ test.describe('the long press, where there is no Ctrl key to hold', () => {
     test.use({ hasTouch: true });
 
     test('holding a diagram magnifies it, and holding it again puts it back', async ({ page }) => {
-        const preview = await openDocument(page);
+        const preview = await openSplitDocument(page);
         const diagram = preview.locator('.code-block-wrapper').first();
         const behind = preview.getByText('A prose paragraph between the diagrams.');
         const slot = (await diagram.boundingBox())!;

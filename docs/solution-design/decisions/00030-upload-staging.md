@@ -48,5 +48,5 @@ from Git; the next upload sweeps areas older than a day. Seeded dot-name exclusi
 `.kiao-files` keep automatic passes out while an explicitly targeted reindex still works.
 
 `DELETE /staging` accepts only a directory minted by `POST /staging`, refusing the
-parent staging folder and deeper paths. It performs no link fix because those paths
-were never exposed as store references.
+parent staging folder and deeper paths. Staging exposes uploads only by file API path,
+so discard skips DCMS link repair.

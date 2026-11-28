@@ -130,9 +130,13 @@ test('template instantiation: configure values and copy to clipboard', async ({ 
     // 4. Verify Clipboard
     const clipboardText = await page.evaluate(() => navigator.clipboard.readText());
 
+    // The fenced template blocks keep their leading and trailing newlines.
     const expectedText = `## feat(dashboard): test
 
+
+
 In pub/exchange/dashboard, message
+
 
 
 Tests from your part should include (among others you might consider useful):

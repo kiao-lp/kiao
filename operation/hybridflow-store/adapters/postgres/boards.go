@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"kiao/hybridflow-store/core/entities"
@@ -26,7 +27,7 @@ import (
 //     is a single `UPDATE … WHERE …` whose row count is the answer. Nothing reads a row, decides,
 //     and writes it back — that shape is the one that loses a race.
 //   - **A patch updates the columns it was given.** The SQL is assembled from the fields the patch
-//     names, so two writers touching two fields of one card are two `UPDATE`s that do not overlap.
+//     names, so two writers touching two fields of one flow node are two `UPDATE`s that do not overlap.
 type BoardStore struct {
 	pool *pgxpool.Pool
 }
@@ -38,7 +39,7 @@ var _ ports.BoardRepository = (*BoardStore)(nil)
 
 // ── boards ────────────────────────────────────────────────────────────────────
 
-const boardColumns = `id, name, slug, created_at, updated_at, revision, archived_at`
+const boardColumns = `id, name, slug, created_at, updated_at, revision, archived_at, coalesce(folder_id::text, '')`
 
 func scanBoard(row pgx.Row) (*entities.Board, error) {
 	var (
@@ -46,7 +47,7 @@ func scanBoard(row pgx.Row) (*entities.Board, error) {
 		archived *time.Time
 	)
 	err := row.Scan(&board.ID, &board.Name, &board.Slug,
-		&board.CreatedAt, &board.UpdatedAt, &board.Revision, &archived)
+		&board.CreatedAt, &board.UpdatedAt, &board.Revision, &archived, &board.FolderID)
 	if err != nil {
 		return nil, err
 	}
@@ -57,16 +58,18 @@ func scanBoard(row pgx.Row) (*entities.Board, error) {
 }
 
 func (s *BoardStore) CreateBoard(ctx context.Context, board *entities.Board, actor string) error {
+	folderID, err := parseBoardFolderID(board.FolderID)
+	if err != nil {
+		return err
+	}
 	return inTx(ctx, s.pool, actor, func(tx pgx.Tx) error {
-		_, err := tx.Exec(ctx, `
-			INSERT INTO board (id, name, slug, created_at, updated_at, revision)
-			VALUES ($1, $2, $3, $4, $5, $6)`,
+		err := tx.QueryRow(ctx, `
+			INSERT INTO board (id, name, slug, created_at, updated_at, revision, folder_id)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)
+			RETURNING coalesce(folder_id::text, '')`,
 			board.ID, board.Name, board.Slug,
-			board.CreatedAt, board.UpdatedAt, board.Revision)
-		if err != nil {
-			return translate(err, fmt.Sprintf("board %q", board.Name))
-		}
-		return nil
+			board.CreatedAt, board.UpdatedAt, board.Revision, folderID).Scan(&board.FolderID)
+		return translate(err, fmt.Sprintf("board %q", board.Name))
 	})
 }
 
@@ -126,6 +129,13 @@ func (s *BoardStore) PatchBoard(ctx context.Context, id string, patch entities.B
 			set.raw("archived_at = NULL")
 		}
 	}
+	if patch.FolderID != nil {
+		folderID, err := parseBoardFolderID(*patch.FolderID)
+		if err != nil {
+			return nil, err
+		}
+		set.add("folder_id", folderID)
+	}
 	if set.empty() {
 		return nil, entities.Invalidf("the patch changes nothing")
 	}
@@ -141,6 +151,16 @@ func (s *BoardStore) PatchBoard(ctx context.Context, id string, patch entities.B
 		return nil
 	})
 	return board, err
+}
+
+func parseBoardFolderID(id string) (pgtype.UUID, error) {
+	var folderID pgtype.UUID
+	if id != "" {
+		if err := folderID.Scan(id); err != nil {
+			return folderID, entities.NotFoundf("folder %q", id)
+		}
+	}
+	return folderID, nil
 }
 
 func (s *BoardStore) DeleteBoard(ctx context.Context, id string, actor string) error {
@@ -174,10 +194,14 @@ func (a *assignments) add(column string, value any) {
 	a.parts = append(a.parts, fmt.Sprintf("%s = $%d", column, len(a.args)))
 }
 
-// addExpr assigns an expression that mentions the value once, as `%s`. What a cast needs.
-func (a *assignments) addExpr(format string, value any) {
-	a.args = append(a.args, value)
-	a.parts = append(a.parts, fmt.Sprintf(format, fmt.Sprintf("$%d", len(a.args))))
+// addExpr assigns an expression with a %s placeholder for each parameter.
+func (a *assignments) addExpr(format string, values ...any) {
+	params := make([]any, len(values))
+	for i, value := range values {
+		a.args = append(a.args, value)
+		params[i] = fmt.Sprintf("$%d", len(a.args))
+	}
+	a.parts = append(a.parts, fmt.Sprintf(format, params...))
 }
 
 // raw assigns something with no value of its own.
@@ -221,7 +245,7 @@ func whyNoRows(ctx context.Context, pool *pgxpool.Pool, table, keyExpr, key stri
 		return entities.Conflictf("%s %s is at revision %d, not %d", table, key, revision, *expected)
 	}
 	// There, at some revision, and the update still matched nothing: the WHERE held something else
-	// — a claim on a card another run holds is the one that gets here.
+	// — a claim on a flow node another run holds is the one that gets here.
 	return entities.Conflictf("%s %s could not be written as asked", table, key)
 }
 

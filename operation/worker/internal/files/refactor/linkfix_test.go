@@ -11,9 +11,8 @@ import (
 	"testing"
 )
 
-// TestLinkFixRenameChildAndSlash pins the token-shaping rules: a link opens with the slash that
-// makes it one, a nested "child" suffix is carried over, and a token whose match is followed by a
-// non-boundary, non-slash byte is left alone.
+// TestLinkFixRenameChildAndSlash covers DCMS links to a renamed folder and its descendants.
+// A shared prefix in another folder's name is outside the match.
 func TestLinkFixRenameChildAndSlash(t *testing.T) {
 	root := t.TempDir()
 	lf := NewLinkFixer(&pkgFilesystem.Storage{Root: root}, []string{".md"})
@@ -47,9 +46,8 @@ func TestLinkFixRenameChildAndSlash(t *testing.T) {
 	}
 }
 
-// Only leading-slash store references qualify for rewriting. Bare words such as docs,
-// config and units can appear in prose, shell snippets or stack traces.
-// Document-relative Markdown links resolve against their document and are left alone.
+// Link repair targets DCMS links. Bare paths in prose and document-relative Markdown
+// destinations keep their original spelling.
 func TestLinkFixLeavesBarePathsAlone(t *testing.T) {
 	root := t.TempDir()
 	lf := NewLinkFixer(&pkgFilesystem.Storage{Root: root}, []string{".md"})
@@ -176,12 +174,9 @@ func TestLinkFixSkipsBinary(t *testing.T) {
 	}
 }
 
-// TestLinkFixCanonicalStoredLink pins the shape Dashboard stores an internal link in: a path
-// relative to the store root, with a leading slash and no context path. That form is the one the
-// fixer repairs on a rename, which is the point of it — the older `/dashboard/…` shape is not,
-// because the byte before the match is a '/', which is not a token boundary, so the match is
-// rejected. Content written before links became portable therefore keeps a stale path here.
-func TestLinkFixCanonicalStoredLink(t *testing.T) {
+// TestLinkFixDCMSLinks checks a rename in Markdown and JSON. A legacy Dashboard href
+// lacks a token boundary before the document path and stays unchanged.
+func TestLinkFixDCMSLinks(t *testing.T) {
 	root := t.TempDir()
 	lf := NewLinkFixer(&pkgFilesystem.Storage{Root: root}, []string{".md", ".json"})
 
@@ -211,7 +206,7 @@ func TestLinkFixCanonicalStoredLink(t *testing.T) {
 	}
 }
 
-// The state directory sits in the data root and is full of .json — a scannable extension. A rename
+// The state directory sits in the DCMS root and is full of .json — a scannable extension. A rename
 // must not reach into it: a conversation transcript is verbatim prompt text and the ledger records
 // what a store has migrated, neither of which is a link anybody asked to fix.
 func TestLinkFixLeavesMachineryDirectoriesAlone(t *testing.T) {
@@ -483,8 +478,8 @@ func TestLinkFixHonoursTheStoreDeclaration(t *testing.T) {
 	}
 }
 
-// A declaration in a subdirectory covers that subtree and nothing else — the case a store holding
-// several unrelated repositories is made of, and the one a store-root-only file cannot express.
+// A declaration in a subdirectory covers that subtree, so nested repositories can have
+// their own rules under one DCMS root.
 func TestLinkFixHonoursANestedDeclaration(t *testing.T) {
 	root := t.TempDir()
 	lf := NewLinkFixer(&pkgFilesystem.Storage{Root: root}, []string{".md"})
@@ -522,9 +517,8 @@ func TestLinkFixIgnoresAMigrationOnlyRule(t *testing.T) {
 	}
 }
 
-// A stored link keeps the percent-encoding it was written with, while a rename names the path in
-// UTF-8. Both spellings are the same link, so both have to be recognised — and the new path goes
-// back written the way the link that carried the old one was.
+// A rename supplies UTF-8 paths. The fixer recognizes both spellings of a DCMS link
+// and writes the new path using the original link's encoding.
 func TestLinkFixMatchesEscapedPaths(t *testing.T) {
 	cases := []struct {
 		name string
@@ -559,15 +553,8 @@ func TestLinkFixMatchesEscapedPaths(t *testing.T) {
 	}
 }
 
-// The bug this pass carried for as long as it has matched escapes at all: it modelled the *address
-// bar*'s encoding, which leaves the sub-delimiters raw, while Dashboard writes a stored link with
-// `encodeURIComponent` and escapes the parentheses on top of it (`storedLinkOf`). Every character
-// in that gap — "&", "(", ")", ",", ":", the ones a real filename is full of — was written escaped
-// by the application and looked for raw here, so a bookmark on `/docs/Bilan%20%282026%29/note.md`
-// came through the rename of the folder it points at untouched, pointing at nothing.
-//
-// Each character is checked in both of its spellings, because the fix must not buy the escaped one
-// at the cost of the raw one: the two are the same link and a store holds both.
+// Dashboard's encodedDcmsLinkOf escapes punctuation browsers may leave raw in their
+// address bars. Check both encodings so renaming a folder repairs links in either form.
 func TestLinkFixMatchesEveryFormAWriterProduces(t *testing.T) {
 	cases := []struct {
 		name    string

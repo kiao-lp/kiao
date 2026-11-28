@@ -35,6 +35,9 @@ func (s *Store) buildDeployment(ctx context.Context, repository, commit string) 
 		return nil, err
 	}
 	lock, err := os.ReadFile(filepath.Join(source, "apm.lock.yaml"))
+	if os.IsNotExist(err) {
+		return nil, entities.Invalidf("This publication is missing apm.lock.yaml. Publish a new version with its APM lockfile.")
+	}
 	if err != nil {
 		return nil, err
 	}

@@ -23,7 +23,7 @@ describe('RichTextCmp', () => {
         expect(container.querySelector('.cms-reveal-in-tree')).toBeNull();
     });
 
-    it('keeps the passage a stored link names', () => {
+    it('preserves the passage fragment of a DCMS link', () => {
         const { container } = note('[is drawn once](/units/abc/cadre.md#text=is%20drawn%20once)');
 
         expect(container.querySelector('a')?.getAttribute('href'))

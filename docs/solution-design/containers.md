@@ -13,7 +13,7 @@ beside its code.
 | Container | Zone | Responsibility | Solution design |
 | --- | --- | --- | --- |
 | [Dashboard](/exchange/dashboard/README.md) | Exchange | The React/Vite interface and plugin host. | [Dashboard](/exchange/dashboard/docs/solution-design/README.md) |
-| [worker](/operation/worker/README.md) | Operation | The Go file, git and agent backend. | [worker](/operation/worker/docs/solution-design/README.md) |
+| [worker](/operation/worker/README.md) | Operation | The Go backend for files, Git, turns and chain runs. | [worker](/operation/worker/docs/solution-design/README.md) |
 | [hybridflow-store](/operation/hybridflow-store/README.md) | Operation | Boards, flow nodes, runners and execution provenance in PostgreSQL. | [hybridflow-store](/operation/hybridflow-store/docs/solution-design/README.md) |
 
 | [agentic-resource-manager](/operation/agentic-resource-manager/README.md) | Operation | Agent Git repositories, APM dependencies, releases and package cache. | [Resource service](/operation/agentic-resource-manager/README.md) |

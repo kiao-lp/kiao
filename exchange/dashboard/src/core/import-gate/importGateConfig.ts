@@ -1,7 +1,7 @@
 import { WorkerClient } from 'kiao-worker';
 import { GateMatcher, parseCategory, sortMatchers } from './matchers';
 
-/** Store-root folder. Each `.json` file is a category. */
+/** Path from the DCMS root. Each `.json` file is a category. */
 export const IMPORT_GATE_PATH = 'kiao-user-config/import-gate';
 
 /** Reloads on each import. Missing folder yields an empty gate. */

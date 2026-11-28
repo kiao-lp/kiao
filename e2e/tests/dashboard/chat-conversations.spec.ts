@@ -80,6 +80,7 @@ interface Conversation {
     agentVersion: { agentId: string; commit: string };
     model: string;
     effort: string;
+    permissionMode: string;
     running: boolean;
     archived: boolean;
     pinned: boolean;
@@ -93,8 +94,9 @@ interface ViewStateFile {
     files: Record<string, unknown>;
 }
 
-const listConversations = async (): Promise<Conversation[]> => {
-    const response = await fetch(`${workerApi()}/hybridflow-runner/conversations`);
+const listConversations = async (includeArchived = false): Promise<Conversation[]> => {
+    const query = includeArchived ? '?archived=true' : '';
+    const response = await fetch(`${workerApi()}/hybridflow-runner/conversations${query}`);
     if (!response.ok) throw new Error(`GET /hybridflow-runner/conversations answered ${response.status}`);
     return response.json() as Promise<Conversation[]>;
 };
@@ -146,18 +148,6 @@ const createConversation = async (page: Page, known: Set<string>, agentName: str
     }, { timeout: TIMEOUT }).not.toBe('');
     known.add(created);
     return created;
-};
-
-/**
- * antd renders a Popconfirm's buttons in a portal, Cancel first and the confirming one last. Which
- * word the confirming one carries is the caller's choice — `okText` is "Discard", "Yes" and
- * "Delete" in three different places in this repo — so its position is the stable handle, not its
- * label.
- */
-const confirmPopconfirm = async (page: Page) => {
-    const buttons = page.locator('.ant-popconfirm-buttons button');
-    await expect(buttons.last()).toBeVisible({ timeout: TIMEOUT });
-    await buttons.last().click();
 };
 
 const openChatPanel = async (page: Page) => {
@@ -233,7 +223,8 @@ test.describe('Chat conversations', () => {
             if (await leftColumn.count() === 0) await page.getByTestId('bar-toggle-left').click();
             await leftColumn.getByRole('tab', { name: 'Usage', exact: true }).click();
             await page.mouse.move(0, 0);
-            await expect(page.locator('.chat-usage-tab--empty')).toBeVisible();
+            await expect(page.locator('.chat-usage-tab').getByRole('status'))
+                .toHaveText(/No harness is enabled and available/);
             await expect(page.locator('.chat-usage-section')).toHaveCount(0);
             expect(probes).toEqual([]);
             await page.getByRole('tab', { name: TAB_TITLE, exact: true }).click();
@@ -247,7 +238,10 @@ test.describe('Chat conversations', () => {
 
     test('creates two conversations, switches between them, and deletes one', async ({ page, request }) => {
         const known = new Set(await conversationIds());
-        const agent = await publishTestAgent(request, { name: 'Conversation reviewer', harness: 'claude', model: 'haiku' });
+        const instructions = 'Review changes before proposing edits.\n'.repeat(40).trim();
+        const agent = await publishTestAgent(request, {
+            name: 'Conversation reviewer', harness: 'claude', model: 'haiku', instructions,
+        });
         agents.add(agent.id);
 
         await page.goto(FOLDER);
@@ -268,9 +262,26 @@ test.describe('Chat conversations', () => {
             expect(registry.find(c => c.id === id))
                 .toMatchObject({
                     folder: FOLDER, running: false, archived: false, messageCount: 0, model: 'haiku',
+                    permissionMode: 'bypassPermissions',
                     agentVersion: { agentId: agent.id, commit: agent.published.commit },
                 });
         }
+
+        const history = page.locator('.chat-messages-area');
+        const details = history.getByTestId('conversation-details');
+        const summary = details.locator('summary');
+        await expect(summary).toContainText(agent.name);
+        await expect(details).not.toHaveAttribute('open');
+        await summary.press('Enter');
+        await expect(details).toHaveAttribute('open', '');
+        await expect(details.getByText(idB, { exact: true })).toBeVisible();
+        await expect(details.getByText(instructions, { exact: true })).toBeVisible();
+        await expect(details.getByText(new RegExp(`/conversations/${idB}/transcript\\.jsonl$`))).toBeVisible();
+        await expect(summary).toBeInViewport();
+        await history.evaluate(el => { el.scrollTop = el.scrollHeight; });
+        await expect(summary).not.toBeInViewport();
+        await summary.press('Enter');
+        await expect(details).not.toHaveAttribute('open');
 
         // 2. Name them from outside the browser. That is not a shortcut around a rename control: it
         // is the assertion that a conversation changed anywhere reaches every open socket, which is
@@ -294,11 +305,16 @@ test.describe('Chat conversations', () => {
             [...Object.keys(localStorage), ...Object.keys(sessionStorage)]);
         expect(storedKeys.filter(k => /claude|chat|agent|harness/i.test(k))).toEqual([]);
 
-        // 4. Delete one. Only this service's record goes — the CLI's own session file under
-        // ~/.claude/projects is not ours to purge — so what is asserted is the registry.
-        // The actions act on whatever the select is showing, which is the one just switched to.
-        await panel.locator(PANEL.SWITCHER).locator(action('Delete')).click();
-        await confirmPopconfirm(page);
+        // 4. Delete the selected conversation through the manager.
+        await panel.locator(PANEL.SWITCHER).locator(action('Manage conversations')).click();
+        const manager = page.getByRole('dialog', { name: 'Manage conversations' });
+        const remove = manager.getByRole('button', { name: 'Delete' });
+        await expect(remove).toBeDisabled();
+        await manager.getByRole('checkbox', { name: new RegExp(TITLE_B) }).check();
+        await remove.click();
+        await page.getByRole('dialog', { name: 'Delete 1 conversation?' }).getByRole('button', { name: 'Delete' }).click();
+        await expect(manager.getByText('1 conversation deleted.')).toBeVisible();
+        await manager.getByRole('button', { name: 'Close' }).click();
 
         await expect.poll(async () => {
             await page.locator(PANEL.CONVERSATION_SELECT).click();
@@ -339,6 +355,13 @@ test.describe('Chat conversations', () => {
             const before = await columns.count();
 
             await selectConversation(page, TITLE_PINNED);
+            await panel.getByRole('button', { name: 'Response token limit: None' }).press('Enter');
+            const limits = page.getByRole('grid', { name: 'Response token limit' });
+            await expect(limits.getByRole('row')).toHaveCount(4);
+            await expect(limits.getByRole('gridcell')).toHaveCount(16);
+            await expect(limits.getByRole('button', { name: 'None' })).toBeFocused();
+            await limits.getByRole('button', { name: '40', exact: true }).click();
+            await expect(panel.getByRole('button', { name: 'Response token limit: 40 tokens' })).toBeFocused();
             await panel.locator(PANEL.SWITCHER).locator(action('Pin')).click();
 
             // The record is what carries it, so every tab and the next session agree.
@@ -346,6 +369,9 @@ test.describe('Chat conversations', () => {
                 { timeout: TIMEOUT }).toBe(true);
             // The pinned one is not listed *and* shown: it left the list for its own column.
             await expect(columns).toHaveCount(before + 1);
+            await expect(panel.locator('.chat-column--pinned').getByRole('button', {
+                name: 'Response token limit: 40 tokens',
+            })).toBeVisible();
             await expect(panel.locator(PANEL.PINNED_HEADER, { hasText: TITLE_PINNED })).toHaveCount(1);
             await page.locator(PANEL.CONVERSATION_SELECT).click();
             await expect(page.locator(PANEL.CONVERSATION_OPTION, { hasText: TITLE_PINNED })).toHaveCount(0);
@@ -368,5 +394,75 @@ test.describe('Chat conversations', () => {
             await expect(page.locator(PANEL.COLUMN)).toHaveCount(before);
             await expect.poll(activeConversationId, { timeout: TIMEOUT }).toBe(idPinned);
         }
+    });
+
+    test('archives and deletes batches from a scrollable conversation list', async ({ page, request }) => {
+        const agent = await publishTestAgent(request, { name: 'Batch conversation reviewer', harness: 'claude', model: 'haiku' });
+        agents.add(agent.id);
+
+        const seed = async (title: string): Promise<Conversation> => {
+            const response = await request.post(`${workerApi()}/hybridflow-runner/conversations`, {
+                data: { title, folder: FOLDER, agentId: agent.id, harness: 'claude', model: 'haiku' },
+            });
+            expect(response.ok(), await response.text()).toBe(true);
+            const conversation = await response.json() as Conversation;
+            created.add(conversation.id);
+            return conversation;
+        };
+        const listed = await seed('E2E batch listed');
+        const pinned = await seed('E2E batch pinned');
+        const archived = await seed('E2E batch already archived');
+        await patchConversation(pinned.id, { pinned: true });
+        await patchConversation(archived.id, { archived: true });
+        const fillers = await Promise.all(Array.from({ length: 16 }, (_, index) => seed(`E2E batch filler ${index}`)));
+
+        await page.setViewportSize({ width: 980, height: 500 });
+        await page.goto(FOLDER);
+        await openChatPanel(page);
+
+        const pinnedHeader = page.locator(PANEL.PINNED_HEADER, { hasText: pinned.title });
+        await pinnedHeader.locator(action('Manage conversations')).click();
+        const manager = page.getByRole('dialog', { name: 'Manage conversations' });
+        const list = manager.getByRole('list', { name: 'All conversations' });
+        const archive = manager.getByRole('button', { name: 'Archive' });
+        const remove = manager.getByRole('button', { name: 'Delete' });
+        const checkbox = (conversation: Conversation) => list.getByRole('checkbox', { name: new RegExp(conversation.title) });
+        await expect(checkbox(archived)).toHaveAccessibleName(/Archived$/);
+        await list.press('End');
+        await expect.poll(() => list.evaluate(element => element.scrollTop)).toBeGreaterThan(0);
+        await expect(archive).toBeInViewport();
+        await expect(remove).toBeInViewport();
+
+        await checkbox(listed).check();
+        await checkbox(pinned).check();
+        await archive.click();
+        const archiveConfirmation = page.getByRole('dialog', { name: 'Archive 2 conversations?' });
+        await archiveConfirmation.getByRole('button', { name: 'Cancel' }).click();
+        expect(await conversationIds()).toEqual(expect.arrayContaining([listed.id, pinned.id]));
+        await expect(checkbox(pinned)).toBeChecked();
+
+        await archive.click();
+        await archiveConfirmation.getByRole('button', { name: 'Archive' }).click();
+        await expect(manager.getByText('2 conversations archived.')).toBeVisible();
+        await expect(pinnedHeader).toHaveCount(0);
+        await expect(checkbox(listed)).toHaveAccessibleName(/Archived$/);
+        const activeIds = await conversationIds();
+        expect(activeIds).not.toContain(listed.id);
+        expect(activeIds).not.toContain(pinned.id);
+
+        await checkbox(listed).check();
+        await checkbox(archived).check();
+        await expect(archive).toBeDisabled();
+        await remove.click();
+        await page.getByRole('dialog', { name: 'Delete 2 conversations?' }).getByRole('button', { name: 'Delete' }).click();
+        await expect(manager.getByText('2 conversations deleted.')).toBeVisible();
+        await expect(checkbox(listed)).toHaveCount(0);
+        await expect(checkbox(archived)).toHaveCount(0);
+        const registryIds = (await listConversations(true)).map(conversation => conversation.id);
+        expect(registryIds).not.toContain(listed.id);
+        expect(registryIds).not.toContain(archived.id);
+        expect(registryIds).toEqual(expect.arrayContaining([pinned.id, ...fillers.map(conversation => conversation.id)]));
+        created.delete(listed.id);
+        created.delete(archived.id);
     });
 });

@@ -45,7 +45,6 @@ export const FileSearchInput: React.FC<FileSearchInputProps> = ({ onSearch, onCl
             size="small"
             status={error ? 'error' : undefined}
             prefix={<SearchOutlined style={{ color: token.colorTextDescription }} />}
-            // VoiceInput nests this suffix to the LEFT of its microphone, so the row reads [?] [mic].
             suffix={
                 error ? (
                     <Tooltip title={error}>

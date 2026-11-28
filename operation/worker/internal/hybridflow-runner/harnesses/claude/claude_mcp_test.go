@@ -97,16 +97,15 @@ func TestBundledMCPServers(t *testing.T) {
 	}
 }
 
-// TestBundledMCPServersRefusals: each of these reaches the operator at startup through
-// Config.Validate, instead of reaching the user as a turn whose tools are quietly missing.
+// Configuration is validated at startup. Runtime files are checked before a turn.
 func TestBundledMCPServersRefusals(t *testing.T) {
 	bundle := stageMCPBundle(t, "units-entry.js")
 
 	if _, err := runnerconfig.BundledMCPServers(&runnerconfig.Config{Config: &coreconfig.Config{Port: "18080"}, MCPPath: bundle, MCPServers: "units,knowledge"}); err == nil {
 		t.Errorf("an unknown server name must be refused, not dropped")
 	}
-	if _, err := runnerconfig.BundledMCPServers(&runnerconfig.Config{Config: &coreconfig.Config{Port: "18080"}, MCPPath: bundle, MCPServers: "units,cv"}); err == nil {
-		t.Errorf("a server whose entrypoint is not staged must be refused")
+	if servers, err := runnerconfig.BundledMCPServers(&runnerconfig.Config{Config: &coreconfig.Config{Port: "18080"}, MCPPath: bundle, MCPServers: "units,cv"}); err != nil || len(servers) != 2 {
+		t.Errorf("a missing entrypoint should remain declared for diagnostics: %v, %v", servers, err)
 	}
 	if _, err := runnerconfig.BundledMCPServers(&runnerconfig.Config{Config: &coreconfig.Config{Port: "18080"}, MCPPath: bundle, MCPServers: " , "}); err == nil {
 		t.Errorf("a bundle configured with no server must be refused")

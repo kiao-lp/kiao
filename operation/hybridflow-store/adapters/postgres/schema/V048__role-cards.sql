@@ -1,0 +1,46 @@
+ALTER TABLE flow_node
+    DROP CONSTRAINT flow_node_type_check,
+    ADD CONSTRAINT flow_node_type_check
+        CHECK (type IN ('ai', 'human', 'shutdown', 'scheduler', 'bitbucket-pr-status',
+                        'bitbucket-commit-status', 'gateway', 'exclusive-gateway', 'limiter', 'note', 'value', 'role')),
+    ADD COLUMN role_id text NOT NULL DEFAULT '',
+    ADD COLUMN role_people text[] NOT NULL DEFAULT '{}',
+    ADD CONSTRAINT flow_node_role_fields
+        CHECK (type = 'role' OR (role_id = '' AND cardinality(role_people) = 0));
+
+CREATE UNIQUE INDEX flow_node_role_id_unique ON flow_node (board_id, role_id)
+    WHERE type = 'role' AND NOT archived AND role_id <> '';
+
+CREATE OR REPLACE FUNCTION flow_node_has_context_reference(field_text text)
+    RETURNS boolean LANGUAGE sql IMMUTABLE STRICT
+    RETURN field_text ~ '\{\{\s*(?:(?:input|currentWokflow|currentWorkflow)(?:\.[^{}\s]+)?|role\.[A-Za-z0-9_-]+)\s*\}\}';
+
+CREATE OR REPLACE FUNCTION check_flow_node_connections(node_id uuid) RETURNS void AS $$
+DECLARE
+    node flow_node;
+    outgoing integer;
+    incoming integer;
+BEGIN
+    SELECT * INTO node FROM flow_node WHERE id = node_id;
+    IF NOT FOUND THEN RETURN; END IF;
+    SELECT count(*) INTO outgoing FROM flow_node_successor WHERE flow_node_id = node_id;
+    SELECT count(*) INTO incoming FROM flow_node_successor WHERE successor_id = node_id;
+    IF (node.type IN ('shutdown', 'note', 'value', 'role') AND outgoing > 0)
+       OR (node.type NOT IN ('gateway', 'exclusive-gateway', 'limiter') AND outgoing > 1)
+       OR (node.type = 'limiter' AND outgoing > 2)
+       OR (node.type <> 'gateway' AND incoming > 1)
+       OR (node.type IN ('note', 'value', 'role') AND incoming > 0) THEN
+        RAISE EXCEPTION 'card "%" has connections its type does not allow; use a gateway to join or split branches', node.title
+            USING ERRCODE = '23514', CONSTRAINT = 'flow_node_connection_cardinality';
+    END IF;
+    IF EXISTS (
+        SELECT 1 FROM flow_node_successor s
+        JOIN flow_node target ON target.id = s.successor_id
+        WHERE s.flow_node_id = node_id
+          AND (target.board_id <> node.board_id OR target.id = node_id)
+    ) THEN
+        RAISE EXCEPTION 'card "%" must name a different card of the same board', node.title
+            USING ERRCODE = '23514', CONSTRAINT = 'flow_node_connection_target';
+    END IF;
+END;
+$$ LANGUAGE plpgsql;

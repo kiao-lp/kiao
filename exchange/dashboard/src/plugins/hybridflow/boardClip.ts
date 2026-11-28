@@ -1,15 +1,22 @@
-/** Portable JSON clipboard format: accept current and legacy wrappers, bare cards and arrays. */
+/** Portable JSON clipboard format: accept current and legacy wrappers, bare nodes and arrays. */
 
-import { newId, readComplexity, readCriteria, readTags, FlowNode, writeFlowNode } from './boardContent';
-import { readSchedule } from './flowNodeSchedule';
+import { newId, readComplexity, readCriteria, readTags, FlowNode, Workflow, writeFlowNode } from './boardContent';
+import { newFlowNodeDto } from './boardWrites';
+import { readDuration, readSchedule } from './flowNodeSchedule';
+import { readBitbucketEvent } from './flowNodeBitbucket';
+import { readLimiter } from './flowNodeLimiter';
+import { readRole } from './flowNodeRole';
 import { isAgentId, readSettings } from './flowNodeSettings';
 import { readStatus } from './flowNodeStatus';
+import { readSize } from './flowNodeSize';
 import { readSuccess, successFor, FlowNodeSuccess } from './flowNodeSuccess';
-import { isTask, readType } from './flowNodeType';
+import { isDisplay, isTask, readType } from './flowNodeType';
+import { readRoutes } from './flowNodeRoutes';
 import { readValueType, VALUE_TYPE_JSON_SCHEMA } from './valueType';
 
 export const FLOW_NODE_CLIP_KIND = 'kiao-flow-node';
 export const FLOW_NODES_CLIP_KIND = 'kiao-flow-nodes';
+const WORKFLOW_CLIP_KIND = 'kiao-workflow';
 export const CLIP_VERSION = 1;
 
 /** Legacy kinds remain readable but are never written. */
@@ -21,7 +28,7 @@ const clipFlowNode = (flowNode: FlowNode): unknown => writeFlowNode(flowNode);
 export const flowNodeClipText = (flowNode: FlowNode): string =>
     JSON.stringify({ kind: FLOW_NODE_CLIP_KIND, version: CLIP_VERSION, flowNode: clipFlowNode(flowNode) }, null, 2);
 
-/** Keep the singular wrapper for one card so older instances can paste it. */
+/** Keep the singular wrapper for one node so older instances can paste it. */
 export const flowNodesClipText = (flowNodes: FlowNode[]): string => (
     flowNodes.length === 1
         ? flowNodeClipText(flowNodes[0])
@@ -31,6 +38,21 @@ export const flowNodesClipText = (flowNodes: FlowNode[]): string => (
             2,
         )
 );
+
+export const workflowClipText = (workflow: Workflow, flowNodes: FlowNode[]): string => JSON.stringify({
+    kind: WORKFLOW_CLIP_KIND,
+    version: CLIP_VERSION,
+    workflow: {
+        name: workflow.name, values: workflow.values, workflowFolder: workflow.workflowFolder, files: workflow.files,
+    },
+    flowNodes: flowNodes.filter(node => node.workflow === workflow.id).map(node => {
+        const dto = newFlowNodeDto(node);
+        delete dto.chat;
+        delete dto.workflow;
+        delete dto.remainingPasses;
+        return dto;
+    }),
+}, null, 2);
 
 /** Destination-store agent ids; omitted ids are treated as foreign. */
 export type KnownAgents = ReadonlySet<string>;
@@ -53,6 +75,12 @@ const parse = (text: string): unknown => {
     }
 };
 
+/** Recognize the envelope. The store validates it before creating anything. */
+export const readWorkflowClip = (text: string): Record<string, unknown> | null => {
+    const held = asObject(parse(text));
+    return held?.kind === WORKFLOW_CLIP_KIND ? held : null;
+};
+
 const objects = (value: unknown): Record<string, unknown>[] => (Array.isArray(value) ? value : [])
     .map(asObject)
     .filter((entry): entry is Record<string, unknown> => entry !== null);
@@ -61,8 +89,10 @@ const str = (value: unknown): string => (typeof value === 'string' ? value : '')
 
 const flowNodeFrom = (raw: Record<string, unknown>, agents: KnownAgents, runners: KnownRunners): FlowNode => {
     const settings = readSettings(raw.settings);
-    // Infer types for older or handwritten cards without an explicit type.
+    // Infer types for older or handwritten nodes without an explicit type.
     const type = readType(raw.type, settings);
+    const onSuccess = successFor(readSuccess(raw.onSuccess), type);
+    const duration = readDuration(raw.duration);
 
     if (settings.agent && isAgentId(settings.agent) && !agents.has(settings.agent)) {
         delete settings.agent;
@@ -77,25 +107,30 @@ const flowNodeFrom = (raw: Record<string, unknown>, agents: KnownAgents, runners
         title: type === 'note' ? '' : str(raw.title),
         type,
         note: type === 'note' ? str(raw.note) : '',
-        value: type === 'value' ? (raw.value ?? {}) : {},
+        value: type === 'value' && raw.value !== undefined ? raw.value : {},
         valueType: type === 'value' ? readValueType(raw.valueType) : '',
-        tags: type === 'note' || type === 'value' ? [] : readTags(raw.tags),
+        tags: isDisplay(type) ? [] : readTags(raw.tags),
+        ...readRole(type, raw),
         ...(type === 'ai' && typeof raw.outputType === 'string' ? { outputType: raw.outputType } : {}),
         body: str(raw.body),
+        multiPartTemplate: isTask(type) && raw.multiPartTemplate === true,
 
         criteria: isTask(type) ? readCriteria(raw.criteria) : [],
         complexity: isTask(type) ? readComplexity(raw.complexity) : null,
         settings,
         at: readSchedule(raw.at),
+        ...(duration ? { duration } : {}),
+        ...readBitbucketEvent(type, raw),
+        ...(type === 'limiter' ? readLimiter(raw) : {}),
         spot: null,
+        size: readSize(raw.size),
         status: readStatus(raw.status),
 
         archived: false,
         // Conversations are instance-local and must not be shared by a duplicate.
         chat: '',
-        onSuccess: successFor(readSuccess(raw.onSuccess), type),
-
-        classVersion: null,
+        onSuccess,
+        ...(type === 'exclusive-gateway' ? { routes: readRoutes(raw.routes, onSuccess.flowNodes) } : {}),
 
         workflow: '',
     };
@@ -118,6 +153,12 @@ const flowNodesFrom = (source: Record<string, unknown>[], agents: KnownAgents, r
     return flowNodes.map(flowNode => ({
         ...flowNode,
         onSuccess: remap(flowNode.onSuccess, minted),
+        ...(flowNode.routes ? {
+            routes: flowNode.routes.flatMap(route => {
+                const target = minted.get(route.flowNode);
+                return target ? [{ ...route, flowNode: target }] : [];
+            }),
+        } : {}),
         outputType: flowNode.outputType ? minted.get(flowNode.outputType) ?? '' : undefined,
         valueType: flowNode.valueType === '' || flowNode.valueType === VALUE_TYPE_JSON_SCHEMA
             ? flowNode.valueType
@@ -125,7 +166,7 @@ const flowNodesFrom = (source: Record<string, unknown>[], agents: KnownAgents, r
     }));
 };
 
-/** Read cards with fresh ids, validating agent and runner references against the destination. */
+/** Read nodes with fresh ids, validating agent and runner references against the destination. */
 export const readFlowNodesClip = (
     text: string, agents: KnownAgents = NO_AGENTS, runners: KnownRunners = NO_RUNNERS,
 ): FlowNode[] => {

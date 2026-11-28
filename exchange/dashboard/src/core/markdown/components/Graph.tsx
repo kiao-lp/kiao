@@ -2,7 +2,6 @@ import React, { useCallback, useContext, useEffect, useRef, useState } from 'rea
 import {
     parseGraphFile,
     GraphSvgRenderer,
-    GraphToolbar,
     GraphFile,
     GraphNode,
     serializeSvgForExport,
@@ -13,6 +12,8 @@ import {
 } from '@kiao-dashboard-kit/graph';
 import { themeMode, DEFAULT_KIAO_THEME } from 'kiao-style';
 import { ThemeContext, type Theme } from '../../ui-foundation/theme/ThemeContext';
+import { DiagramToolbar } from '../../ui-foundation/toolbar/DiagramToolbar';
+import { ZoomSurface } from '../../ui-foundation/zoom/ZoomSurface';
 
 export interface GraphProps {
     children: string;
@@ -23,6 +24,7 @@ export const Graph: React.FC<GraphProps> = ({ children, theme }) => {
     const [state, setState] = useState<{ graphFile: GraphFile } | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [zoom, setZoom] = useState(1.0);
+    const artboardRef = useRef<HTMLDivElement>(null);
 
     const contentSizeRef = useRef<{ width: number; height: number } | null>(null);
 
@@ -91,7 +93,7 @@ export const Graph: React.FC<GraphProps> = ({ children, theme }) => {
     }, [children]);
 
     const handleExportSVG = useCallback(() => {
-        const svgElement = document.querySelector('.graph-svg');
+        const svgElement = artboardRef.current?.querySelector('.graph-svg');
         if (!svgElement) return;
         const svg = serializeSvgForExport(svgElement);
         downloadFile(svg, 'graph.svg');
@@ -120,15 +122,21 @@ export const Graph: React.FC<GraphProps> = ({ children, theme }) => {
     return (
         <div className={`graph-viewer-container ${mode === 'light' ? 'graph-theme-light' : ''}`} style={{ overflowX: 'auto' }}>
             <GraphStyle />
-            <div className="graph-viewer-artboard" style={hostBridge}>
-                <div style={zoom !== 1.0 ? { transformOrigin: 'top left', transform: `scale(${zoom})` } : undefined}>
+            <div ref={artboardRef} className="graph-viewer-artboard" style={hostBridge}>
+                <ZoomSurface
+                    className="graph-viewer-canvas"
+                    contentClassName="graph-viewer-content"
+                    style={{ '--graph-viewer-zoom': zoom } as React.CSSProperties}
+                    zoom={zoom}
+                    onZoomChange={setZoom}
+                >
                     <GraphSvgRenderer
                         graph={state.graphFile}
                         theme={mode}
                         onSizeChange={handleSizeChange}
                     />
-                </div>
-                <GraphToolbar
+                </ZoomSurface>
+                <DiagramToolbar
                     fileContent={JSON.stringify(state.graphFile, null, 2)}
                     onExportSVG={handleExportSVG}
                     onFitToContent={handleFitToContent}
@@ -137,6 +145,8 @@ export const Graph: React.FC<GraphProps> = ({ children, theme }) => {
                     onZoomChange={setZoom}
                     diagramSize={state.graphFile.size}
                     onDiagramSizeChange={handleDiagramSizeChange}
+                    sizePickerPlacement="top"
+                    theme={resolvedTheme}
                 />
             </div>
         </div>

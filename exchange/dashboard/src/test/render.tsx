@@ -1,6 +1,7 @@
 import React from 'react';
 import { render as renderReact, type RenderOptions } from '@testing-library/react';
 import { WorkerClientMockProvider, type WorkerClient } from 'kiao-worker';
+import { ConfirmationProvider } from '../core/ui-foundation/forms/ConfirmationDialog';
 
 export * from '@testing-library/react';
 
@@ -9,15 +10,21 @@ interface DashboardRenderOptions extends RenderOptions {
     workerClient?: Partial<WorkerClient>;
 }
 
-/** RTL's render, with an optional files client; all controls and other providers stay real. */
+/** RTL's render with Dashboard's confirmation host and an optional files client. */
 export const render = (ui: React.ReactElement, {
     workerClient, wrapper: Wrapper, ...options
 }: DashboardRenderOptions = {}) => {
-    if (workerClient === undefined) return renderReact(ui, { wrapper: Wrapper, ...options });
-    const WithClient = ({ children }: { children: React.ReactNode }) => (
-        <WorkerClientMockProvider mock={{ workerClient: workerClient as WorkerClient }}>
-            {Wrapper ? <Wrapper>{children}</Wrapper> : children}
-        </WorkerClientMockProvider>
-    );
-    return renderReact(ui, { wrapper: WithClient, ...options });
+    const Providers = ({ children }: { children: React.ReactNode }) => {
+        const content = Wrapper ? <Wrapper>{children}</Wrapper> : children;
+        return (
+            <ConfirmationProvider>
+                {workerClient === undefined ? content : (
+                    <WorkerClientMockProvider mock={{ workerClient: workerClient as WorkerClient }}>
+                        {content}
+                    </WorkerClientMockProvider>
+                )}
+            </ConfirmationProvider>
+        );
+    };
+    return renderReact(ui, { wrapper: Providers, ...options });
 };

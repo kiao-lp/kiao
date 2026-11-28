@@ -1,9 +1,9 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Button, message } from 'antd';
+import { message } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
-import type { HarnessConversation, HarnessPermissionMode } from 'kiao-worker';
-import { useFileBrowsingPersistenceContext } from '@kiao-dashboard-core';
+import type { HarnessConversation } from 'kiao-worker';
+import { IconButton, useFileBrowsingPersistenceContext } from '@kiao-dashboard-core';
 import { useChatSocketContext } from './ChatSocket-ctx';
 import { useChatShow } from './ChatShow-ctx';
 import { useChatConversations } from './useChatConversations';
@@ -14,6 +14,7 @@ import { useChatPreflight } from './useChatPreflight';
 import {
     ChatConversationList, ChatConversationRow,
 } from './ChatConversationList';
+import { ChatConversationManager } from './ChatConversationManager';
 import { ChatConversationPane, MAIN_PANE } from './ChatConversationPane';
 import { ChatAgentDialog } from './ChatAgentDialog';
 import { ChatLoginPanel } from './ChatLoginPanel';
@@ -29,7 +30,21 @@ export const ChatPromptContent: React.FC = () => {
     const { currentPath } = useFileBrowsingPersistenceContext();
     const { socketState, onPromptDropped } = useChatSocketContext();
 
-    const { conversations, activeId, setActiveId, loading: listLoading, create, show, fork, patch, remove } = useChatConversations();
+    const {
+        conversations, allConversations, activeId, setActiveId, loading: listLoading, listFailed,
+        create, show, fork, patch, remove, refresh,
+    } = useChatConversations();
+    const [managing, setManaging] = useState(false);
+    const [responseTokenLimits, setResponseTokenLimits] = useState(() => new Map<string | null, string>());
+    const changeResponseTokenLimit = (id: string | null, limit: string | undefined) => {
+        setResponseTokenLimits(previous => {
+            const next = new Map(previous);
+            if (limit) next.set(id, limit);
+            else next.delete(id);
+            return next;
+        });
+    };
+    const openManager = () => setManaging(true);
     const { harnesses, loading: harnessesLoading, optionsFor } = useHarnessOptions();
     const claudeEnabled = harnesses.some(entry => entry.value === 'claude');
     const auth = useChatAuth(claudeEnabled);
@@ -101,14 +116,26 @@ export const ChatPromptContent: React.FC = () => {
         restoredPrompt: restored,
         canStart,
         onFork: forkConversation,
+        changeResponseTokenLimit,
     };
 
     return (
         <div className="chat-prompt">
+            <ChatConversationManager
+                open={managing}
+                conversations={allConversations}
+                loading={listLoading}
+                listFailed={listFailed}
+                onRetry={refresh}
+                onClose={() => setManaging(false)}
+                onArchive={id => patch(id, { archived: true })}
+                onDelete={remove}
+            />
             {agentRequest && (
                 <ChatAgentDialog
                     title={agentRequest.kind === 'create' ? 'New conversation' : 'Fork with an agent'}
                     confirmLabel={agentRequest.kind === 'fork' ? 'Fork conversation' : undefined}
+                    pendingLabel={agentRequest.kind === 'fork' ? 'Forking conversation…' : 'Starting conversation…'}
                     initial={agentRequest.kind === 'fork' ? {
                         agent: agentRequest.source.agentVersion?.agentId,
                         harness: agentRequest.source.harness,
@@ -125,15 +152,11 @@ export const ChatPromptContent: React.FC = () => {
                                 setAgentRequest(null);
                                 return;
                             }
-                            const own = optionsFor(harness);
-                            const permissionMode = own.permissionModes.find(mode => mode.value === 'manual')
-                                ?? own.permissionModes[0];
                             const created = await create({
                                 folder: agentRequest.folder,
                                 agentId: agent,
                                 harness, profileId, model,
                                 useDraft: useDraft || undefined,
-                                permissionMode: permissionMode?.value as HarnessPermissionMode | undefined,
                             });
                             agentRequest.afterCreate?.(created);
                         } else {
@@ -176,13 +199,7 @@ export const ChatPromptContent: React.FC = () => {
 
             <div className="chat-conversation-head">
                 <span className="chat-conversation-head-label">Conversations</span>
-                <Button
-                    size="small"
-                    type="text"
-                    icon={<PlusOutlined />}
-                    aria-label="New conversation"
-                    onClick={() => requestAgent()}
-                />
+                <IconButton label="New conversation" icon={<PlusOutlined />} onClick={() => requestAgent()} />
             </div>
 
 
@@ -197,14 +214,14 @@ export const ChatPromptContent: React.FC = () => {
                             onSelect={() => { /* already shown, in this very column */ }}
                             onRename={title => { patch(conversation.id, { title }).catch(report('Could not rename the conversation')); }}
                             onTogglePin={() => togglePin(conversation.id, true)}
-                            onArchive={() => { patch(conversation.id, { archived: true }).catch(report('Could not archive the conversation')); }}
-                            onDelete={() => { remove(conversation.id).catch(report('Could not delete the conversation')); }}
+                            onManage={openManager}
                         />
                         <ChatConversationPane
                             {...paneProps}
                             paneKey={conversation.id}
                             conversationId={conversation.id}
                             conversation={conversation}
+                            responseTokenLimit={responseTokenLimits.get(conversation.id)}
                         />
                     </div>
                 ))}
@@ -217,8 +234,7 @@ export const ChatPromptContent: React.FC = () => {
                         onSelect={setActiveId}
                         onRename={(id, title) => { patch(id, { title }).catch(report('Could not rename the conversation')); }}
                         onTogglePin={id => togglePin(id, false)}
-                        onArchive={id => { patch(id, { archived: true }).catch(report('Could not archive the conversation')); }}
-                        onDelete={id => { remove(id).catch(report('Could not delete the conversation')); }}
+                        onManage={openManager}
                     />
 
                     <ChatConversationPane
@@ -226,6 +242,7 @@ export const ChatPromptContent: React.FC = () => {
                         paneKey={MAIN_PANE}
                         conversationId={activeId}
                         conversation={activeConversation}
+                        responseTokenLimit={responseTokenLimits.get(activeId)}
                         onRequestAgent={requestAgent}
                         promptRef={mainPromptRef}
                     />

@@ -73,8 +73,12 @@ func (s *Store) managedLocalSource(project, directory string) (string, string, e
 	return name, known, nil
 }
 
-func (s *Store) lockLocalDependencies(ctx context.Context, project string) error {
+func (s *Store) lockLocalDependencies(ctx context.Context, project, draft string) error {
 	project, err := filepath.Abs(project)
+	if err != nil {
+		return err
+	}
+	draft, err = filepath.Abs(draft)
 	if err != nil {
 		return err
 	}
@@ -115,8 +119,14 @@ func (s *Store) lockLocalDependencies(ctx context.Context, project string) error
 			}
 			directory := filepath.Clean(filepath.Join(absolute, relative))
 			// Dependencies in a captured resource may point to a sibling of its source clone.
+			inProject, err := filepath.Rel(project, directory)
+			if err != nil {
+				return err
+			}
 			if original != absolute && outsideProject(filepath.Clean(relative)) {
 				directory = filepath.Clean(filepath.Join(original, relative))
+			} else if outsideProject(inProject) {
+				directory = filepath.Join(draft, inProject)
 			}
 			name, known, err := s.managedLocalSource(project, directory)
 			if err != nil {
@@ -138,7 +148,7 @@ func (s *Store) lockLocalDependencies(ctx context.Context, project string) error
 					continue
 				}
 			}
-			inProject, err := filepath.Rel(project, directory)
+			inProject, err = filepath.Rel(project, directory)
 			if err != nil {
 				return err
 			}
@@ -202,7 +212,7 @@ func (s *Store) lockLocalDependencies(ctx context.Context, project string) error
 		}
 		return nil
 	}
-	if err = visit(project, project); err != nil {
+	if err = visit(project, draft); err != nil {
 		return err
 	}
 	resources := []localResource{}
@@ -296,7 +306,7 @@ func (s *Store) AgentPackage(ctx context.Context, id, commit string) (*entities.
 	if !commitID.MatchString(commit) {
 		return nil, entities.Invalidf("a full Git commit is required")
 	}
-	dir, _, err := s.find(ctx, id)
+	dir, _, err := s.findMetadata(id)
 	if err != nil {
 		return nil, err
 	}

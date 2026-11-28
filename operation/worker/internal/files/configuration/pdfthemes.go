@@ -18,10 +18,10 @@ const pdfThemesDirRel = "kiao-user-config/pdf-themes"
 // SyncPdfThemes refreshes the delivered filenames on every start. Other filenames belong to the
 // store: adding, editing or deleting a custom theme never changes what the next sync writes.
 func SyncPdfThemes(cfg *Config) {
-	if cfg.RootPath == "" {
+	if cfg.DCMSRoot == "" {
 		return
 	}
-	dir := filepath.Join(cfg.RootPath, filepath.FromSlash(pdfThemesDirRel))
+	dir := filepath.Join(cfg.DCMSRoot, filepath.FromSlash(pdfThemesDirRel))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		logging.LogMain.Warn("cannot create the PDF themes folder", "path", dir, "error", err)
 		return

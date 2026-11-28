@@ -97,7 +97,7 @@ const SecondCentralAreaButton: React.FC<{ second: boolean }> = ({ second }) => {
     return <button data-testid={`second-central-area-${second}`} onClick={() => bars.setSecondCentralArea(second)}>second</button>;
 };
 
-const Harness: React.FC<{ tabs?: ToolBarTab[] }> = ({ tabs = [NAV, GIT, CLAUDE] }) => (
+const ToolBarsFixture: React.FC<{ tabs?: ToolBarTab[] }> = ({ tabs = [NAV, GIT, CLAUDE] }) => (
     <ToolBarsProvider>
         {tabs.map(t => <ToolBarTabRegistration key={t.id} tab={t} />)}
         <ToolBarsSide side="left" />
@@ -126,7 +126,7 @@ beforeEach(() => {
 
 describe('the tool bars', () => {
     it('draws each tab in its default placement', () => {
-        render(<Harness />);
+        render(<ToolBarsFixture />);
 
         expect(screen.getByTestId('layout-grid-files')).toHaveAttribute('data-placement', 'left');
         expect(screen.queryByTestId('tool-bar-side-right')).toBeNull();
@@ -138,7 +138,7 @@ describe('the tool bars', () => {
     });
 
     it('tells a tab which side it is drawn in', () => {
-        render(<Harness />);
+        render(<ToolBarsFixture />);
         fireEvent.click(screen.getByTestId('toggle-left'));
         expect(screen.getByTestId('panel-files')).toHaveTextContent('left');
 
@@ -147,7 +147,7 @@ describe('the tool bars', () => {
     });
 
     it('moves a tab to the rectangle that is clicked, and the bar it leaves goes with it', () => {
-        render(<Harness />);
+        render(<ToolBarsFixture />);
         fireEvent.click(screen.getByTestId('toggle-left'));
 
         fireEvent.click(rectangle('files', 'right'));
@@ -158,7 +158,7 @@ describe('the tool bars', () => {
 
     // Moving into a hidden column reveals it.
     it('switches on the column a tab is moved into', () => {
-        render(<Harness />);
+        render(<ToolBarsFixture />);
         expect(screen.queryByTestId('tool-bar-side-right')).toBeNull();
 
         fireEvent.click(rectangle('files', 'right'));
@@ -167,7 +167,7 @@ describe('the tool bars', () => {
     });
 
     it('greys the rectangle a tab is in, and that rectangle is what takes it away', () => {
-        render(<Harness />);
+        render(<ToolBarsFixture />);
         expect(rectangle('files', 'left')).toHaveAttribute('aria-pressed', 'true');
         expect(rectangle('files', 'right')).toHaveAttribute('aria-pressed', 'false');
 
@@ -180,7 +180,7 @@ describe('the tool bars', () => {
     });
 
     it('offers the tab strip only from two tabs on, so one tab costs no room', () => {
-        render(<Harness />);
+        render(<ToolBarsFixture />);
         fireEvent.click(screen.getByTestId('toggle-left'));
         expect(screen.getByTestId('tool-bar-left')).toHaveClass('cms-tool-bar-single');
 
@@ -190,7 +190,7 @@ describe('the tool bars', () => {
     });
 
     it('brings a tab back and switches its column on when a plugin asks for it', () => {
-        render(<Harness />);
+        render(<ToolBarsFixture />);
         // Out of the layout, and in a column that is off — both have to be undone.
         fireEvent.click(rectangle('git', 'right'));
         expect(screen.getByTestId('layout-grid-git')).toHaveAttribute('data-placement', 'off');
@@ -205,7 +205,7 @@ describe('tab controls', () => {
     const controls = <button data-testid="tab-control">Control</button>;
 
     it.each(['left', 'center', 'right'])('puts controls in the %s strip after its tabs', side => {
-        render(<Harness tabs={[{ ...GIT, defaultBar: 'off', additionalPanels: controls }]} />);
+        render(<ToolBarsFixture tabs={[{ ...GIT, defaultBar: 'off', additionalPanels: controls }]} />);
         fireEvent.click(rectangle('git', side));
 
         const bar = screen.getByTestId(`tool-bar-${side}`);
@@ -217,7 +217,7 @@ describe('tab controls', () => {
     });
 
     it('shows only the active tab\'s controls when switching tabs', () => {
-        render(<Harness tabs={[
+        render(<ToolBarsFixture tabs={[
             { ...DOCUMENT, forceRender: true, additionalPanels: controls },
             { ...GIT, additionalPanels: <button data-testid="git-control">Git control</button> },
         ]} />);
@@ -242,13 +242,13 @@ describe('tab controls', () => {
 
     it('keeps updated controls in their arranged bar without remounting its panel', () => {
         const renderPanel = () => <input aria-label="Panel draft" defaultValue="" />;
-        const { rerender } = render(<Harness tabs={[
+        const { rerender } = render(<ToolBarsFixture tabs={[
             { ...GIT, render: renderPanel, additionalPanels: controls },
         ]} />);
         fireEvent.click(rectangle('git', 'left'));
         fireEvent.change(screen.getByRole('textbox', { name: 'Panel draft' }), { target: { value: 'draft' } });
 
-        rerender(<Harness tabs={[
+        rerender(<ToolBarsFixture tabs={[
             { ...GIT, render: renderPanel, additionalPanels: <button>Updated control</button> },
         ]} />);
 
@@ -257,7 +257,7 @@ describe('tab controls', () => {
         expect(screen.getByRole('textbox', { name: 'Panel draft' })).toHaveValue('draft');
         expect(screen.queryByTestId('tab-control')).toBeNull();
 
-        rerender(<Harness tabs={[{ ...GIT, render: renderPanel }]} />);
+        rerender(<ToolBarsFixture tabs={[{ ...GIT, render: renderPanel }]} />);
 
         expect(bar).toHaveClass('cms-tool-bar-single');
         expect(screen.queryByText('Updated control')).toBeNull();
@@ -266,7 +266,7 @@ describe('tab controls', () => {
 
 describe('revealing the tree', () => {
     it('opens the column the tree ships in when it is asked for by name', () => {
-        render(<Harness tabs={[NAV_TREE]} />);
+        render(<ToolBarsFixture tabs={[NAV_TREE]} />);
 
         fireEvent.click(screen.getByTestId('reveal-nav-tree'));
 
@@ -276,29 +276,29 @@ describe('revealing the tree', () => {
 
 describe('global toolbar state', () => {
     it('keeps the arrangement when switching documents', () => {
-        const { rerender } = render(<Harness />);
+        const { rerender } = render(<ToolBarsFixture />);
         fireEvent.click(rectangle('files', 'right'));
 
         state.path = 'never-seen.md';
-        rerender(<Harness />);
+        rerender(<ToolBarsFixture />);
 
         expect(screen.getByTestId('layout-grid-files')).toHaveAttribute('data-placement', 'right');
     });
 
     it('uses the latest arrangement when returning to a document', () => {
-        const { rerender } = render(<Harness />);
+        const { rerender } = render(<ToolBarsFixture />);
         fireEvent.click(rectangle('files', 'right'));
 
         state.path = 'own.md';
-        rerender(<Harness />);
+        rerender(<ToolBarsFixture />);
         fireEvent.click(rectangle('files', 'left'));
 
         state.path = 'first.md';
-        rerender(<Harness />);
+        rerender(<ToolBarsFixture />);
         expect(screen.getByTestId('layout-grid-files')).toHaveAttribute('data-placement', 'left');
 
         state.path = 'own.md';
-        rerender(<Harness />);
+        rerender(<ToolBarsFixture />);
         expect(screen.getByTestId('layout-grid-files')).toHaveAttribute('data-placement', 'left');
     });
 
@@ -306,7 +306,7 @@ describe('global toolbar state', () => {
         state.global.toolBars = { placement: { git: 'center' }, selected: { center: 'git' } };
         state.files[state.path] = { toolBars: { placement: { git: 'left' }, selected: { center: 'document' } } };
 
-        render(<Harness tabs={[DOCUMENT, GIT]} />);
+        render(<ToolBarsFixture tabs={[DOCUMENT, GIT]} />);
 
         expect(screen.getByTestId('layout-grid-git')).toHaveAttribute('data-placement', 'center');
         expect(screen.getByTestId('active-center')).toHaveTextContent('git');
@@ -316,7 +316,7 @@ describe('global toolbar state', () => {
         const saved = { placement: { files: 'top', git: 'top' } };
         state.global.toolBars = { off: [], ...saved };
 
-        render(<Harness />);
+        render(<ToolBarsFixture />);
 
         expect(screen.getByTestId('layout-grid-files')).toHaveAttribute('data-placement', 'left');
         expect(screen.getByTestId('layout-grid-git')).toHaveAttribute('data-placement', 'right');
@@ -326,12 +326,12 @@ describe('global toolbar state', () => {
     });
 
     it('creates no per-document entry when opening a file', () => {
-        render(<Harness />);
+        render(<ToolBarsFixture />);
         expect(state.files).toEqual({});
     });
 
     it('stores placement and selection only globally', () => {
-        render(<Harness tabs={[DOCUMENT, GIT]} />);
+        render(<ToolBarsFixture tabs={[DOCUMENT, GIT]} />);
 
         fireEvent.click(rectangle('git', 'center'));
         fireEvent.click(screen.getByTestId('reveal-git'));
@@ -343,7 +343,7 @@ describe('global toolbar state', () => {
 
 describe('the centre', () => {
     // Document registered last still leads; fresh elements force rerender.
-    const withDocument = () => <Harness tabs={[GIT, DOCUMENT]} />;
+    const withDocument = () => <ToolBarsFixture tabs={[GIT, DOCUMENT]} />;
 
     it('draws the document alone with no tab strip, like every bar holding one tab', () => {
         render(withDocument());
@@ -410,7 +410,7 @@ describe('the centre', () => {
 
 describe('the second central area', () => {
     it('is switched by its banner toggle, which is always offered', () => {
-        render(<Harness />);
+        render(<ToolBarsFixture />);
         const toggle = screen.getByTestId('bar-toggle-center-2');
         expect(toggle).toBeEnabled();
         expect(toggle).toHaveAccessibleName('Show the second central area');
@@ -429,7 +429,7 @@ describe('the second central area', () => {
     });
 
     it('adds an empty area when switched on', () => {
-        render(<Harness />);
+        render(<ToolBarsFixture />);
         expect(screen.queryByTestId('layout-cell-git-center-2')).toBeNull();
 
         fireEvent.click(screen.getByTestId('second-central-area-true'));
@@ -439,7 +439,7 @@ describe('the second central area', () => {
     });
 
     it('places a panel in the second area with its own strip', () => {
-        render(<Harness />);
+        render(<ToolBarsFixture />);
         fireEvent.click(screen.getByTestId('second-central-area-true'));
         fireEvent.click(rectangle('git', 'center-2'));
         fireEvent.click(rectangle('claude', 'center-2'));
@@ -450,7 +450,7 @@ describe('the second central area', () => {
     });
 
     it('sizes the areas by dragging the separator between them', () => {
-        const { container } = render(<Harness />);
+        const { container } = render(<ToolBarsFixture />);
         expect(screen.queryByTestId('split-resize-center-2')).toBeNull();
 
         fireEvent.click(screen.getByTestId('second-central-area-true'));
@@ -472,7 +472,7 @@ describe('the second central area', () => {
     });
 
     it('moves its panels to the first area when switched off and keeps the selected tab', () => {
-        render(<Harness tabs={[DOCUMENT, GIT, CLAUDE]} />);
+        render(<ToolBarsFixture tabs={[DOCUMENT, GIT, CLAUDE]} />);
         fireEvent.click(screen.getByTestId('second-central-area-true'));
         fireEvent.click(rectangle('git', 'center'));
         fireEvent.click(screen.getByTestId('tool-bar-center').querySelectorAll('.ant-tabs-tab')[1]);
@@ -493,7 +493,7 @@ describe('the second central area', () => {
     it('restores the split proportions when switched back on', () => {
         state.global.toolBars = { secondCentralArea: true };
         state.global['split:centralAreas'] = { center: 1.2, 'center-2': 0.8 };
-        const { container } = render(<Harness tabs={[DOCUMENT, GIT]} />);
+        const { container } = render(<ToolBarsFixture tabs={[DOCUMENT, GIT]} />);
         const first = () => container.querySelector<HTMLElement>('[data-split-part="center"]')!;
         const second = () => container.querySelector<HTMLElement>('[data-split-part="center-2"]')!;
         expect(first()).toHaveStyle({ flexGrow: 1.2 });

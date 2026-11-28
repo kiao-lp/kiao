@@ -1,31 +1,29 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Dropdown, MenuProps, message } from 'antd';
+import React, { useMemo, useState } from 'react';
+import { MenuProps, message } from 'antd';
 import { BookOutlined, CopyOutlined, LinkOutlined } from '@ant-design/icons';
 import { setClipboard } from '../ui-foundation/clipboard/clipboard';
-import { resolveInternalLink, storedLinkOf } from '../navigation/internal-links';
-import { KEEP_MENU_IN_VIEWPORT } from '../ui-foundation/interactions/menuPlacement';
+import { resolveInternalLink, encodedDcmsLinkOf } from '../navigation/internal-links';
+import { ContextMenu, type ContextMenuPoint } from '../ui-foundation/interactions/ContextMenu';
 import { useWorkerClient } from '../files/service/ui';
 import { directiveForRange } from './directiveForRange';
 import { readDocumentText } from './documentText';
 import { linkToPassage, TextDirective } from './textDirective';
 import { addPassageToBacklog, markdownLinkToPassage } from './backlog';
 
-/** Custom menu replaces the browser's (mutually exclusive). Only right-clicks on selected text are taken over; others keep the browser menu. */
-
 interface SelectedPassage {
     /** Passage as rendered. */
     text: string;
     /** Absolute link opening the document on the passage. */
     link: string;
-    /** Markdown link in stored form. */
+    /** Markdown link whose destination is a DCMS link to the passage. */
     markdownLink: string;
     directive: TextDirective;
 }
 
-/** Absolute so it works outside Dashboard; `toStoredLink` strips it back to stored form. */
+/** Use an absolute Dashboard URL for sharing. Pasting into Markdown converts it to a DCMS link. */
 const passageLink = (path: string, directive: TextDirective): string =>
     new URL(
-        resolveInternalLink(linkToPassage(storedLinkOf(path), [directive])),
+        resolveInternalLink(linkToPassage(encodedDcmsLinkOf(path), [directive])),
         window.location.href,
     ).toString();
 
@@ -63,24 +61,16 @@ export interface PassageContextMenuProps {
 }
 
 export const PassageContextMenu: React.FC<PassageContextMenuProps> = ({ path, children }) => {
-    const hostRef = useRef<HTMLDivElement>(null);
-    const [passage, setPassage] = useState<SelectedPassage | null>(null);
+    const [target, setTarget] = useState<{ passage: SelectedPassage; anchor: ContextMenuPoint } | null>(null);
+    const passage = target?.passage;
     const client = useWorkerClient();
 
-    useEffect(() => {
-        const host = hostRef.current;
-        if (!host) return;
-
-        // Capture listener on the element: React/Ant Design handling runs too late to decline.
-        const onContextMenu = (event: MouseEvent) => {
-            const found = path ? selectedPassage(host, path) : null;
-            setPassage(found);
-            if (!found) event.stopPropagation();
-        };
-
-        host.addEventListener('contextmenu', onContextMenu, true);
-        return () => host.removeEventListener('contextmenu', onContextMenu, true);
-    }, [path]);
+    const onContextMenu = (event: React.MouseEvent<HTMLDivElement>) => {
+        event.stopPropagation();
+        const found = path ? selectedPassage(event.currentTarget, path) : null;
+        if (found) event.preventDefault();
+        setTarget(found ? { passage: found, anchor: { x: event.clientX, y: event.clientY } } : null);
+    };
 
     const items = useMemo<MenuProps['items']>(() => {
         if (!passage || !path) return [];
@@ -120,8 +110,9 @@ export const PassageContextMenu: React.FC<PassageContextMenuProps> = ({ path, ch
     }, [passage, path, client]);
 
     return (
-        <Dropdown menu={{ items }} trigger={['contextMenu']} {...KEEP_MENU_IN_VIEWPORT}>
-            <div ref={hostRef}>{children}</div>
-        </Dropdown>
+        <>
+            <div onContextMenu={onContextMenu}>{children}</div>
+            <ContextMenu items={items} anchor={target?.anchor ?? null} onClose={() => setTarget(null)} />
+        </>
     );
 };

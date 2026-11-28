@@ -1,9 +1,6 @@
 import React, { useState } from 'react';
-import { Button, message } from 'antd';
-import {
-    BranchesOutlined, CheckOutlined, CopyOutlined, InfoCircleOutlined, RobotOutlined,
-} from '@ant-design/icons';
-import { ConfiguredMarkdown, zoomable, Tooltip } from '@kiao-dashboard-core';
+import { BranchesOutlined, InfoCircleOutlined, RobotOutlined } from '@ant-design/icons';
+import { CopyTextButton, IconButton, ConfiguredMarkdown, zoomable, Tooltip } from '@kiao-dashboard-core';
 import { localizeNoticeDateTimes } from '@kiao-dashboard-kit/date-time';
 import type { ChatMessage, MessageBlock, SubagentDetail, ToolUse } from './chatMessages';
 import { ChatSentAttachments } from './ChatAttachments';
@@ -171,15 +168,12 @@ const EndMarkers: React.FC<{ message: ChatMessage }> = ({ message }) => {
  * It lives on the message and not in the switcher's row of actions because *where* is the whole of.
  */
 const ForkFromHere: React.FC<{ onFork: () => void }> = ({ onFork }) => (
-    <Tooltip title="Copies preceding messages into a new conversation, ready to ask this message again.">
-        <Button
-            size="small"
-            type="text"
-            icon={<BranchesOutlined />}
-            aria-label="Fork conversation from here"
-            onClick={onFork}
-        />
-    </Tooltip>
+    <IconButton
+        label="Fork conversation from here"
+        tooltip="Copies preceding messages into a new conversation, ready to ask this message again."
+        icon={<BranchesOutlined />}
+        onClick={onFork}
+    />
 );
 
 /**
@@ -192,31 +186,6 @@ const markdownSourceOf = (message: ChatMessage): string => {
         .map(block => block.text)
         .join('\n\n');
     return prose || message.content;
-};
-
-/** Copies the source rather than the rendered text, so fences and links survive a paste into a markdown file. */
-const CopyAsMarkdown: React.FC<{ markdown: string }> = ({ markdown }) => {
-    const [copied, setCopied] = useState(false);
-    const copy = async () => {
-        try {
-            await navigator.clipboard.writeText(markdown);
-            setCopied(true);
-            setTimeout(() => setCopied(false), 1500);
-        } catch {
-            message.error('Could not copy the message');
-        }
-    };
-    return (
-        <Tooltip title={copied ? 'Copied' : 'Copy the message as markdown'}>
-            <Button
-                size="small"
-                type="text"
-                icon={copied ? <CheckOutlined /> : <CopyOutlined />}
-                aria-label="Copy message as markdown"
-                onClick={() => void copy()}
-            />
-        </Tooltip>
-    );
 };
 
 const MessageBubble: React.FC<{
@@ -288,7 +257,8 @@ const MessageBubble: React.FC<{
             </div>
             {(markdown || onFork) && (
                 <div className="chat-message-actions">
-                    {markdown && <CopyAsMarkdown markdown={markdown} />}
+                    {markdown && <CopyTextButton text={markdown} label="Copy message as markdown"
+                        errorMessage="Could not copy the message" tooltip />}
                     {onFork && <ForkFromHere onFork={onFork} />}
                 </div>
             )}
@@ -300,10 +270,7 @@ const MessageBubble: React.FC<{
 const isBranchPoint = (message: ChatMessage): boolean =>
     message.role === 'user' && !message.between && !message.pending && !message.isStreaming;
 
-/** Where a conversation is kept, relative to the store root: one directory per conversation under. */
-const CONVERSATION_STORAGE_PREFIX = '.kiao-config/conversations';
-
-/** Scrollable chat history: where the conversation is kept, then empty prompt hint or one bubble per. */
+/** The conversation intro and messages scroll together. */
 export const ChatMessageList: React.FC<{
     messages: ChatMessage[];
     stick: StickToBottom;
@@ -312,17 +279,12 @@ export const ChatMessageList: React.FC<{
 
     conversationId: string | null;
 
+    intro?: React.ReactNode;
+
     onFork?: (message: ChatMessage) => void;
-}> = ({ messages, stick, folder, conversationId, onFork }) => (
+}> = ({ messages, stick, folder, conversationId, intro, onFork }) => (
     <div className="chat-messages-area" ref={stick.ref} onScroll={stick.onScroll}>
-        {conversationId !== null && (
-            <div
-                className="chat-conversation-storage"
-                title={`${CONVERSATION_STORAGE_PREFIX}/${conversationId}`}
-            >
-                {`${CONVERSATION_STORAGE_PREFIX}/${conversationId}`}
-            </div>
-        )}
+        {intro}
         {messages.length === 0 && conversationId === null && (
             <div className="chat-empty-state">
                 <RobotOutlined className="chat-empty-icon" />

@@ -21,6 +21,7 @@ import (
 	"kiao/agentic-resource-manager/adapters/gitcli"
 	"kiao/agentic-resource-manager/adapters/httpapi"
 	"kiao/agentic-resource-manager/core/services"
+	"kiao/gitidentity"
 )
 
 type clock struct{}
@@ -52,6 +53,20 @@ func main() {
 		slog.Error("prod authentication requires issuer and JWKS URIs")
 		os.Exit(1)
 	}
+	statePath := os.Getenv("KIAO_WORKER_STATE_PATH")
+	dcmsRoot := os.Getenv("KIAO_WORKER_DCMS_ROOT")
+	if dcmsRoot == "" {
+		dcmsRoot = os.Getenv("KIAO_WORKER_ROOT_PATH")
+	}
+	if statePath == "" && dcmsRoot != "" {
+		statePath = filepath.Join(dcmsRoot, ".kiao-config")
+	}
+	if statePath != "" {
+		if err := gitidentity.Install(statePath); err != nil {
+			slog.Error("cannot configure Git subprocesses", "error", err)
+			os.Exit(1)
+		}
+	}
 	agentRoot, err := filepath.Abs(env("KIAO_AGENTIC_RESOURCES_PATH", "agentic-resources"))
 	if err != nil {
 		slog.Error("agent directory", "error", err)
@@ -66,7 +81,11 @@ func main() {
 		}
 	}
 	cacheRoot := env("KIAO_AGENTIC_RESOURCE_MANAGER_CACHE", filepath.Join(agentRoot, ".cache"))
-	repository := filesystem.New(agentRoot, gitcli.Controller{}, apm.Compiler{Binary: env("KIAO_APM_BINARY", "apm")}, cache.Directory{Root: cacheRoot})
+	compiler := apm.Compiler{
+		Binary:   env("KIAO_APM_BINARY", "apm"),
+		GitSeeds: filepath.SplitList(os.Getenv("KIAO_APM_GIT_SEEDS")),
+	}
+	repository := filesystem.New(agentRoot, gitcli.Controller{}, compiler, cache.Directory{Root: cacheRoot})
 	repository.DependencyRoot = dependencyRoot
 	api := httpapi.API{Agents: services.NewAgents(repository, clock{}, ids{}), Resources: services.NewAgenticResources(repository)}
 	authenticator := auth.New(auth.Options{Mode: mode, IssuerURI: issuer, JwkSetURI: jwks, ServiceToken: os.Getenv("KIAO_AGENTIC_RESOURCE_MANAGER_SERVICE_TOKEN")})

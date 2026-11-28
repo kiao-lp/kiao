@@ -4,7 +4,7 @@ document:
   role: PRIMARY_SOURCE
 ---
 
-# Hybridflow — board and task interactions
+# Hybridflow — board and flow node interactions
 
 This design spans [Dashboard](/exchange/dashboard/docs/solution-design/README.md),
 [worker](/operation/worker/docs/solution-design/README.md) and
@@ -23,7 +23,7 @@ boundary Dashboard <<Web App>>
 boundary HybridflowStore <<Go>>
 database Postgres <<PostgreSQL 16>>
 
-Dashboard -> HybridflowStore : GET /boards, GET /boards/{handle}\nPATCH one field of one card
+Dashboard -> HybridflowStore : GET /boards, GET /boards/{handle}\nPATCH one field of one flow node
 Dashboard -> HybridflowStore : GET /changes?since&amp;wait=1 (held)
 HybridflowStore -> Postgres : one row, one statement
 @enduml
@@ -31,19 +31,16 @@ HybridflowStore -> Postgres : one row, one statement
 -->
 ![PlantUML diagram 1](interactions.assets/01-plantuml.svg)
 
-**Writes are one card, one field.** Two runs marking two cards are two statements
-that do not overlap, and a person renaming a third card while they do it is a write
-neither of them can lose.
+**A patch names a flow node and the fields to change.** Runs updating different nodes can
+proceed independently while a person edits the board.
 
-**Reads are told, not polled.** `GET /changes?wait=1` is held open until something
-on the board changes, so a card a run just marked redraws in the time a notification
-takes. A re-read is a **three-way merge**, not a replacement: the mark must arrive
-without taking the keystrokes of whoever is typing in another card.
+`GET /changes?wait=1` stays open until the board changes. Dashboard rereads and performs a
+**three-way merge** so the updated status appears on the card while local edits survive.
 
-## A card being played
+## A flow node being played
 
-The play loop stays in the hybridflow-runner inside worker: it needs the process that spawns
-the CLI and owns the turn socket, and that process cannot move. What it needs from the boards is
+The play loop stays in the hybridflow-runner inside worker, which launches the harness and
+owns the turn socket. What the play loop needs from the boards is
 one narrow seam — a port of **named operations** (`internal/hybridflow-runner/boards/boards.go`):
 claim, reopen, hold, finish, chat, drop, answered over HTTP by the hybridflow store.
 One line of configuration names it: `KIAO_WORKER_HYBRIDFLOW_URL`.
@@ -59,14 +56,14 @@ participant Runner <<play loop>>
 database Spool <<hybridflow-spool.jsonl>>
 end box
 boundary HybridflowStore <<Go>>
-participant AgentCLI <<claude / codex / muse>>
+participant Harness <<Claude Code / Codex / Muse / Pi>>
 
 Dashboard -> Runner : POST /hybridflow-runner/chain-runs/play
 Runner -> HybridflowStore : claim, mark, release\n(named operations)
 Runner -> Spool : queue the mark\n(link down only)
 Spool -> HybridflowStore : replay in order\n(link back)
-Runner -> AgentCLI : spawn the turn
-AgentCLI --&gt; Runner : what it said
+Runner -> Harness : start the turn
+Harness --&gt; Runner : turn events
 Runner -> Dashboard : the turn, over the socket
 @enduml
 ```
@@ -76,8 +73,8 @@ Runner -> Dashboard : the turn, over the socket
 **A run's credential.** A run lasts hours; the token of the person who clicked Play
 lasts minutes. So the runner presents a **service token** the deployment configures
 on both sides — the same shape as the credentials it already issues to its own turns —
-and names the run's owner in `X-Kiao-Actor`. The service records that as the actor, so
-a card a run moved still says whose run it was. A caller bearing a JWT may not use the
+and names the run's owner in `X-Kiao-Actor`. The service attributes flow node changes to
+that owner. A caller bearing a JWT may not use the
 header: it is who its token says it is, and the right to speak for somebody is the
 service token's alone. The variables on both sides are listed in
 [the configuration table](/operation/hybridflow-store/docs/solution-design/deployment.md).
@@ -89,17 +86,17 @@ service token's alone. The variables on both sides are listed in
 with a cache of the last board seen (`internal/hybridflow-runner/boards/boards_spool.go`).
 
 **Live first, queue second.** Every mark is tried against the store as usual, so a
-claim refused (409) or a card gone (404) still reaches the runner at once. Only a mark
+claim refused (409) or a flow node gone (404) still reaches the runner at once. Only a mark
 the store cannot be asked about — link down, timeout, 5xx — is appended to the spool,
 answered **optimistically** from the cached board, and replayed **in order** by a
 background sender once the link is back. Reads fall back to that same cache, so a chain
 walks on across the outage; what a run cannot do blind is **start** a board it never
-read, which would be inventing the card.
+read, which would be inventing the flow node.
 
 **A disk-backed enqueue succeeds only after persistence.** The candidate queue is written
 to a sibling temporary file, synced, closed and atomically renamed over the spool. Directory
 creation, temporary-file creation, encoding, writing, syncing, closing and rename errors
-reach the calling operation (`ReportUsage`, `SettleRun` or a card mark). On failure the
+reach the calling operation (`ReportUsage`, `SettleRun` or a flow node mark). On failure the
 previous file, in-memory queue and optimistic board cache are retained; the new record is
 not sent, and the caller can retry. A process without a configured spool path has only
 an in-memory queue and no restart guarantee.
@@ -112,13 +109,13 @@ keep their persisted report id, so the store's idempotent insertion counts each 
 An absent report id is generated before enqueueing. Cached optimistic marks remain visible
 while earlier marks are acknowledged and later marks for that board remain queued.
 
-**Usage reports queue first.** A turn's bill changes no card, so there is no refusal the
+**Usage reports queue first.** A turn's bill changes no flow node, so there is no refusal the
 run must hear before its next turn: the runner persists it on the spool, then wakes the
 sender to post it without a network call on the play loop. Turn settlement logs a filing
 error if the spool cannot be saved; it does not claim that the bill was queued.
 
-**Why a spool file and not a broker.** One consumer, a few marks per card, and the
+**Why a spool file and not a broker.** One consumer, a few marks per flow node, and the
 claim must be answered live *before* the turn starts — always queueing would run turns
-on cards another run holds. A broker would add a deployment, ordering and exactly-once
+on flow nodes another run holds. A broker would add a deployment, ordering and exactly-once
 semantics for a problem a crash-safe append file solves in one place, beside the runner
 that is its only writer and only reader.

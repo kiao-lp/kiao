@@ -1,3 +1,6 @@
 package config
 
-const StateDirName = ".kiao-config"
+const (
+	StateDirName         = ".kiao-config"
+	AgentPackagesDirName = "agentic-packages"
+)

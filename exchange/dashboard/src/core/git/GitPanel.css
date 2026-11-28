@@ -23,6 +23,24 @@
     gap: 4px;
 }
 
+.git-panel-head-unscoped {
+    justify-content: flex-end;
+}
+
+.git-configuration {
+    display: grid;
+    gap: 12px;
+    max-width: 32rem;
+}
+
+.git-configuration p {
+    margin: 0;
+}
+
+.git-configuration-saved {
+    margin-inline-start: 12px;
+}
+
 .git-branch-icon {
     flex-shrink: 0;
     color: var(--muted);

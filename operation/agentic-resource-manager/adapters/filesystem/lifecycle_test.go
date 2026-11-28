@@ -23,13 +23,14 @@ func TestInitializeAgentRetriesAfterRejectedPush(t *testing.T) {
 		t.Fatal(err)
 	}
 	hook := filepath.Join(remote, "hooks", "pre-receive")
-	if err := os.WriteFile(hook, []byte("#!/bin/sh\nexit 1\n"), 0755); err != nil {
+	if err := os.WriteFile(hook, []byte("#!/bin/sh\necho 'private remote diagnostic' >&2\nexit 1\n"), 0755); err != nil {
 		t.Fatal(err)
 	}
 	draft := func(project string) (*entities.Agent, error) {
 		return &entities.Agent{ID: "reviewer-id", Name: project, Harness: entities.HarnessCodex, Revision: 1}, nil
 	}
-	if _, err := store.ImportAgent(ctx, remote, draft); !errors.Is(err, entities.ErrConflict) {
+	_, err := store.ImportAgent(ctx, remote, draft)
+	if !errors.Is(err, entities.ErrConflict) || err.Error() != "The Git server rejected the push. Check its branch rules and write permissions." {
 		t.Fatalf("push rejection: %v", err)
 	}
 	if entries, err := os.ReadDir(root); err != nil || len(entries) != 0 {

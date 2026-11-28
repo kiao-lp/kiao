@@ -1,6 +1,6 @@
 import React, { useCallback } from 'react';
 import { AimOutlined } from '@ant-design/icons';
-import { Tooltip } from 'src/core/ui-foundation/feedback/Tooltip';
+import { IconButton } from '../../ui-foundation/toolbar/IconButton';
 import { useToolBarsOptional } from 'src/core/dashboard-ui/toolbars/ToolBars-ctx';
 import { FILE_NAVIGATION_TREE_TAB_ID } from './fileNavigationTab';
 import { useRevealInTree } from './RevealInTree-ctx';
@@ -30,19 +30,16 @@ export const RevealInTreeButton: React.FC<RevealInTreeButtonProps> = ({
         reveal(path);
     }, [bars, path, reveal]);
 
-    const button = (
-        <button
-            type="button"
+    return (
+        <IconButton
+            type="plain"
+            label={`Show the ${subject} in the file navigator`}
+            tooltip={path !== null}
+            icon={<AimOutlined />}
             className={`cms-reveal-in-tree${className ? ` ${className}` : ''}`}
             onClick={onClick}
             disabled={path === null}
-            aria-label={`Show the ${subject} in the file navigator`}
             data-testid={testId}
-        >
-            <AimOutlined />
-        </button>
+        />
     );
-
-    // Disabled buttons fire no tooltip, so no hover wrapper is used.
-    return path === null ? button : <Tooltip title={`Show the ${subject} in the file navigator`}>{button}</Tooltip>;
 };

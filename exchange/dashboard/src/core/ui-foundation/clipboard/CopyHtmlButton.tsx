@@ -1,4 +1,5 @@
 import React, { useCallback, useState } from 'react';
+import { IconButton } from '../toolbar/IconButton';
 import { setClipboardHtml } from './svgClipboard';
 import './CopyButton.css';
 
@@ -33,13 +34,12 @@ export const CopyHtmlButton: React.FC<{
     }, [containerRef, omitAttributes]);
 
     return (
-        <button
-            type="button"
+        <IconButton
+            type="plain"
+            label={copied ? copiedLabel : label}
+            icon={copied ? '✓' : '⎘'}
             onClick={handleCopy}
             className={className}
-            aria-label={copied ? copiedLabel : label}
-        >
-            {copied ? '✓' : '⎘'}
-        </button>
+        />
     );
 };

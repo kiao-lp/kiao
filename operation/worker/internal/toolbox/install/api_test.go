@@ -53,9 +53,15 @@ func newTestServiceWithCatalog(t *testing.T, bundled map[string]equipment.MCPSer
 // keep them the first time it starts a build that has a ledger. Those two ids ship in a staged
 // overlay file rather than embedded, so the test stages that overlay the way a deployment does.
 func TestSeedAdoptsTheConfiguredServers(t *testing.T) {
+	bundle := t.TempDir()
+	for _, name := range []string{"alpha-entry.js", "beta-entry.js"} {
+		if err := os.WriteFile(filepath.Join(bundle, name), nil, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
 	bundled := map[string]equipment.MCPServer{
-		"alpha": {Name: "kiao-alpha", Type: equipment.MCPStdio, Command: "node", Args: []string{"/bundle/alpha-entry.js"}},
-		"beta":  {Name: "kiao-beta", Type: equipment.MCPStdio, Command: "node", Args: []string{"/bundle/beta-entry.js"}},
+		"alpha": {Name: "kiao-alpha", Type: equipment.MCPStdio, Command: "node", Args: []string{filepath.Join(bundle, "alpha-entry.js")}},
+		"beta":  {Name: "kiao-beta", Type: equipment.MCPStdio, Command: "node", Args: []string{filepath.Join(bundle, "beta-entry.js")}},
 	}
 	overlay := map[string]string{"site.json": `{"components": [
 		{"id": "kiao-alpha", "kind": "mcp", "title": "kiao-alpha", "role": "alpha", "server": "kiao-alpha",
@@ -355,7 +361,7 @@ func TestAnAgentIsOfferedUntilTheSwitchSaysOtherwise(t *testing.T) {
 // Installing a harness's CLI switches that harness on: the button was pressed by somebody who wants
 // it, and the install and the switch write the same field — so an install that left the field alone
 // would put the bytes back and leave the tab empty.
-func TestInstallingAnAgentCLISwitchesItOn(t *testing.T) {
+func TestInstallingAHarnessCLISwitchesItOn(t *testing.T) {
 	svc := newTestService(t, nil, nil)
 	if err := svc.SetRegistered([]string{"claude-cli"}, false); err != nil {
 		t.Fatalf("SetRegistered: %v", err)

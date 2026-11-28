@@ -186,7 +186,7 @@ func TestRootDeclFallsBackToTheDefaults(t *testing.T) {
 
 func TestEnsureStoreDeclarationSeedsTheDefaults(t *testing.T) {
 	root := t.TempDir()
-	cfg := &fileconfig.Config{Config: &coreconfig.Config{RootPath: root, StatePath: filepath.Join(root, ".kiao-config")}}
+	cfg := &fileconfig.Config{Config: &coreconfig.Config{DCMSRoot: root, StatePath: filepath.Join(root, ".kiao-config")}}
 
 	EnsureStoreDeclaration(cfg)
 
@@ -205,7 +205,7 @@ func TestEnsureStoreDeclarationSeedsTheDefaults(t *testing.T) {
 func TestEnsureStoreDeclarationAbsorbsALegacyMigrationIgnore(t *testing.T) {
 	root := t.TempDir()
 	state := filepath.Join(root, ".kiao-config")
-	cfg := &fileconfig.Config{Config: &coreconfig.Config{RootPath: root, StatePath: state}}
+	cfg := &fileconfig.Config{Config: &coreconfig.Config{DCMSRoot: root, StatePath: state}}
 	legacy := filepath.Join(state, LegacyMigrationIgnoreFile)
 	mustWrite(t, legacy, "# only this store's own rules are worth keeping\nmy-sources\ndocs/examples\n")
 
@@ -230,7 +230,7 @@ func TestEnsureStoreDeclarationAbsorbsALegacyMigrationIgnore(t *testing.T) {
 // It is the operator's from the moment it exists.
 func TestEnsureStoreDeclarationKeepsAnExistingOne(t *testing.T) {
 	root := t.TempDir()
-	cfg := &fileconfig.Config{Config: &coreconfig.Config{RootPath: root, StatePath: filepath.Join(root, ".kiao-config")}}
+	cfg := &fileconfig.Config{Config: &coreconfig.Config{DCMSRoot: root, StatePath: filepath.Join(root, ".kiao-config")}}
 	mustWrite(t, filepath.Join(root, KiaoFilesName), "my-own-rule\n")
 	mustWrite(t, filepath.Join(cfg.StatePath, LegacyMigrationIgnoreFile), "vendor\n")
 

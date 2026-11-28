@@ -10,8 +10,8 @@ import (
 	"kiao/hybridflow-store/core/services"
 )
 
-// testAgentID is the agent board() files for the tests that play a card: aiSettings names it,
-// and the service refuses a card naming anything else.
+// testAgentID is the agent board() files for the tests that play a flow node: aiSettings names it,
+// and the service refuses a flow node naming anything else.
 const testAgentID = "id-1"
 
 func aiSettings() entities.TaskSettings {
@@ -33,7 +33,7 @@ func board(t *testing.T) (*services.Boards, *services.FlowNodes, *entities.Board
 	return boards, flowNodes, made
 }
 
-// A card that names an agent is an agent's, and one that names nothing is a person's — the reading
+// A flow node that names an agent is an agent's, and one that names nothing is a person's — the reading
 // a document saying no type got, kept for every client that sends none.
 func TestCreateReadsTheTypeOffTheSettings(t *testing.T) {
 	_, flowNodes, b := board(t)
@@ -45,18 +45,18 @@ func TestCreateReadsTheTypeOffTheSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 	if made[0].Type != entities.FlowNodeAI {
-		t.Errorf("a card with an agent is %q, want ai", made[0].Type)
+		t.Errorf("a flow node with an agent is %q, want ai", made[0].Type)
 	}
 	if made[1].Type != entities.FlowNodeHuman {
-		t.Errorf("a card with nothing is %q, want human", made[1].Type)
+		t.Errorf("a flow node with nothing is %q, want human", made[1].Type)
 	}
 }
 
-// A card naming an agent this store does not hold is refused at the write, where the message can
-// name the card, rather than at its first play. That is what narrows the writes while the reads
+// A flow node naming an agent this store does not hold is refused at the write, where the message can
+// name the flow node, rather than at its first play. That is what narrows the writes while the reads
 // stay forgiving: a board written before managed agents still opens, and its settings cannot be
 // written back until they name an agent.
-func TestCreateRefusesACardNamingNoAgentOfThisStore(t *testing.T) {
+func TestCreateRefusesAFlowNodeNamingNoAgentOfThisStore(t *testing.T) {
 	_, flowNodes, b := board(t)
 	_, err := flowNodes.Create(context.Background(), b.ID, []services.NewFlowNodeRequest{
 		{Title: "Play it", Settings: entities.TaskSettings{
@@ -68,7 +68,7 @@ func TestCreateRefusesACardNamingNoAgentOfThisStore(t *testing.T) {
 	}
 }
 
-// Several cards in one call is one gesture — a paste — and one change to the board, not six.
+// Several flow nodes in one call is one gesture — a paste — and one change to the board, not six.
 func TestCreateFilesABlockInOneCall(t *testing.T) {
 	_, flowNodes, b := board(t)
 	ctx := context.Background()
@@ -79,19 +79,19 @@ func TestCreateFilesABlockInOneCall(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(made) != 3 {
-		t.Fatalf("created %d cards, want 3", len(made))
+		t.Fatalf("created %d flow nodes, want 3", len(made))
 	}
 	all, err := flowNodes.Board(ctx, b.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(all) != 3 {
-		t.Errorf("the board holds %d cards, want 3", len(all))
+		t.Errorf("the board holds %d flow nodes, want 3", len(all))
 	}
 }
 
 // The whole point of a patch: two writers, two fields, both kept.
-func TestPatchesToTwoFieldsOfOneCardBothLand(t *testing.T) {
+func TestPatchesToTwoFieldsOfOneFlowNodeBothLand(t *testing.T) {
 	_, flowNodes, b := board(t)
 	ctx := context.Background()
 	made, err := flowNodes.Create(ctx, b.ID, []services.NewFlowNodeRequest{{Title: "Write it", Settings: aiSettings(), Body: "Go on."}}, "alex")
@@ -108,7 +108,7 @@ func TestPatchesToTwoFieldsOfOneCardBothLand(t *testing.T) {
 		t.Fatal(err)
 	}
 	if after.Title != title || after.Status != status {
-		t.Errorf("card = %q at %q, want both writes kept", after.Title, after.Status)
+		t.Errorf("flow node = %q at %q, want both writes kept", after.Title, after.Status)
 	}
 }
 
@@ -130,7 +130,7 @@ func TestPatchRefusesAStaleRevisionOnTheSameField(t *testing.T) {
 	}
 }
 
-// Retyping a card to Shutdown takes its chain off in the same write: a Shutdown ends the board.
+// Retyping a flow node to Shutdown takes its chain off in the same write: a Shutdown ends the board.
 func TestChangingTheTypeRereadsTheChain(t *testing.T) {
 	_, flowNodes, b := board(t)
 	ctx := context.Background()
@@ -154,11 +154,11 @@ func TestChangingTheTypeRereadsTheChain(t *testing.T) {
 	}
 }
 
-// A **task** appears and disappears with the type. An AI card and a Human card are work somebody
+// A **task** appears and disappears with the type. An AI flow node and a Human flow node are work somebody
 // does and carry one; a Shutdown and a Scheduler describe no work and carry none — so retyping a
-// card to one of those drops what only a task can hold, and retyping it back gives it a fresh,
+// flow node to one of those drops what only a task can hold, and retyping it back gives it a fresh,
 // empty task rather than the one it had.
-func TestOnlyACardThatIsWorkCarriesATask(t *testing.T) {
+func TestOnlyAFlowNodeThatIsWorkCarriesATask(t *testing.T) {
 	_, flowNodes, b := board(t)
 	ctx := context.Background()
 	made, err := flowNodes.Create(ctx, b.ID, []services.NewFlowNodeRequest{
@@ -168,9 +168,9 @@ func TestOnlyACardThatIsWorkCarriesATask(t *testing.T) {
 		t.Fatal(err)
 	}
 	if made[0].Task == nil || made[0].Task.Body != "Go." {
-		t.Fatalf("an AI card came back as %+v, want a task carrying its description", made[0].Task)
+		t.Fatalf("an AI flow node came back as %+v, want a task carrying its description", made[0].Task)
 	}
-	// The two kinds of work are one task between them: retyping an AI card Human keeps the
+	// The two kinds of work are one task between them: retyping an AI flow node Human keeps the
 	// description and the folder, which are the same work whoever does it.
 	human := entities.FlowNodeHuman
 	byHand, err := flowNodes.Patch(ctx, made[0].ID, entities.FlowNodePatch{Type: &human}, nil, "alex")
@@ -178,7 +178,7 @@ func TestOnlyACardThatIsWorkCarriesATask(t *testing.T) {
 		t.Fatal(err)
 	}
 	if byHand.Task == nil || byHand.Task.Body != "Go." {
-		t.Errorf("a Human card came back as %+v, want the same task", byHand.Task)
+		t.Errorf("a Human flow node came back as %+v, want the same task", byHand.Task)
 	}
 	shutdown := entities.FlowNodeShutdown
 	off, err := flowNodes.Patch(ctx, made[0].ID, entities.FlowNodePatch{Type: &shutdown}, nil, "alex")
@@ -193,13 +193,13 @@ func TestOnlyACardThatIsWorkCarriesATask(t *testing.T) {
 		t.Fatal(err)
 	}
 	if back.Task == nil || back.Task.Body != "" {
-		t.Errorf("a card typed back to Human carries %+v, want a task with nothing written on it", back.Task)
+		t.Errorf("a flow node typed back to Human carries %+v, want a task with nothing written on it", back.Task)
 	}
 }
 
-// A description written onto a card that is no task is dropped rather than refused, and a patch
+// A description written onto a flow node that is no task is dropped rather than refused, and a patch
 // that asked for nothing else is refused rather than served as a revision bump.
-func TestACardThatIsNoTaskIsNotWrittenWithATasksFields(t *testing.T) {
+func TestAFlowNodeThatIsNoTaskIsNotWrittenWithATasksFields(t *testing.T) {
 	_, flowNodes, b := board(t)
 	ctx := context.Background()
 	made, err := flowNodes.Create(ctx, b.ID, []services.NewFlowNodeRequest{
@@ -215,7 +215,7 @@ func TestACardThatIsNoTaskIsNotWrittenWithATasksFields(t *testing.T) {
 	if _, err := flowNodes.Patch(ctx, made[0].ID, entities.FlowNodePatch{Body: &body}, nil, "alex"); err == nil {
 		t.Error("a description was written onto a Shutdown")
 	}
-	// Beside something the card *does* have, the description is simply left behind.
+	// Beside something the flow node *does* have, the description is simply left behind.
 	title := "And off, then"
 	renamed, err := flowNodes.Patch(ctx, made[0].ID,
 		entities.FlowNodePatch{Title: &title, Body: &body}, nil, "alex")
@@ -223,14 +223,14 @@ func TestACardThatIsNoTaskIsNotWrittenWithATasksFields(t *testing.T) {
 		t.Fatal(err)
 	}
 	if renamed.Title != title || renamed.Task != nil {
-		t.Errorf("the card came back as %q / %+v, want the rename kept and the description dropped",
+		t.Errorf("the flow node came back as %q / %+v, want the rename kept and the description dropped",
 			renamed.Title, renamed.Task)
 	}
 }
 
 // Drawing a chain names the successor and leaves the transition mode where it was: the mode says
-// what becomes of this card's own conversation, which is the panel's question and not the line's. A
-// card chained while saying `end` used to come back saying `continue`, so the flowNode after it ran
+// what becomes of this flow node's own conversation, which is the panel's question and not the line's. A
+// flow node chained while saying `end` used to come back saying `continue`, so the flowNode after it ran
 // in a fork of a chat the user had asked to end.
 func TestChainLeavesTheTransitionModeAlone(t *testing.T) {
 	_, flowNodes, b := board(t)
@@ -242,7 +242,7 @@ func TestChainLeavesTheTransitionModeAlone(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The default, which is what a card says by saying nothing: chaining it must not rewrite the
+	// The default, which is what a flow node says by saying nothing: chaining it must not rewrite the
 	// mode into the one that carries the chat on.
 	chained, err := flowNodes.Chain(ctx, made[0].ID, made[1].ID, "alex")
 	if err != nil {
@@ -272,7 +272,7 @@ func TestChainLeavesTheTransitionModeAlone(t *testing.T) {
 		t.Errorf("mode after chaining an explicit end = %q, want %q",
 			chained.Task.Transition.Mode, entities.TransitionEnd)
 	}
-	// And the other way round: a card saying `continue` keeps saying it, chained or unchained.
+	// And the other way round: a flow node saying `continue` keeps saying it, chained or unchained.
 	continued := entities.Transition{Mode: entities.TransitionContinue}
 	if _, err := flowNodes.Patch(ctx, made[0].ID,
 		entities.FlowNodePatch{Next: &made[1].ID, Transition: &continued}, nil, "alex"); err != nil {
@@ -288,7 +288,7 @@ func TestChainLeavesTheTransitionModeAlone(t *testing.T) {
 	}
 }
 
-func TestChainRefusesACardOfAnotherBoard(t *testing.T) {
+func TestChainRefusesAFlowNodeOfAnotherBoard(t *testing.T) {
 	boards, flowNodes, b := board(t)
 	ctx := context.Background()
 	other, err := boards.Create(ctx, services.NewBoardRequest{Name: "Other"}, "alex")
@@ -307,13 +307,13 @@ func TestChainRefusesACardOfAnotherBoard(t *testing.T) {
 		t.Errorf("chaining across boards = %v, want ErrInvalid", err)
 	}
 	if _, err := flowNodes.Chain(ctx, mine[0].ID, mine[0].ID, "alex"); !errors.Is(err, entities.ErrInvalid) {
-		t.Errorf("chaining a card to itself = %v, want ErrInvalid", err)
+		t.Errorf("chaining a flow node to itself = %v, want ErrInvalid", err)
 	}
 }
 
 // ── a play ────────────────────────────────────────────────────────────────────
 
-func TestStartPlayTakesTheCardForTheRun(t *testing.T) {
+func TestStartPlayTakesTheFlowNodeForTheRun(t *testing.T) {
 	_, flowNodes, b := board(t)
 	ctx := context.Background()
 	made, err := flowNodes.Create(ctx, b.ID, []services.NewFlowNodeRequest{
@@ -326,16 +326,16 @@ func TestStartPlayTakesTheCardForTheRun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The description stays where it is: a play sends it, and writes nothing about it onto the card.
+	// The description stays where it is: a play sends it, and writes nothing about it onto the flow node.
 	if played.Task.Body != "Do the thing.\n\nCarefully." {
 		t.Errorf("the box holds %q, want the description left alone", played.Task.Body)
 	}
 	if played.Status != entities.StatusRunning || played.RunID != "run-1" {
-		t.Errorf("the card stands at %q held by %q", played.Status, played.RunID)
+		t.Errorf("the flow node stands at %q held by %q", played.Status, played.RunID)
 	}
 }
 
-func TestEndPlayMarksTheCardAndHandsItBack(t *testing.T) {
+func TestEndPlayMarksTheFlowNodeAndHandsItBack(t *testing.T) {
 	_, flowNodes, b := board(t)
 	ctx := context.Background()
 	made, err := flowNodes.Create(ctx, b.ID, []services.NewFlowNodeRequest{{Title: "Write it", Settings: aiSettings(), Body: "Go."}}, "alex")
@@ -345,33 +345,35 @@ func TestEndPlayMarksTheCardAndHandsItBack(t *testing.T) {
 	if _, err := flowNodes.StartPlay(ctx, made[0].ID, "run-1", "run-1"); err != nil {
 		t.Fatal(err)
 	}
-	done, err := flowNodes.EndPlay(ctx, made[0].ID, "run-1", entities.StatusDone, "run-1")
+	done, err := flowNodes.EndPlay(ctx, made[0].ID, "run-1", "run-1", entities.PlayResult{Status: entities.StatusDone})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if done.Status != entities.StatusDone || done.RunID != "" {
-		t.Errorf("the card stands at %q held by %q", done.Status, done.RunID)
+		t.Errorf("the flow node stands at %q held by %q", done.Status, done.RunID)
 	}
 	if done.Task.Body != "Go." {
 		t.Errorf("the box holds %q, want the description kept — what the turn said is in the chat", done.Task.Body)
 	}
-	// Played again, as it stands: the description was never taken away, so nothing has to be
-	// written back before the next play.
-	if _, err := flowNodes.Patch(ctx, made[0].ID, entities.FlowNodePatch{Status: statusPtr(entities.StatusReady)}, nil, "alex"); err != nil {
+	previousChat := "previous-conversation"
+	if _, err := flowNodes.Patch(ctx, made[0].ID, entities.FlowNodePatch{ConversationID: &previousChat}, nil, "alex"); err != nil {
 		t.Fatal(err)
 	}
 	again, err := flowNodes.StartPlay(ctx, made[0].ID, "run-2", "run-2")
 	if err != nil {
-		t.Fatalf("the card could not be played again as it stands: %v", err)
+		t.Fatalf("the flow node could not be played again as it stands: %v", err)
 	}
 	if again.Task.Body != "Go." {
 		t.Errorf("the box holds %q, want the description still there for the second play", again.Task.Body)
 	}
+	if again.Status != entities.StatusRunning || again.RunID != "run-2" || again.ConversationID() != "" {
+		t.Errorf("replay = %+v with chat %q", again, again.ConversationID())
+	}
 }
 
-// **A flow node is played by one run.** Twenty runs reach for one card at once and exactly one gets
-// it; the rest are told it is held rather than playing a card somebody else is playing.
-func TestOnlyOneRunEverTakesACard(t *testing.T) {
+// **A flow node is played by one run.** Twenty runs reach for one flow node at once and exactly one gets
+// it; the rest are told it is held rather than playing a flow node somebody else is playing.
+func TestOnlyOneRunEverTakesAFlowNode(t *testing.T) {
 	_, flowNodes, b := board(t)
 	ctx := context.Background()
 	made, err := flowNodes.Create(ctx, b.ID, []services.NewFlowNodeRequest{{Title: "Contested", Settings: aiSettings(), Body: "Go."}}, "alex")
@@ -397,7 +399,7 @@ func TestOnlyOneRunEverTakesACard(t *testing.T) {
 			case errors.Is(err, entities.ErrFlowNodeHeld), errors.Is(err, entities.ErrInvalid),
 				errors.Is(err, entities.ErrFlowNodeEmptyPrompt):
 				// Refused, and **which** refusal depends on where the loser was when the winner
-				// got there: the card is held, or it already stands at `running`. Both are the card
+				// got there: the flow node is held, or it already stands at `running`. Both are the flow node
 				// being refused, and the spread is the point — the checks before the claim are a
 				// courtesy to the caller, and the claim itself is the guarantee.
 			default:
@@ -407,14 +409,14 @@ func TestOnlyOneRunEverTakesACard(t *testing.T) {
 	}
 	wg.Wait()
 	if won != 1 {
-		t.Errorf("%d runs took the card, want exactly 1", won)
+		t.Errorf("%d runs took the flow node, want exactly 1", won)
 	}
 	if len(other) > 0 {
 		t.Errorf("unexpected failures: %v", other)
 	}
 }
 
-func TestStartPlayRefusesACardThatCannotBePlayed(t *testing.T) {
+func TestStartPlayRefusesAFlowNodeThatCannotBePlayed(t *testing.T) {
 	_, flowNodes, b := board(t)
 	ctx := context.Background()
 	made, err := flowNodes.Create(ctx, b.ID, []services.NewFlowNodeRequest{
@@ -425,17 +427,17 @@ func TestStartPlayRefusesACardThatCannotBePlayed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, card := range made {
-		if _, err := flowNodes.StartPlay(ctx, card.ID, "run-1", "run-1"); err == nil {
-			t.Errorf("%q was played", card.Title)
+	for _, flowNode := range made {
+		if _, err := flowNodes.StartPlay(ctx, flowNode.ID, "run-1", "run-1"); err == nil {
+			t.Errorf("%q was played", flowNode.Title)
 		}
 	}
 }
 
-// A task is valid with a title, a description or a success criterion: an AI card saying any one
-// of the three is played, and one saying none of them is refused like a card with no description
+// A task is valid with a title, a description or a success criterion: an AI flow node saying any one
+// of the three is played, and one saying none of them is refused like a flow node with no description
 // used to be.
-func TestStartPlayTakesACardSayingAnyOneOfTheThree(t *testing.T) {
+func TestStartPlayTakesAFlowNodeSayingAnyOneOfTheThree(t *testing.T) {
 	_, flowNodes, b := board(t)
 	ctx := context.Background()
 	made, err := flowNodes.Create(ctx, b.ID, []services.NewFlowNodeRequest{
@@ -449,11 +451,11 @@ func TestStartPlayTakesACardSayingAnyOneOfTheThree(t *testing.T) {
 	if made[2].Task.Criteria[0].ID == "" {
 		t.Error("a criterion came back with no id")
 	}
-	for i, card := range made {
-		if _, err := flowNodes.StartPlay(ctx, card.ID, "run-1", "run-1"); err != nil {
-			t.Errorf("card %d was not played: %v", i, err)
+	for i, flowNode := range made {
+		if _, err := flowNodes.StartPlay(ctx, flowNode.ID, "run-1", "run-1"); err != nil {
+			t.Errorf("flow node %d was not played: %v", i, err)
 		}
-		if _, err := flowNodes.EndPlay(ctx, card.ID, "run-1", entities.StatusDone, "run-1"); err != nil {
+		if _, err := flowNodes.EndPlay(ctx, flowNode.ID, "run-1", "run-1", entities.PlayResult{Status: entities.StatusDone}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -477,7 +479,7 @@ func TestCriteriaAndComplexityAreATasksOwn(t *testing.T) {
 	}
 	task := made[0].Task
 	if task == nil {
-		t.Fatalf("an AI card came back with no task")
+		t.Fatalf("an AI flow node came back with no task")
 	}
 	// Empty texts dropped, the missing id minted, the complexity kept.
 	if len(task.Criteria) != 1 || task.Criteria[0].Text != "It holds" || task.Criteria[0].ID == "" {
@@ -521,11 +523,11 @@ func TestCriteriaAndComplexityAreATasksOwn(t *testing.T) {
 	}
 }
 
-// `blocked` is the user's own word for a card waiting on something off the board, and the whole of
-// what it does here is stop the card being played: the claim takes a ready card and no other, so a
+// `blocked` is the user's own word for a flow node waiting on something off the board, and the whole of
+// what it does here is stop the flow node being played: the claim takes a ready flow node and no other, so a
 // blocked one is refused by the rule that was already there, and saying it is ready again is what
 // offers it its turn back.
-func TestStartPlayRefusesABlockedCard(t *testing.T) {
+func TestStartPlayRefusesABlockedFlowNode(t *testing.T) {
 	_, flowNodes, b := board(t)
 	ctx := context.Background()
 	made, err := flowNodes.Create(ctx, b.ID, []services.NewFlowNodeRequest{
@@ -539,23 +541,23 @@ func TestStartPlayRefusesABlockedCard(t *testing.T) {
 		t.Fatal(err)
 	}
 	if held.Status != entities.StatusBlocked {
-		t.Fatalf("the card stands at %q, want %q", held.Status, entities.StatusBlocked)
+		t.Fatalf("the flow node stands at %q, want %q", held.Status, entities.StatusBlocked)
 	}
 	if held.Status.Held() {
-		t.Error("a blocked card is held, but nothing is holding it — that is why it waits")
+		t.Error("a blocked flow node is held, but nothing is holding it — that is why it waits")
 	}
 	if _, err := flowNodes.StartPlay(ctx, made[0].ID, "run-1", "run-1"); err == nil {
-		t.Fatal("a blocked card was played")
+		t.Fatal("a blocked flow node was played")
 	}
 	if _, err := flowNodes.Patch(ctx, made[0].ID, entities.FlowNodePatch{Status: statusPtr(entities.StatusReady)}, nil, "alex"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := flowNodes.StartPlay(ctx, made[0].ID, "run-1", "run-1"); err != nil {
-		t.Errorf("a card said to be ready again was not played: %v", err)
+		t.Errorf("a flow node said to be ready again was not played: %v", err)
 	}
 }
 
-func TestSettleRunFreesTheCardsARestartLeftHeld(t *testing.T) {
+func TestSettleRunFreesTheFlowNodesARestartLeftHeld(t *testing.T) {
 	_, flowNodes, b := board(t)
 	ctx := context.Background()
 	made, err := flowNodes.Create(ctx, b.ID, []services.NewFlowNodeRequest{{Title: "Interrupted", Settings: aiSettings(), Body: "Go."}}, "alex")
@@ -570,19 +572,19 @@ func TestSettleRunFreesTheCardsARestartLeftHeld(t *testing.T) {
 		t.Fatal(err)
 	}
 	if settled != 1 {
-		t.Errorf("settled %d cards, want 1", settled)
+		t.Errorf("settled %d flow nodes, want 1", settled)
 	}
 	flowNode, err := flowNodes.Find(ctx, made[0].ID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if flowNode.Status != entities.StatusInterrupted || flowNode.RunID != "" {
-		t.Errorf("the card stands at %q held by %q", flowNode.Status, flowNode.RunID)
+		t.Errorf("the flow node stands at %q held by %q", flowNode.Status, flowNode.RunID)
 	}
 }
 
 // The chain is read off the board at the moment it is followed, not off a copy the run has been
-// carrying: the card may have been re-chained while the turn ran.
+// carrying: the flow node may have been re-chained while the turn ran.
 func TestNextFollowsTheBoardAsItStandsNow(t *testing.T) {
 	_, flowNodes, b := board(t)
 	ctx := context.Background()
@@ -607,7 +609,7 @@ func TestNextFollowsTheBoardAsItStandsNow(t *testing.T) {
 	if next == nil || next.Title != "Third" {
 		t.Errorf("next = %v, want Third", next)
 	}
-	// The card it chained to is deleted: the chain ends rather than pointing at nothing.
+	// The flow node it chained to is deleted: the chain ends rather than pointing at nothing.
 	if err := flowNodes.Delete(ctx, []string{made[2].ID}, "alex"); err != nil {
 		t.Fatal(err)
 	}
@@ -620,8 +622,8 @@ func TestNextFollowsTheBoardAsItStandsNow(t *testing.T) {
 	}
 }
 
-// The rule EndPlay turns on: a play marks the card and takes nothing away. Whatever the ending —
-// answered, stopped part-way, failed — the card still asks what it was asking, so it can be played
+// The rule EndPlay turns on: a play marks the flow node and takes nothing away. Whatever the ending —
+// answered, stopped part-way, failed — the flow node still asks what it was asking, so it can be played
 // again as it stands.
 func TestAPlayLeavesTheDescriptionWhereItIs(t *testing.T) {
 	for _, c := range []struct {
@@ -645,7 +647,7 @@ func TestAPlayLeavesTheDescriptionWhereItIs(t *testing.T) {
 			if _, err := flowNodes.StartPlay(ctx, made[0].ID, "run-1", "run-1"); err != nil {
 				t.Fatal(err)
 			}
-			ended, err := flowNodes.EndPlay(ctx, made[0].ID, "run-1", c.status, "run-1")
+			ended, err := flowNodes.EndPlay(ctx, made[0].ID, "run-1", "run-1", entities.PlayResult{Status: c.status})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -653,7 +655,7 @@ func TestAPlayLeavesTheDescriptionWhereItIs(t *testing.T) {
 				t.Errorf("the box holds %q, want the description kept for another play", ended.Task.Body)
 			}
 			if ended.Status != c.status {
-				t.Errorf("the card stands at %q, want %q", ended.Status, c.status)
+				t.Errorf("the flow node stands at %q, want %q", ended.Status, c.status)
 			}
 		})
 	}
@@ -661,9 +663,9 @@ func TestAPlayLeavesTheDescriptionWhereItIs(t *testing.T) {
 
 func statusPtr(s entities.FlowNodeStatus) *entities.FlowNodeStatus { return &s }
 
-// **Once per play, not once per attempt.** A turn that met a usage limit is sent the same card
-// again by the run that still holds it: the card is taken again without complaint.
-func TestARunComingBackToItsOwnCardIsTheSamePlay(t *testing.T) {
+// **Once per play, not once per attempt.** A turn that met a usage limit is sent the same flow node
+// again by the run that still holds it: the flow node is taken again without complaint.
+func TestARunComingBackToItsOwnFlowNodeIsTheSamePlay(t *testing.T) {
 	_, flowNodes, b := board(t)
 	ctx := context.Background()
 	made, err := flowNodes.Create(ctx, b.ID, []services.NewFlowNodeRequest{
@@ -675,31 +677,31 @@ func TestARunComingBackToItsOwnCardIsTheSamePlay(t *testing.T) {
 	if _, err := flowNodes.StartPlay(ctx, made[0].ID, "run-1", "run-1"); err != nil {
 		t.Fatal(err)
 	}
-	// The limit is met and waited out: the card is held, then sent again by the same run.
+	// The limit is met and waited out: the flow node is held, then sent again by the same run.
 	held := entities.StatusWaitingRefresh
 	if _, err := flowNodes.Patch(ctx, made[0].ID, entities.FlowNodePatch{Status: &held}, nil, "run-1"); err != nil {
 		t.Fatal(err)
 	}
 	again, err := flowNodes.StartPlay(ctx, made[0].ID, "run-1", "run-1")
 	if err != nil {
-		t.Fatalf("the run could not come back to its own card: %v", err)
+		t.Fatalf("the run could not come back to its own flow node: %v", err)
 	}
 	if again.Status != entities.StatusRunning || again.RunID != "run-1" {
-		t.Errorf("the card stands at %q held by %q", again.Status, again.RunID)
+		t.Errorf("the flow node stands at %q held by %q", again.Status, again.RunID)
 	}
 	if again.Task.Body != "Go on." {
 		t.Errorf("the box holds %q, want the description still there to be sent again", again.Task.Body)
 	}
 	// Another run is still refused, which is the half of the rule the first half must not have cost.
 	if _, err := flowNodes.StartPlay(ctx, made[0].ID, "run-2", "run-2"); err == nil {
-		t.Error("a second run took a card another run holds")
+		t.Error("a second run took a flow node another run holds")
 	}
 }
 
-// The editor mints a card's id in the browser, so that the card is drawn the instant it is typed
-// and so that pasted cards keep the chains among them. The store honours it — and refuses one it
+// The editor mints a flow node's id in the browser, so that the flow node is drawn the instant it is typed
+// and so that pasted flow nodes keep the chains among them. The store honours it — and refuses one it
 // could not hold, rather than quietly substituting another that nothing on screen names.
-func TestACardKeepsTheIdItsMakerGaveIt(t *testing.T) {
+func TestAFlowNodeKeepsTheIdItsMakerGaveIt(t *testing.T) {
 	_, flowNodes, b := board(t)
 	ctx := context.Background()
 	mine := "3f1a6d20-0000-4000-8000-000000000001"
@@ -708,7 +710,7 @@ func TestACardKeepsTheIdItsMakerGaveIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	if made[0].ID != mine {
-		t.Errorf("the card was given %q, want the id its maker chose", made[0].ID)
+		t.Errorf("the flow node was given %q, want the id its maker chose", made[0].ID)
 	}
 	if _, err := flowNodes.Create(ctx, b.ID, []services.NewFlowNodeRequest{{ID: "not-a-uuid", Title: "Bad id"}}, "alex"); !errors.Is(err, entities.ErrInvalid) {
 		t.Errorf("a malformed id = %v, want ErrInvalid", err)
@@ -716,7 +718,7 @@ func TestACardKeepsTheIdItsMakerGaveIt(t *testing.T) {
 }
 
 // A Gateway is filed with the branches it lists, in the order it lists them — and with no single
-// chain, which is not asked of it. A list said on a card that is no Gateway is dropped, one card
+// chain, which is not asked of it. A list said on a flow node that is no Gateway is dropped, one flow node
 // following those.
 func TestCreateFilesAGatewayWithItsBranches(t *testing.T) {
 	_, flowNodes, b := board(t)
@@ -744,18 +746,18 @@ func TestCreateFilesAGatewayWithItsBranches(t *testing.T) {
 	if patched.Next != "" {
 		t.Errorf("a Gateway still chains the single way to %q", patched.Next)
 	}
-	// And the list said on a card that is no Gateway is dropped.
+	// And the list said on a flow node that is no Gateway is dropped.
 	single, err := flowNodes.Patch(ctx, made[0].ID,
 		entities.FlowNodePatch{Nexts: &[]string{made[1].ID}, Title: strptr("Branch one")}, nil, "alex")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(single.Nexts) != 0 {
-		t.Errorf("an AI card holds branches %q, want none", single.Nexts)
+		t.Errorf("an AI flow node holds branches %q, want none", single.Nexts)
 	}
 }
 
-// Patching the branches says them whole: what the card holds afterwards is what was sent, not the
+// Patching the branches says them whole: what the flow node holds afterwards is what was sent, not the
 // branches it held with one added.
 func TestPatchReplacesAGatewaysBranches(t *testing.T) {
 	_, flowNodes, b := board(t)
@@ -787,7 +789,7 @@ func TestPatchReplacesAGatewaysBranches(t *testing.T) {
 	}
 }
 
-// Each branch is a chain, so each names a card of this board: one naming another board refuses the
+// Each branch is a chain, so each names a flow node of this board: one naming another board refuses the
 // whole patch.
 func TestPatchRefusesABranchOfAnotherBoard(t *testing.T) {
 	boards, flowNodes, b := board(t)
@@ -814,9 +816,9 @@ func TestPatchRefusesABranchOfAnotherBoard(t *testing.T) {
 	}
 }
 
-// Branches named on a card that is no Gateway are dropped like a task's fields on a card that is
-// none — and where that is all the patch asked for, the patch changes nothing the card has.
-func TestBranchesOnACardThatIsNoGatewayAreDropped(t *testing.T) {
+// Branches named on a flow node that is no Gateway are dropped like a task's fields on a flow node that is
+// none — and where that is all the patch asked for, the patch changes nothing the flow node has.
+func TestBranchesOnAFlowNodeThatIsNoGatewayAreDropped(t *testing.T) {
 	_, flowNodes, b := board(t)
 	ctx := context.Background()
 	made, err := flowNodes.Create(ctx, b.ID, []services.NewFlowNodeRequest{
@@ -828,14 +830,14 @@ func TestBranchesOnACardThatIsNoGatewayAreDropped(t *testing.T) {
 	}
 	if _, err := flowNodes.Patch(ctx, made[0].ID,
 		entities.FlowNodePatch{Nexts: &[]string{made[1].ID}}, nil, "alex"); !errors.Is(err, entities.ErrInvalid) {
-		t.Errorf("branches alone on an AI card = %v, want ErrInvalid", err)
+		t.Errorf("branches alone on an AI flow node = %v, want ErrInvalid", err)
 	}
 }
 
 // The type changed and the branches did not: retyping to a Gateway clears the single chain, and
 // retyping away from one clears the branches — each kind holds what it is asked for and nothing
 // else.
-func TestRetypingMovesTheChainBetweenTheSingleCardAndTheBranches(t *testing.T) {
+func TestRetypingMovesTheChainBetweenTheSingleFlowNodeAndTheBranches(t *testing.T) {
 	_, flowNodes, b := board(t)
 	ctx := context.Background()
 	made, err := flowNodes.Create(ctx, b.ID, []services.NewFlowNodeRequest{
@@ -866,7 +868,7 @@ func TestRetypingMovesTheChainBetweenTheSingleCardAndTheBranches(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(left.Nexts) != 0 {
-		t.Errorf("a Human card still holds branches %q", left.Nexts)
+		t.Errorf("a Human flow node still holds branches %q", left.Nexts)
 	}
 }
 
@@ -954,9 +956,9 @@ func TestSchedulerDurationSwitchesModes(t *testing.T) {
 	}
 }
 
-// Archiving is a boolean flip: the card stays stored, hidden everywhere with its links,
+// Archiving is a boolean flip: the flow node stays stored, hidden everywhere with its links,
 // never playable while hidden, and back when unarchived.
-func TestArchivingHidesTheCardWithoutDeletingIt(t *testing.T) {
+func TestArchivingHidesTheFlowNodeWithoutDeletingIt(t *testing.T) {
 	_, flowNodes, b := board(t)
 	ctx := context.Background()
 	made, err := flowNodes.Create(ctx, b.ID, []services.NewFlowNodeRequest{
@@ -977,23 +979,23 @@ func TestArchivingHidesTheCardWithoutDeletingIt(t *testing.T) {
 	if !archived.Archived {
 		t.Error("archived = false, want the boolean flip kept")
 	}
-	// The card is still there to be read and unarchived.
+	// The flow node is still there to be read and unarchived.
 	if _, err := flowNodes.Find(ctx, made[1].ID); err != nil {
-		t.Fatalf("archived card cannot be read: %v", err)
+		t.Fatalf("archived flow node cannot be read: %v", err)
 	}
-	// Its link ends the chain instead of surfacing a hidden card.
+	// Its link ends the chain instead of surfacing a hidden flow node.
 	if next, err := flowNodes.Next(ctx, made[0].ID); err != nil || next != nil {
-		t.Errorf("Next past an archived card = %+v, %v; want nil, nil", next, err)
+		t.Errorf("Next past an archived flow node = %+v, %v; want nil, nil", next, err)
 	}
-	// An archived card is never played.
+	// An archived flow node is never played.
 	if _, err := flowNodes.StartPlay(ctx, made[1].ID, "run-1", "run-1"); err == nil {
-		t.Error("an archived card was played")
+		t.Error("an archived flow node was played")
 	}
 	no := false
 	if live, err := flowNodes.Patch(ctx, made[1].ID, entities.FlowNodePatch{Archived: &no}, nil, "alex"); err != nil {
 		t.Fatal(err)
 	} else if live.Archived {
-		t.Error("unarchived card still stands archived")
+		t.Error("unarchived flow node still stands archived")
 	}
 }
 

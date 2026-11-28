@@ -53,7 +53,7 @@ const dragOf = (path: string, isDirectory = false): DataTransfer => {
 /** The field, over a heap the test can read back — which is where the answer actually lands. */
 const fieldOf = (expression: string) => {
     const heap: { current: KiaoElHeap } = { current: {} };
-    const Harness: React.FC = () => {
+    const ValueFieldFixture: React.FC = () => {
         const state = React.useState<KiaoElHeap>({});
         heap.current = state[0];
         return (
@@ -62,7 +62,7 @@ const fieldOf = (expression: string) => {
             </HeapContext.Provider>
         );
     };
-    render(<Harness />);
+    render(<ValueFieldFixture />);
     return heap;
 };
 
@@ -133,7 +133,7 @@ describe('a template variable answered from grouped config values', () => {
     /** The field, over a heap the test can read back, with the providers loaded for real. */
     const fieldWithProviders = (expression: string) => {
         const heap: { current: KiaoElHeap } = { current: {} };
-        const Harness: React.FC = () => {
+        const ValueFieldFixture: React.FC = () => {
             const state = React.useState<KiaoElHeap>({});
             heap.current = state[0];
             return (
@@ -144,7 +144,7 @@ describe('a template variable answered from grouped config values', () => {
                 </ConfigValuesProvider>
             );
         };
-        const view = render(<Harness />);
+        const view = render(<ValueFieldFixture />);
         return { heap, view };
     };
 
@@ -163,7 +163,7 @@ describe('a template variable answered from grouped config values', () => {
     // the same answer reads it out of the heap, through the placeholder it always named.
     it('reads a second field of the same answer where its placeholder names it', async () => {
         const heap: { current: KiaoElHeap } = { current: {} };
-        const Harness: React.FC = () => {
+        const ValueFieldFixture: React.FC = () => {
             const state = React.useState<KiaoElHeap>({});
             heap.current = state[0];
             return (
@@ -175,7 +175,7 @@ describe('a template variable answered from grouped config values', () => {
                 </ConfigValuesProvider>
             );
         };
-        const view = render(<Harness />);
+        const view = render(<ValueFieldFixture />);
         await waitFor(() => expect(client.getFileJson).toHaveBeenCalled());
 
         const boxes = view.container.querySelectorAll('input');

@@ -132,6 +132,8 @@ describe('useHarnessOptions', () => {
         let failOld!: (error: Error) => void;
         client.getHarnessOptions.mockReturnValueOnce(new Promise((_, reject) => { failOld = reject; }));
         act(() => { window.dispatchEvent(new Event('kiao:toolbox-changed')); });
+        expect(result.current.loading).toBe(false);
+        expect(result.current.harnesses.map(entry => entry.value)).toEqual(['claude']);
         act(() => { window.dispatchEvent(new Event('kiao:toolbox-changed')); });
         await waitFor(() => expect(result.current.loading).toBe(false));
         await act(async () => { failOld(new Error('older request failed')); });
@@ -139,7 +141,7 @@ describe('useHarnessOptions', () => {
 
         client.getHarnessOptions.mockRejectedValue(new Error('offline'));
         act(() => { window.dispatchEvent(new Event('kiao:toolbox-changed')); });
-        await waitFor(() => expect(result.current.loading).toBe(false));
-        expect(result.current.harnesses).toEqual([]);
+        await waitFor(() => expect(result.current.harnesses).toEqual([]));
+        expect(result.current.loading).toBe(false);
     });
 });

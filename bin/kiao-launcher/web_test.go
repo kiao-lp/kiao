@@ -195,7 +195,7 @@ func portOf(t *testing.T, rawURL string) int {
 // The boards live on a remote service, and this instance is a client of that one service. Three things have
 // to be true of every request the SPA makes, and none of them is the SPA's doing: the path lands
 // under the remote's own prefix, the deployment's token is presented, and the person at this
-// machine is named — a browser here has no session to borrow, so without these a card moved from a
+// machine is named — a browser here has no session to borrow, so without these a flow node moved from a
 // laptop is either refused or recorded as nobody.
 func TestRemoteBoardsCarryTheTokenAndTheActor(t *testing.T) {
 	type call struct{ path, auth, actor string }
@@ -229,7 +229,7 @@ func TestRemoteBoardsCarryTheTokenAndTheActor(t *testing.T) {
 }
 
 // The one combination that cannot be resolved by guessing: a service to send the boards to and a
-// database to serve them from are two different places to write a card, and picking one silently is
+// database to serve them from are two different places to write a flow node, and picking one silently is
 // how work ends up in the wrong one.
 func TestAServiceAndADatabaseTogetherAreRefused(t *testing.T) {
 	t.Setenv(remoteEnv, "https://boards.example.com/api/hybridflow")
@@ -256,7 +256,7 @@ func TestARemoteIsReadWithTheLoginNameAsActor(t *testing.T) {
 		t.Errorf("the trailing slash survived: %q", cfg.remote)
 	}
 	if cfg.actor == "" {
-		t.Error("no actor: every card moved from here would be recorded as the service itself")
+		t.Error("no actor: every flow node moved from here would be recorded as the service itself")
 	}
 	if !strings.Contains(cfg.describe(), cfg.actor) {
 		t.Errorf("the startup line %q does not say who the work will be recorded as", cfg.describe())

@@ -1,14 +1,14 @@
 /** Pure BoardContent transforms keyed by id. */
 
 import { CLONE_STEP } from './boardSpots';
-import { FlowNodeClass, FlowNodeClassVersion } from './flowNodeClass';
 import { sameSpot, spotAt, FlowNodeSpot } from './flowNodeSpot';
-import { FlowNodeStatus } from './flowNodeStatus';
+import { DRAFT, FlowNodeStatus } from './flowNodeStatus';
+import { isPassCount, readLimiter } from './flowNodeLimiter';
 import { hasSuccess, withoutSuccessor } from './flowNodeSuccess';
-import { chains } from './flowNodeType';
-import { canConnect, canRetype, successorIds } from './flowConnections';
+import { chains, isTask, joins, splits } from './flowNodeType';
+import { canAppendSuccessor, canConnect, canRetype, successorIds } from './flowConnections';
 import {
-    isRunnable, newId, BoardContent, FlowNode, Workflow, WorkflowClass,
+    isRunnable, newId, BoardContent, FlowNode, Workflow,
 } from './boardContent';
 
 export interface FlowNodeAt {
@@ -20,17 +20,6 @@ export const findFlowNode = (content: BoardContent, flowNodeId: string): FlowNod
     const index = content.flowNodes.findIndex(flowNode => flowNode.id === flowNodeId);
     if (index < 0) return null;
     return { flowNode: content.flowNodes[index], index };
-};
-
-export interface FlowNodeClassAt {
-    flowNodeClass: FlowNodeClass;
-    index: number;
-}
-
-export const findFlowNodeClass = (content: BoardContent, classId: string): FlowNodeClassAt | null => {
-    const index = content.flowNodeClasses.findIndex(flowNodeClass => flowNodeClass.id === classId);
-    if (index < 0) return null;
-    return { flowNodeClass: content.flowNodeClasses[index], index };
 };
 
 export const flowNodesOnChat = (content: BoardContent, chat: string): FlowNode[] =>
@@ -75,14 +64,18 @@ export const cloneFlowNode = (
     const spot = at.flowNode.spot ? spotAt(at.flowNode.spot.x + CLONE_STEP, at.flowNode.spot.y + CLONE_STEP) : null;
     const copy: FlowNode = {
         ...at.flowNode, id: newId(), chat: '', spot, archived: false, output: undefined,
+        status: isTask(at.flowNode.type) ? DRAFT : at.flowNode.status,
         criteria: at.flowNode.criteria.map(criterion => ({ ...criterion })),
     };
+    if (copy.type === 'limiter') copy.remainingPasses = readLimiter(copy).maxPasses;
+    if (copy.type === 'role') copy.roleId = '';
+    const joinTargets = new Set(content.flowNodes.filter(node => joins(node.type)).map(node => node.id));
     copy.onSuccess = {
         ...copy.onSuccess,
-        flowNode: content.flowNodes.some(node => node.id === copy.onSuccess.flowNode && node.type === 'gateway')
-            ? copy.onSuccess.flowNode : '',
-        flowNodes: copy.onSuccess.flowNodes.filter(id => content.flowNodes.some(node => node.id === id && node.type === 'gateway')),
+        flowNode: joinTargets.has(copy.onSuccess.flowNode) ? copy.onSuccess.flowNode : '',
+        flowNodes: copy.onSuccess.flowNodes.filter(id => joinTargets.has(id)),
     };
+    if (copy.routes) copy.routes = copy.routes.filter(route => copy.onSuccess.flowNodes.includes(route.flowNode));
     const flowNodes = [...content.flowNodes];
     flowNodes.splice(at.index + 1, 0, copy);
     return { content: withFlowNodes(content, flowNodes), flowNode: copy };
@@ -98,6 +91,10 @@ export const removeFlowNodes = (content: BoardContent, flowNodeIds: string[]): B
             let next = flowNode;
             if (going.has(flowNode.onSuccess.flowNode)) {
                 next = { ...next, onSuccess: withoutSuccessor(flowNode.onSuccess) };
+            }
+            if (next.onSuccess.flowNodes.some(id => going.has(id))) {
+                next = { ...next, onSuccess: { ...next.onSuccess, flowNodes: next.onSuccess.flowNodes.filter(id => !going.has(id)) } };
+                if (next.routes) next.routes = next.routes.filter(route => !going.has(route.flowNode));
             }
             if (going.has(flowNode.valueType)) next = { ...next, valueType: '' };
             return next;
@@ -132,20 +129,53 @@ export const unarchiveFlowNodes = (content: BoardContent, flowNodeIds: string[])
 
 export type FlowNodeEdit =
     Partial<Pick<FlowNode,
-        'title' | 'note' | 'value' | 'valueType' | 'outputType' | 'output' | 'type' | 'tags' | 'body' | 'criteria' | 'complexity' | 'settings' | 'at' | 'duration'
-        | 'spot' | 'status' | 'archived' | 'chat' | 'onSuccess' | 'classVersion' | 'workflow'>>;
+        'title' | 'note' | 'value' | 'valueType' | 'roleId' | 'roleKind' | 'people' | 'description'
+        | 'outputType' | 'output' | 'type' | 'tags' | 'body' | 'multiPartTemplate' | 'criteria' | 'complexity' | 'settings' | 'at' | 'duration'
+        | 'pullRequestId' | 'pullRequestStatus' | 'commitId' | 'commitStatus' | 'maxPasses'
+        | 'spot' | 'size' | 'status' | 'archived' | 'chat' | 'onSuccess' | 'routes' | 'workflow'>>
+    & { resetPasses?: boolean };
 
 export const editFlowNode = (content: BoardContent, flowNodeId: string, edit: FlowNodeEdit): BoardContent | null => {
     const at = findFlowNode(content, flowNodeId);
     if (!at) return null;
     if (edit.type && !canRetype(content.flowNodes, flowNodeId, edit.type)) return null;
+    const { resetPasses, ...fields } = edit;
+    const changed = { ...at.flowNode, ...fields };
+    if (!isTask(changed.type)) changed.multiPartTemplate = false;
+    if (changed.type !== 'bitbucket-pr-status') {
+        delete changed.pullRequestId;
+        delete changed.pullRequestStatus;
+    }
+    if (changed.type !== 'bitbucket-commit-status') {
+        delete changed.commitId;
+        delete changed.commitStatus;
+    }
+    if (changed.type !== 'role') {
+        delete changed.roleId;
+        delete changed.roleKind;
+        delete changed.people;
+        delete changed.description;
+    }
+    if (changed.type === 'limiter') {
+        if (changed.onSuccess.flowNodes.length > 2 || (edit.maxPasses !== undefined && !isPassCount(edit.maxPasses))) return null;
+        const counts = readLimiter(changed);
+        changed.maxPasses = counts.maxPasses;
+        changed.remainingPasses = resetPasses || counts.maxPasses !== at.flowNode.maxPasses
+            ? counts.maxPasses : counts.remainingPasses;
+    } else {
+        delete changed.maxPasses;
+        delete changed.remainingPasses;
+    }
     if (edit.onSuccess) {
         const held = successorIds(at.flowNode);
-        const changed = { ...at.flowNode, ...edit };
         const nodes = content.flowNodes.map(node => node.id === flowNodeId ? changed : node);
         if (successorIds(changed).some(id => !held.includes(id) && !canConnect(nodes, flowNodeId, id))) return null;
     }
-    return withFlowNodes(content, content.flowNodes.map(flowNode => (flowNode.id === flowNodeId ? { ...flowNode, ...edit } : flowNode)));
+    if (changed.type !== 'exclusive-gateway') delete changed.routes;
+    else if (edit.onSuccess && changed.routes) {
+        changed.routes = changed.routes.filter(route => changed.onSuccess.flowNodes.includes(route.flowNode));
+    }
+    return withFlowNodes(content, content.flowNodes.map(flowNode => (flowNode.id === flowNodeId ? changed : flowNode)));
 };
 
 export const setFlowNodeStatus = (content: BoardContent, flowNodeId: string, status: FlowNodeStatus): BoardContent | null =>
@@ -155,7 +185,7 @@ export const setFlowNodeStatus = (content: BoardContent, flowNodeId: string, sta
 export const successorOf = (content: BoardContent, flowNode: FlowNode): FlowNode | null => {
     if (flowNode.archived || !flowNode.onSuccess.flowNode) return null;
     const at = findFlowNode(content, flowNode.onSuccess.flowNode);
-    if (!at || at.flowNode.archived || !isRunnable(at.flowNode)) return null;
+    if (!at || at.flowNode.archived || !isRunnable(at.flowNode, content)) return null;
     return at.flowNode;
 };
 
@@ -165,9 +195,9 @@ export const chainFlowNode = (content: BoardContent, fromId: string, toId: strin
     if (!at || at.flowNode.archived) return null;
     const held = at.flowNode.onSuccess;
     if (toId && !chains(at.flowNode.type)) return null;
-    if (toId && toId !== fromId && !canConnect(content.flowNodes, fromId, toId)) return null;
+    if (toId && toId !== fromId && !canAppendSuccessor(content.flowNodes, fromId, toId)) return null;
 
-    if (at.flowNode.type === 'gateway') {
+    if (splits(at.flowNode.type)) {
         if (!toId || toId === fromId || held.flowNodes.includes(toId)) return null;
         const target = findFlowNode(content, toId);
         if (!target || target.flowNode.archived) return null;
@@ -183,7 +213,7 @@ export const chainFlowNode = (content: BoardContent, fromId: string, toId: strin
     return editFlowNode(content, fromId, { onSuccess: { ...held, flowNode: toId } });
 };
 
-/** Places cards in one edit. */
+/** Places nodes in one edit. */
 export const placeFlowNodes = (content: BoardContent, spots: Map<string, FlowNodeSpot>): BoardContent | null => {
     const wanted = new Map([...spots].filter(([id, spot]) => {
         const at = findFlowNode(content, id);
@@ -196,7 +226,7 @@ export const placeFlowNodes = (content: BoardContent, spots: Map<string, FlowNod
     }));
 };
 
-/** Moves placed cards as a group. */
+/** Moves placed nodes as a group. */
 export const moveSpots = (
     content: BoardContent,
     flowNodeIds: string[],
@@ -214,181 +244,10 @@ export const moveSpots = (
         [flowNode.id, spotAt(held(flowNode).x + step.x, held(flowNode).y + step.y)])));
 };
 
-const withFlowNodeClasses = (content: BoardContent, flowNodeClasses: FlowNodeClass[]): BoardContent => ({
-    ...content, flowNodeClasses,
-});
-
-export const flowNodeClassesNamed = (content: BoardContent, classIds: string[]): FlowNodeClass[] => {
-    const named = new Set(classIds);
-    return content.flowNodeClasses.filter(flowNodeClass => named.has(flowNodeClass.id));
-};
-
-export const insertFlowNodeClasses = (
-    content: BoardContent,
-    coming: FlowNodeClass[],
-): BoardContent | null => {
-    if (coming.length === 0) return null;
-    return withFlowNodeClasses(content, [...content.flowNodeClasses, ...coming]);
-};
-
-/**
- * Clones directly after the original.
- * Copy holds only the latest version as draft number 1 and keeps the successor.
- */
-export const cloneFlowNodeClass = (
-    content: BoardContent,
-    classId: string,
-): { content: BoardContent; flowNodeClass: FlowNodeClass } | null => {
-    const at = findFlowNodeClass(content, classId);
-    if (!at) return null;
-    const spot = at.flowNodeClass.spot
-        ? spotAt(at.flowNodeClass.spot.x + CLONE_STEP, at.flowNodeClass.spot.y + CLONE_STEP)
-        : null;
-    const latest = at.flowNodeClass.versions.reduce<FlowNodeClassVersion | null>(
-        (held, version) => (!held || version.number > held.number ? version : held), null);
-    const versions: FlowNodeClassVersion[] = latest ? [{
-        ...latest,
-        id: newId(),
-        number: 1,
-        criteria: latest.criteria.map(criterion => ({ ...criterion })),
-        status: 'draft',
-    }] : [];
-    const copy: FlowNodeClass = {
-        ...at.flowNodeClass,
-        id: newId(),
-        tags: [...at.flowNodeClass.tags],
-        spot,
-        onSuccess: { ...at.flowNodeClass.onSuccess },
-        versions,
-    };
-    const flowNodeClasses = [...content.flowNodeClasses];
-    flowNodeClasses.splice(at.index + 1, 0, copy);
-    return { content: withFlowNodeClasses(content, flowNodeClasses), flowNodeClass: copy };
-};
-
-/** Removes classes and clears successors naming them. */
-export const removeFlowNodeClasses = (content: BoardContent, classIds: string[]): BoardContent | null => {
-    const going = new Set(flowNodeClassesNamed(content, classIds).map(one => one.id));
-    if (going.size === 0) return null;
-    const kept = content.flowNodeClasses
-        .filter(one => !going.has(one.id))
-        .map(one => (going.has(one.onSuccess.flowNode)
-            ? { ...one, onSuccess: withoutSuccessor(one.onSuccess) }
-            : one));
-    const held = new Set(kept.map(one => one.workflowClass).filter(id => id !== ''));
-    const workflowClasses = (content.workflowClasses ?? [])
-        .filter(workflow => held.has(workflow.id));
-    if (workflowClasses.length === (content.workflowClasses ?? []).length) {
-        return withFlowNodeClasses(content, kept);
-    }
-    return { ...content, flowNodeClasses: kept, workflowClasses };
-};
-
-export type FlowNodeClassEdit =
-    Partial<Pick<FlowNodeClass,
-        'title' | 'instantiable' | 'type' | 'tags' | 'at' | 'duration' | 'spot' | 'onSuccess' | 'permission'
-        | 'runner' | 'selection' | 'note' | 'workflowClass'>>;
-
-export const editFlowNodeClass = (
-    content: BoardContent, classId: string, edit: FlowNodeClassEdit,
-): BoardContent | null => {
-    if (!findFlowNodeClass(content, classId)) return null;
-    return withFlowNodeClasses(content, content.flowNodeClasses.map(one =>
-        (one.id === classId ? { ...one, ...edit, ...(edit.type && edit.type !== 'ai' ? { selection: undefined } : {}) } : one)));
-};
-
-/** Chains a class to a class or clears it. Classes chain only to classes. */
-export const chainFlowNodeClass = (
-    content: BoardContent, fromId: string, toId: string | null,
-): BoardContent | null => {
-    const at = findFlowNodeClass(content, fromId);
-    if (!at) return null;
-    const held = at.flowNodeClass.onSuccess;
-    if (toId && !chains(at.flowNodeClass.type)) return null;
-
-    if (!toId || toId === fromId) {
-        return hasSuccess(held)
-            ? editFlowNodeClass(content, fromId, { onSuccess: withoutSuccessor(held) })
-            : null;
-    }
-    if (!findFlowNodeClass(content, toId) || held.flowNode === toId) return null;
-    return editFlowNodeClass(content, fromId, { onSuccess: { ...held, flowNode: toId } });
-};
-
-export const placeFlowNodeClasses = (
-    content: BoardContent, spots: Map<string, FlowNodeSpot>,
-): BoardContent | null => {
-    const wanted = new Map([...spots].filter(([id, spot]) => {
-        const at = findFlowNodeClass(content, id);
-        return !!at && !sameSpot(at.flowNodeClass.spot, spot);
-    }));
-    if (wanted.size === 0) return null;
-    return withFlowNodeClasses(content, content.flowNodeClasses.map(one => {
-        const spot = wanted.get(one.id);
-        return spot ? { ...one, spot } : one;
-    }));
-};
-
-export const moveClassSpots = (
-    content: BoardContent,
-    classIds: string[],
-    dx: number,
-    dy: number,
-): BoardContent | null => {
-    const going = flowNodeClassesNamed(content, classIds).filter(one => one.spot);
-    if (going.length === 0) return null;
-    const held = (one: FlowNodeClass) => one.spot as FlowNodeSpot;
-    const step = {
-        x: Math.max(dx, -Math.min(...going.map(one => held(one).x))),
-        y: Math.max(dy, -Math.min(...going.map(one => held(one).y))),
-    };
-    return placeFlowNodeClasses(content, new Map(going.map(one =>
-        [one.id, spotAt(held(one).x + step.x, held(one).y + step.y)])));
-};
-
-export const insertClassVersion = (
-    content: BoardContent, classId: string, version: FlowNodeClassVersion,
-): BoardContent | null => {
-    const at = findFlowNodeClass(content, classId);
-    if (!at) return null;
-    return withFlowNodeClasses(content, content.flowNodeClasses.map(one =>
-        (one.id === classId ? { ...one, versions: [...one.versions, version] } : one)));
-};
-
-export type ClassVersionEdit = Partial<Pick<FlowNodeClassVersion, 'body' | 'criteria' | 'template' | 'status'>>;
-
-export const editClassVersion = (
-    content: BoardContent, classId: string, versionId: string, edit: ClassVersionEdit,
-): BoardContent | null => {
-    const at = findFlowNodeClass(content, classId);
-    if (!at || !at.flowNodeClass.versions.some(version => version.id === versionId)) return null;
-    return withFlowNodeClasses(content, content.flowNodeClasses.map(one =>
-        (one.id !== classId ? one : {
-            ...one,
-            versions: one.versions.map(version =>
-                (version.id === versionId ? { ...version, ...edit } : version)),
-        })));
-};
-
-export const removeClassVersion = (
-    content: BoardContent, classId: string, versionId: string,
-): BoardContent | null => {
-    const at = findFlowNodeClass(content, classId);
-    if (!at || !at.flowNodeClass.versions.some(version => version.id === versionId)) return null;
-    return withFlowNodeClasses(content, content.flowNodeClasses.map(one =>
-        (one.id !== classId ? one : {
-            ...one,
-            versions: one.versions.filter(version => version.id !== versionId),
-        })));
-};
-
 export const findWorkflow = (content: BoardContent, workflowId: string): Workflow | null =>
     (content.workflows ?? []).find(workflow => workflow.id === workflowId) ?? null;
 
-export const findWorkflowClass = (content: BoardContent, workflowId: string): WorkflowClass | null =>
-    (content.workflowClasses ?? []).find(workflow => workflow.id === workflowId) ?? null;
-
-/** Groups named cards into workflow. */
+/** Groups named nodes into workflow. */
 export const groupFlowNodes = (
     content: BoardContent, workflow: Workflow, flowNodeIds: string[],
 ): BoardContent | null => {
@@ -399,20 +258,6 @@ export const groupFlowNodes = (
         workflows: [...(content.workflows ?? []), workflow],
         flowNodes: content.flowNodes.map(flowNode =>
             (members.has(flowNode.id) ? { ...flowNode, workflow: workflow.id } : flowNode)),
-    };
-};
-
-/** Groups named classes into workflow. */
-export const groupFlowNodeClasses = (
-    content: BoardContent, workflow: WorkflowClass, classIds: string[],
-): BoardContent | null => {
-    const members = new Set(flowNodeClassesNamed(content, classIds).map(one => one.id));
-    if (members.size === 0) return null;
-    return {
-        ...content,
-        workflowClasses: [...(content.workflowClasses ?? []), workflow],
-        flowNodeClasses: content.flowNodeClasses.map(one =>
-            (members.has(one.id) ? { ...one, workflowClass: workflow.id } : one)),
     };
 };
 
@@ -427,18 +272,7 @@ export const editWorkflow = (
     };
 };
 
-export const editWorkflowClass = (
-    content: BoardContent, workflowId: string, name: string,
-): BoardContent | null => {
-    if (!findWorkflowClass(content, workflowId)) return null;
-    return {
-        ...content,
-        workflowClasses: (content.workflowClasses ?? []).map(workflow =>
-            (workflow.id === workflowId ? { ...workflow, name } : workflow)),
-    };
-};
-
-/** Removes workflows and ungroups their cards. */
+/** Removes workflows and ungroups their nodes. */
 export const removeWorkflows = (content: BoardContent, workflowIds: string[]): BoardContent | null => {
     const going = new Set(workflowIds.filter(id => findWorkflow(content, id)));
     if (going.size === 0) return null;
@@ -447,18 +281,5 @@ export const removeWorkflows = (content: BoardContent, workflowIds: string[]): B
         workflows: (content.workflows ?? []).filter(workflow => !going.has(workflow.id)),
         flowNodes: content.flowNodes.map(flowNode =>
             (going.has(flowNode.workflow) ? { ...flowNode, workflow: '' } : flowNode)),
-    };
-};
-
-/** Removes workflow classes and ungroups their classes. */
-export const removeWorkflowClasses = (content: BoardContent, workflowIds: string[]): BoardContent | null => {
-    const going = new Set(workflowIds.filter(id => findWorkflowClass(content, id)));
-    if (going.size === 0) return null;
-    return {
-        ...content,
-        workflowClasses: (content.workflowClasses ?? [])
-            .filter(workflow => !going.has(workflow.id)),
-        flowNodeClasses: content.flowNodeClasses.map(one =>
-            (going.has(one.workflowClass) ? { ...one, workflowClass: '' } : one)),
     };
 };

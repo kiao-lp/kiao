@@ -52,7 +52,8 @@ export const base64Size = (blob: Blob): number => Math.ceil(blob.size / 3) * 4;
 export const buildImageMarkdown = (alt: string, src: string): string =>
     `![${alt.replace(/[[\]]/g, '')}](${src})`;
 
-/** Paths are root-relative; `''` folder is the root. Relative if under the document folder, else root-prefixed; `fromRoot` forces root. */
+/** Use a document-relative destination for images under the document folder. Use a DCMS
+ * link for other images or when `fromRoot` is set. Inputs are relative to the DCMS root. */
 export const imageLinkPath = (imagePath: string, documentFolder: string, fromRoot = false): string => {
     const path = imagePath.replace(/^\/+/, '');
     if (fromRoot) return `/${path}`;

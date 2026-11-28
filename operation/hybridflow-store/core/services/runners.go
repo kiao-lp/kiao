@@ -8,7 +8,7 @@ import (
 	"kiao/hybridflow-store/core/ports"
 )
 
-// Runners is the runner half of the core: the machines that play cards.
+// Runners is the runner half of the core: the machines that play flow nodes.
 //
 // What it does **not** do is play one — a runner is a worker on another host, and this half
 // never sees it except in the heartbeat it calls in with. This half keeps the definitions: which
@@ -31,7 +31,7 @@ type NewRunnerRequest struct {
 }
 
 // Create files a runner. The id is minted here: nothing draws a runner before it exists, so unlike
-// a card's it is never the client's to choose.
+// a flow node's it is never the client's to choose.
 func (r *Runners) Create(ctx context.Context, req NewRunnerRequest, actor string) (*entities.Runner, error) {
 	name := strings.TrimSpace(req.Name)
 	if name == "" {

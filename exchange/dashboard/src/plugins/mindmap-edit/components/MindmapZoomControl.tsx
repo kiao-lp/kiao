@@ -1,16 +1,7 @@
-import React from 'react';
+import { ZoomControl } from '@kiao-dashboard-core';
 import { useMindmapStateContext } from '../state';
-import { ZoomControl } from '@kiao-dashboard-kit/zoom-control';
 
-export const MindmapZoomControl: React.FC = () => {
+export const MindmapZoomControl = () => {
     const { zoom, setZoom } = useMindmapStateContext();
-
-    return (
-        <ZoomControl
-            zoom={zoom}
-            onZoomChange={setZoom}
-            className="mindmap-zoom-control"
-        />
-    );
+    return <ZoomControl zoom={zoom} onZoomChange={setZoom} />;
 };
-

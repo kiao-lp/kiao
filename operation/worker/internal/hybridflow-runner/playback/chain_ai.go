@@ -2,7 +2,6 @@ package playback
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	pkgBoards "kiao/worker/internal/hybridflow-runner/boards"
 	harnessapi "kiao/worker/internal/hybridflow-runner/harnesses"
@@ -12,56 +11,47 @@ import (
 	"strings"
 )
 
-// playAI resolves the agent, claims the card, builds its input and runs one attempt.
-// The conversation pins its publication; effort and permissions belong to this card's turn.
-func (r *ChainRunner) playAI(ctx context.Context, run *ChainRun, board *pkgBoards.BoardContent, flowNode *pkgBoards.FlowNode, chat string, how playHow) (PlayOneOutcome, *harnessfaults.TurnFault) {
+// playAI resolves the agent, claims the flow node, builds its input and runs one attempt.
+// The conversation pins its publication; effort and permissions belong to this flow node's turn.
+func (r *ChainRunner) playAI(ctx context.Context, run *ChainRun, board *pkgBoards.BoardContent, flowNode *pkgBoards.FlowNode, step chainStep) (PlayOneOutcome, *harnessfaults.TurnFault) {
 	flowNodeID := flowNode.ID
+	chat, how := step.chat, step.how
+	continuing := how.resume || how.suspended != nil ||
+		(flowNode.Status == pkgBoards.FlowNodeStatusInterrupted && chat != "")
+	resumePrompt := how.resume
+	if continuing {
+		meta, err := r.convs.Get(chat)
+		if err != nil {
+			r.say(run, runstate.NoticeError, "The task's conversation could not be resumed: "+err.Error())
+			return PlayOneOutcome{Round: roundStop, Chat: chat}, nil
+		}
+		resumePrompt = resumePrompt || (meta.SessionID != "" && !meta.ForkPending)
+		if previous := r.Hub.RunningTurn(chat); previous != nil {
+			if drained := previous.InterruptedProcessDone(); drained != nil {
+				select {
+				case <-drained:
+				case <-run.waking():
+					return PlayOneOutcome{Round: roundStop, Chat: chat}, nil
+				case <-ctx.Done():
+					return PlayOneOutcome{Round: roundStop, Chat: chat}, nil
+				}
+			}
+		}
+	}
+	fromChat := how.suspended != nil && how.suspended.message != nil
 
-	// What the card's agent names, resolved before anything is marked: a card whose agent is gone
-	// — or was never one — ends the chain unmarked, the way a chain reaching a card nobody can
+	// What the flow node's agent names, resolved before anything is marked: a flow node whose agent is gone
+	// — or was never one — ends the chain unmarked, the way a chain reaching a flow node nobody can
 	// play ends it, rather than as a turn that ran and failed.
-	resolving := *flowNode
-	resolving.Chat = chat
-	resolved, err := r.ResolveAgent(resolving)
+	resolved, err := r.resolveFlowNodeAgent(*flowNode, chat)
 	if err != nil {
 		r.say(run, runstate.NoticeError, "“"+flowNode.Title+"” cannot be played: "+err.Error())
 		return PlayOneOutcome{Round: roundStop, Chat: chat}, nil
 	}
-	if resolved.Harness == harnessapi.HarnessPi && r.Hub != nil && chat == "" {
-		target, err := r.Hub.HarnessRegistry().Profiles.ResolveProfile(resolved.profileID, resolved.Model, flowNode.Settings.Effort)
-		if err != nil {
-			r.say(run, runstate.NoticeError, err.Error())
-			return PlayOneOutcome{Round: roundStop, Chat: chat}, nil
-		}
-		resolved.profileID, resolved.Model = target.Profile.ID, target.Provider+"/"+target.ModelID
-	}
-	if chat != "" && resolved.Snapshot != nil {
-		source, err := r.convs.Get(chat)
-		if err != nil {
-			r.say(run, runstate.NoticeError, err.Error())
-			return PlayOneOutcome{Round: roundStop, Chat: chat}, nil
-		}
-		if source.AgentVersion == nil || source.AgentVersion.AgentID != resolved.Snapshot.AgentID ||
-			source.Harness != resolved.Harness || (resolved.profileID != "" && source.ProfileID != resolved.profileID) ||
-			(flowNode.Settings.Harness != "" && flowNode.Settings.Model != "" && source.AgentVersion.ConversationModel(source.Model) != resolved.Model) ||
-			(source.AgentVersion.Commit == "" && resolved.Snapshot.Commit != "") {
-			forked, err := r.forkChat(run, chat, flowNode.Title, resolved)
-			if err != nil {
-				r.say(run, runstate.NoticeError, err.Error())
-				return PlayOneOutcome{Round: roundStop, Chat: chat}, nil
-			}
-			if err := r.mark(run, func() (*pkgBoards.BoardContent, error) { return r.Boards.Chat(run.Handle, flowNodeID, forked) }); err != nil {
-				r.say(run, runstate.NoticeError, err.Error())
-				return PlayOneOutcome{Round: roundStop, Chat: chat}, nil
-			}
-			chat = forked
-		}
-	}
-	out := PlayOneOutcome{Chat: chat, Title: flowNode.Title, Harness: resolved.Harness}
-
-	r.setState(run, flowNodeID, chat, ChainRunStatePlaying)
+	startingChat := chat
+	r.setState(run, flowNodeID, startingChat, ChainRunStatePlaying)
 	// The flow node is the run's from here, and the board says so: a run is minutes to hours long,
-	// and the spinner the board draws over the card is the view of whoever started it — a tab that was
+	// and the spinner the board draws over the flow node is the view of whoever started it — a tab that was
 	// closed, a second machine, tomorrow morning have nothing but the mark. It also settles what a
 	// flowNode played again says, whatever the last play made of it: being worked on now, rather than
 	// yesterday's error under a spinner.
@@ -70,9 +60,30 @@ func (r *ChainRunner) playAI(ctx context.Context, run *ChainRun, board *pkgBoard
 		// The same play coming back to the same flow node: it is marked as being worked on again.
 		take = func() (*pkgBoards.BoardContent, error) { return r.Boards.Reopen(run.Handle, flowNodeID, run.Id) }
 	}
-	if err := r.mark(run, take); err != nil {
-		r.say(run, runstate.NoticeError, "The board could not be written, so the play stops here: "+err.Error())
+	claimed, err := r.claimFlowNode(ctx, run, step.input != nil && !how.resume, take)
+	if err != nil {
+		if !r.stopping(run) && ctx.Err() == nil {
+			r.say(run, runstate.NoticeError, "The board could not be written, so the play stops here: "+err.Error())
+		}
 		return PlayOneOutcome{Round: roundStop, Chat: chat}, nil
+	}
+	current := claimed.FlowNode(flowNodeID)
+	if current == nil {
+		r.say(run, runstate.NoticeError, "The flow node is no longer on the board; the play stops here.")
+		return PlayOneOutcome{Round: roundStop}, nil
+	}
+	// The claim can detach a conversation if the flow node completed after our first read.
+	if continuing && chat != current.Chat && !how.resume {
+		r.say(run, runstate.NoticeError, "The task's conversation changed before it could be resumed.")
+		return PlayOneOutcome{Round: roundStop, Chat: chat}, nil
+	}
+	if !continuing && chat != "" && !how.handoff && chat != current.Chat {
+		chat = current.Chat
+		resolved, err = r.resolveFlowNodeAgent(*flowNode, chat)
+		if err != nil {
+			r.say(run, runstate.NoticeError, err.Error())
+			return PlayOneOutcome{Round: roundStop, Chat: chat}, nil
+		}
 	}
 
 	contract, err := r.outputContract(*flowNode, board)
@@ -81,9 +92,18 @@ func (r *ChainRunner) playAI(ctx context.Context, run *ChainRun, board *pkgBoard
 		r.fail(run, flowNodeID)
 		return PlayOneOutcome{Round: roundStop, Chat: chat}, nil
 	}
-	cardPrompt := pkgBoards.FlowNodePrompt(*flowNode)
-	if !how.resume {
-		cardPrompt, err = pkgBoards.RenderInput(cardPrompt, board.Input(flowNodeID))
+	promptNode := *flowNode
+	values := step.nodeContext(claimed, current)
+	workflow, err := r.prepareTaskWorkflow(run, &promptNode, values.Workflow, continuing)
+	if err != nil {
+		r.say(run, runstate.NoticeError, err.Error())
+		r.fail(run, flowNodeID)
+		return PlayOneOutcome{Round: roundStop, Chat: chat}, nil
+	}
+	values.Workflow = workflow
+	var flowNodePrompt string
+	if !resumePrompt && !fromChat {
+		flowNodePrompt, err = values.Render(pkgBoards.FlowNodePrompt(promptNode))
 		if err != nil {
 			r.say(run, runstate.NoticeError, err.Error())
 			r.fail(run, flowNodeID)
@@ -91,53 +111,75 @@ func (r *ChainRunner) playAI(ctx context.Context, run *ChainRun, board *pkgBoard
 		}
 	}
 
-	if chat == "" {
-		made, err := r.ConversationFor(run, *flowNode, resolved)
+	if !continuing {
+		folderChat, err := r.chatForTaskFolder(&promptNode, values, chat, how.handoff)
 		if err != nil {
-			r.say(run, runstate.NoticeError, fmt.Sprintf("A conversation could not be made for “%s”: %s", flowNode.Title, err.Error()))
+			r.say(run, runstate.NoticeError, err.Error())
+			r.fail(run, flowNodeID)
+			return PlayOneOutcome{Round: roundStop, Chat: chat}, nil
+		}
+		if folderChat != chat {
+			chat = folderChat
+			resolved, err = r.resolveFlowNodeAgent(promptNode, chat)
+			if err != nil {
+				r.say(run, runstate.NoticeError, err.Error())
+				r.fail(run, flowNodeID)
+				return PlayOneOutcome{Round: roundStop, Chat: chat}, nil
+			}
+		}
+		chat, err = r.conversationForFlowNode(run, promptNode, resolved, chat)
+		if err != nil {
+			r.say(run, runstate.NoticeError, fmt.Sprintf("A conversation could not be prepared for “%s”: %s", flowNode.Title, err.Error()))
 			return PlayOneOutcome{Round: roundStop}, nil
 		}
-		chat, out.Chat = made, made
-		// Before the prompt: the user is meant to be able to open what a running flow node is doing, and
-		// a turn that then runs for ten minutes is ten minutes of the card having nowhere to point.
-		if err := r.mark(run, func() (*pkgBoards.BoardContent, error) { return r.Boards.Chat(run.Handle, flowNodeID, made) }); err != nil {
+	}
+	// Link the conversation after taking the flow node and before sending the prompt.
+	if chat != current.Chat {
+		if err := r.mark(run, func() (*pkgBoards.BoardContent, error) { return r.Boards.Chat(run.Handle, flowNodeID, chat) }); err != nil {
 			r.say(run, runstate.NoticeError, "The board could not be written, so the play stops here: "+err.Error())
 			return PlayOneOutcome{Round: roundStop, Chat: chat}, nil
 		}
+	}
+	if chat != startingChat {
 		r.setState(run, flowNodeID, chat, ChainRunStatePlaying)
 	}
 
+	out := PlayOneOutcome{Chat: chat, Title: flowNode.Title, Harness: resolved.Harness}
 	if meta, err := r.convs.Get(chat); err == nil && meta.AgentVersion != nil {
 		resolved = publishedPlayAgent(meta.AgentVersion)
 		resolved.Model, resolved.profileID = meta.AgentVersion.ConversationModel(meta.Model), meta.ProfileID
 		out.Harness = resolved.Harness
 	}
 
-	// What the turn is sent, and what it is sent with. A resumed one is sent neither the description
-	// nor its pictures: the conversation was given both when the play took the flow node, and it still
-	// holds them along with everything the cut-off turn had made of them.
-	prompt, images := ChainRunResumePrompt, []harnessapi.PromptFile(nil)
-	if !how.resume {
-		prompt, images = cardPrompt, r.ImagesOf(run, *flowNode)
-	}
-	reply, refusal, stopped := r.turn(ctx, run, chat, turns.TurnRequest{
+	// A continuation can pick up the existing session. A task interrupted before
+	// the harness opened a session still needs the description and images.
+	req := turns.TurnRequest{
 		ConversationID: chat,
-		Prompt:         contract.Prompt(prompt),
-		// All of it stated, nothing left to the deployment: there is nobody at the keyboard. The
-		// effort and the mode are the flow node's own, a flow node missing either being one no run ever
-		// reaches; the model comes from the card or publication. The
-		// play itself travels too, so the turn's records name the card back.
 		Model:          resolved.Model,
 		Effort:         flowNode.Settings.Effort,
 		PermissionMode: flowNode.Settings.Permission,
-		Instructions:   resolved.Instructions,
-		ManagedAgent:   resolved.Name,
-		AgentRef:       resolved.Id,
-		RunID:          run.Id,
-		FlowNodeID:     flowNode.ID,
-		Board:          run.Handle,
-		Images:         images,
-	}, how.attach)
+	}
+	promptKind := ChainRunPromptFlowNode
+	switch {
+	case fromChat:
+		req = *how.suspended.message
+		how.suspended.message = nil
+		promptKind = chainRunPromptAttach
+	case resumePrompt:
+		req.Prompt = contract.Prompt(workflow.Prompt(ChainRunResumePrompt))
+		promptKind = chainRunPromptResume
+	default:
+		req.Prompt = contract.Prompt(workflow.Prompt(flowNodePrompt))
+		// The rendered prompt already validated the description's references.
+		promptNode.Body, _ = values.Render(promptNode.Body)
+		req.Images = r.ImagesOf(run, promptNode)
+	}
+	if how.suspended != nil && how.suspended.awaitMessage {
+		promptKind = chainRunPromptAttach
+	}
+	req.Instructions, req.ManagedAgent, req.AgentRef = resolved.Instructions, resolved.Name, resolved.Id
+	req.RunID, req.FlowNodeID, req.Board = run.Id, flowNode.ID, run.Handle
+	reply, refusal, stopped := r.turn(ctx, run, chat, req, how.suspended)
 	if ctx.Err() != nil {
 		// Stopped by a run replacing this one, which has already said what it is doing.
 		return PlayOneOutcome{Round: roundStop, Chat: chat}, nil
@@ -152,16 +194,10 @@ func (r *ChainRunner) playAI(ctx context.Context, run *ChainRun, board *pkgBoard
 	// aborted.` is how the CLI words an interruption — so it is not a fault at all: the flow node is
 	// marked interrupted rather than done, because it was worked on but not finished, and the run
 	// stops because somebody said so.
-	result := inspectCardTurn(reply, refusal, stopped, r.harnessLabel(out.Harness))
-	promptKind := ChainRunPromptCard
-	if how.attach {
-		promptKind = chainRunPromptAttach
-	} else if how.resume {
-		promptKind = chainRunPromptResume
-	}
+	result := inspectAITurn(reply, refusal, stopped, r.harnessLabel(out.Harness))
 	r.LogTurn(run, flowNodeID, chat, ChainRunTurnOutcome{
 		Prompt: promptKind, Harness: out.Harness, Model: resolved.Model,
-		Effort: flowNode.Settings.Effort, Permission: flowNode.Settings.Permission,
+		Effort: req.Effort, Permission: req.PermissionMode,
 		ExitCode: reply.ExitCode, Stopped: stopped, Refusal: refusal, Fault: result.fault,
 	})
 	// A turn blocked twice — stopped and resumed once by its driver, then blocked again — is
@@ -170,9 +206,47 @@ func (r *ChainRunner) playAI(ctx context.Context, run *ChainRun, board *pkgBoard
 	// transcript as it stood at the first relaunch, and whatever the forked turn answers
 	// decides the flow node like any other turn.
 	if !stopped && refusal == nil && reply.Failure == harnessfaults.MuseBlockedTwiceMessage {
-		return r.PlayBlockedFork(ctx, run, *flowNode, out, resolved, chat, contract)
+		return r.PlayBlockedFork(ctx, run, *flowNode, out, resolved, chat, contract, workflow)
+	}
+	if fromChat && refusal != nil {
+		// The composer can retry its message against the same suspended run.
+		result.stopped, result.fault = true, nil
 	}
 	return r.finishAITurn(run, *flowNode, out, contract, result)
+}
+
+func (r *ChainRunner) resolveFlowNodeAgent(flowNode pkgBoards.FlowNode, chat string) (PlayAgent, error) {
+	flowNode.Chat = chat
+	resolved, err := r.ResolveAgent(flowNode)
+	if err != nil || resolved.Harness != harnessapi.HarnessPi || r.Hub == nil || chat != "" {
+		return resolved, err
+	}
+	target, err := r.Hub.HarnessRegistry().Profiles.ResolveProfile(resolved.profileID, resolved.Model, flowNode.Settings.Effort)
+	if err != nil {
+		return PlayAgent{}, err
+	}
+	resolved.profileID, resolved.Model = target.Profile.ID, target.Provider+"/"+target.ModelID
+	return resolved, nil
+}
+
+func (r *ChainRunner) conversationForFlowNode(run *ChainRun, flowNode pkgBoards.FlowNode, resolved PlayAgent, chat string) (string, error) {
+	if chat == "" {
+		return r.ConversationFor(run, flowNode, resolved)
+	}
+	if resolved.Snapshot == nil {
+		return chat, nil
+	}
+	source, err := r.convs.Get(chat)
+	if err != nil {
+		return "", err
+	}
+	if source.AgentVersion == nil || source.AgentVersion.AgentID != resolved.Snapshot.AgentID ||
+		source.Harness != resolved.Harness || (resolved.profileID != "" && source.ProfileID != resolved.profileID) ||
+		(flowNode.Settings.Harness != "" && flowNode.Settings.Model != "" && source.AgentVersion.ConversationModel(source.Model) != resolved.Model) ||
+		(source.AgentVersion.Commit == "" && resolved.Snapshot.Commit != "") {
+		return r.forkChat(run, chat, flowNode.Title, resolved)
+	}
+	return chat, nil
 }
 
 // A blocked fork already carries the transcript and partial work.
@@ -180,7 +254,7 @@ const ChainRunBlockedForkPrompt = "After two blockages, I forked this conversati
 
 // PlayBlockedFork recovers a twice-blocked turn in a forked conversation.
 // A second double blockage in that fork is a failure; it cannot fork recursively.
-func (r *ChainRunner) PlayBlockedFork(ctx context.Context, run *ChainRun, flowNode pkgBoards.FlowNode, out PlayOneOutcome, resolved PlayAgent, chat string, contract *pkgBoards.OutputContract) (PlayOneOutcome, *harnessfaults.TurnFault) {
+func (r *ChainRunner) PlayBlockedFork(ctx context.Context, run *ChainRun, flowNode pkgBoards.FlowNode, out PlayOneOutcome, resolved PlayAgent, chat string, contract *pkgBoards.OutputContract, workflow *pkgBoards.Workflow) (PlayOneOutcome, *harnessfaults.TurnFault) {
 	r.say(run, runstate.NoticeWarning, fmt.Sprintf("“%s” was blocked twice; the conversation is forked and played again from the fork.", flowNode.Title))
 	forked, err := r.forkChat(run, chat, flowNode.Title)
 	if err != nil {
@@ -189,7 +263,7 @@ func (r *ChainRunner) PlayBlockedFork(ctx context.Context, run *ChainRun, flowNo
 		return PlayOneOutcome{Round: roundStop, Chat: chat}, nil
 	}
 	r.LogNote(run, flowNode.ID, forked, "", "chat forked "+chat+" -> "+forked)
-	// The card points at the fork from here: ten minutes of a resumed turn is ten minutes of
+	// The flow node points at the fork from here: ten minutes of a resumed turn is ten minutes of
 	// somebody wanting to open what it is doing.
 	if err := r.mark(run, func() (*pkgBoards.BoardContent, error) { return r.Boards.Chat(run.Handle, flowNode.ID, forked) }); err != nil {
 		r.say(run, runstate.NoticeError, "The board could not be written, so the play stops here: "+err.Error())
@@ -199,7 +273,7 @@ func (r *ChainRunner) PlayBlockedFork(ctx context.Context, run *ChainRun, flowNo
 	r.setState(run, flowNode.ID, forked, ChainRunStatePlaying)
 	reply, refusal, stopped := r.turn(ctx, run, forked, turns.TurnRequest{
 		ConversationID: forked,
-		Prompt:         contract.Prompt(ChainRunBlockedForkPrompt),
+		Prompt:         contract.Prompt(workflow.Prompt(ChainRunBlockedForkPrompt)),
 		Model:          resolved.Model,
 		Effort:         flowNode.Settings.Effort,
 		PermissionMode: flowNode.Settings.Permission,
@@ -209,12 +283,12 @@ func (r *ChainRunner) PlayBlockedFork(ctx context.Context, run *ChainRun, flowNo
 		RunID:          run.Id,
 		FlowNodeID:     flowNode.ID,
 		Board:          run.Handle,
-	}, false)
+	}, nil)
 	if ctx.Err() != nil {
 		// Stopped by a run replacing this one, which has already said what it is doing.
 		return PlayOneOutcome{Round: roundStop, Chat: forked}, nil
 	}
-	result := inspectCardTurn(reply, refusal, stopped, r.harnessLabel(out.Harness))
+	result := inspectAITurn(reply, refusal, stopped, r.harnessLabel(out.Harness))
 	r.LogTurn(run, flowNode.ID, forked, ChainRunTurnOutcome{
 		Prompt: chainRunPromptBlockedFork, Harness: out.Harness, Model: resolved.Model,
 		Effort: flowNode.Settings.Effort, Permission: flowNode.Settings.Permission,
@@ -223,10 +297,10 @@ func (r *ChainRunner) PlayBlockedFork(ctx context.Context, run *ChainRun, flowNo
 	return r.finishAITurn(run, flowNode, out, contract, result)
 }
 
-// ImagesOf resolves card images from the store root. Missing or excess images
-// raise notices without stopping the card.
+// ImagesOf resolves flow node images from the DCMS root. Missing or excess images
+// raise notices without stopping the flow node.
 func (r *ChainRunner) ImagesOf(run *ChainRun, flowNode pkgBoards.FlowNode) []harnessapi.PromptFile {
-	images, missing, dropped := pkgBoards.FlowNodeImages(r.cfg.RootPath, flowNode.Body)
+	images, missing, dropped := pkgBoards.FlowNodeImages(r.cfg.DCMSRoot, flowNode.Body)
 	if len(missing) == 1 {
 		r.say(run, runstate.NoticeWarning, fmt.Sprintf("“%s” links an image the store does not hold, so the turn was "+
 			"not given it: %s", flowNode.Title, missing[0]))
@@ -241,16 +315,16 @@ func (r *ChainRunner) ImagesOf(run *ChainRun, flowNode pkgBoards.FlowNode) []har
 	return images
 }
 
-// cardTurnResult keeps interruption ahead of fault interpretation, including aborted API replies.
-type cardTurnResult struct {
+// aiTurnResult keeps interruption ahead of fault interpretation, including aborted API replies.
+type aiTurnResult struct {
 	reply   harnessfaults.TurnReply
 	refusal *harnessfaults.TurnRefusal
 	stopped bool
 	fault   *harnessfaults.TurnFault
 }
 
-func inspectCardTurn(reply harnessfaults.TurnReply, refusal *harnessfaults.TurnRefusal, stopped bool, label string) cardTurnResult {
-	result := cardTurnResult{reply: reply, refusal: refusal, stopped: stopped}
+func inspectAITurn(reply harnessfaults.TurnReply, refusal *harnessfaults.TurnRefusal, stopped bool, label string) aiTurnResult {
+	result := aiTurnResult{reply: reply, refusal: refusal, stopped: stopped}
 	if !stopped {
 		if refusal != nil {
 			result.fault = harnessfaults.RefusalFault(refusal.Code)
@@ -262,7 +336,7 @@ func inspectCardTurn(reply harnessfaults.TurnReply, refusal *harnessfaults.TurnR
 }
 
 // finishAITurn applies the same retry, failure, output and interruption rules to every AI attempt.
-func (r *ChainRunner) finishAITurn(run *ChainRun, flowNode pkgBoards.FlowNode, out PlayOneOutcome, contract *pkgBoards.OutputContract, result cardTurnResult) (PlayOneOutcome, *harnessfaults.TurnFault) {
+func (r *ChainRunner) finishAITurn(run *ChainRun, flowNode pkgBoards.FlowNode, out PlayOneOutcome, contract *pkgBoards.OutputContract, result aiTurnResult) (PlayOneOutcome, *harnessfaults.TurnFault) {
 	chat := out.Chat
 	reply, refusal, stopped, fault := result.reply, result.refusal, result.stopped, result.fault
 
@@ -285,22 +359,26 @@ func (r *ChainRunner) finishAITurn(run *ChainRun, flowNode pkgBoards.FlowNode, o
 		return PlayOneOutcome{Round: roundStop, Chat: chat}, nil
 	}
 
-	var output json.RawMessage
+	completion := pkgBoards.PlayResult{Status: pkgBoards.FlowNodeStatusDone}
 	if !stopped {
 		var err error
-		output, err = contract.Extract(reply.Tail)
+		completion.Output, err = contract.Extract(reply.Tail)
 		if err != nil {
 			r.say(run, runstate.NoticeError, "Structured output could not be exported: "+err.Error())
 			r.fail(run, flowNode.ID)
 			return PlayOneOutcome{Round: roundStop, Chat: chat}, nil
 		}
-	}
-	status := pkgBoards.FlowNodeStatusDone
-	if stopped {
-		status = pkgBoards.FlowNodeStatusInterrupted
+		completion.Workflow, err = r.exportWorkflow(run, reply.Tail)
+		if err != nil {
+			r.say(run, runstate.NoticeError, "Workflow values could not be exported: "+err.Error())
+			r.fail(run, flowNode.ID)
+			return PlayOneOutcome{Round: roundStop, Chat: chat}, nil
+		}
+	} else {
+		completion.Status = pkgBoards.FlowNodeStatusInterrupted
 	}
 	if err := r.mark(run, func() (*pkgBoards.BoardContent, error) {
-		return r.Boards.Finish(run.Handle, flowNode.ID, run.Id, status, output)
+		return r.Boards.Finish(run.Handle, flowNode.ID, run.Id, completion)
 	}); err != nil {
 		r.say(run, runstate.NoticeError, "The board could not be written, so the play stops here: "+err.Error())
 		return PlayOneOutcome{Round: roundStop, Chat: chat}, nil
@@ -310,5 +388,6 @@ func (r *ChainRunner) finishAITurn(run *ChainRun, flowNode pkgBoards.FlowNode, o
 		return out, nil
 	}
 	out.Round = RoundOn
+	out.output = completion.Output
 	return out, nil
 }

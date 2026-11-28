@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { Select } from 'antd';
-import { Tooltip } from '@kiao-dashboard-core';
+import { IconButton, Tooltip } from '@kiao-dashboard-core';
 import { normalizeLabel, paintOf, UNKNOWN_TAG_COLOR } from './tagsFile';
 import { useTags } from './Tags-ctx';
 import styles from './Tags.module.css';
@@ -70,16 +70,15 @@ export const TagPicker: React.FC<TagPickerProps> = ({
                         >
                             {typeof label === 'string' ? label : String(word)}
                             {closable && (
-                                <button
-                                    type="button"
+                                <IconButton
+                                    type="plain"
+                                    label={`Remove ${String(word)}`}
+                                    icon="×"
                                     className={styles.chipClose}
                                     style={{ color: paint.ink }}
-                                    aria-label={`Remove ${String(word)}`}
                                     onMouseDown={event => event.preventDefault()}
                                     onClick={onClose}
-                                >
-                                    ×
-                                </button>
+                                />
                             )}
                         </span>
                     );

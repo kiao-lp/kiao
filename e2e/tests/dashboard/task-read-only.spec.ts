@@ -20,7 +20,7 @@ test('AI task fields are read-only outside Draft and Ready in the panel', async 
     };
     const board = {
         board: { id: 'task-editing', slug: 'task-editing', name: 'Task editing', archived: false, ...stamp },
-        flowNodes: [task], flowNodeClasses: [], workflows: [], workflowClasses: [], cursor: 0,
+        flowNodes: [task], workflows: [], cursor: 0,
     };
     const patches: Record<string, unknown>[] = [];
     await page.route('**/api/{hybridflow,agentic}/**', async route => {
@@ -39,7 +39,7 @@ test('AI task fields are read-only outside Draft and Ready in the panel', async 
         } else if (path === '/changes') {
             await route.abort();
         } else {
-            await route.fulfill({ json: { runners: [], schemaValues: [], flowNodeClasses: [], workflowClasses: [] } });
+            await route.fulfill({ json: { runners: [], schemaValues: [] } });
         }
     });
 
@@ -57,10 +57,12 @@ test('AI task fields are read-only outside Draft and Ready in the panel', async 
         await expect(face.getByRole('button', { name: 'Remove success criterion' })).toHaveCount(0);
         await expect(face.getByRole('combobox', { name: 'Output type', exact: true })).toBeDisabled();
         await face.getByRole('tab', { name: 'Options', exact: true }).click();
-        for (const name of ['Agent', 'Effort', 'Permission mode', 'Transition mode', 'On success']) {
+        await expect(face.getByRole('button', { name: 'Agent', exact: true })).toBeDisabled();
+        for (const name of ['Effort', 'Permission mode', 'Transition mode', 'On success']) {
             await expect(face.getByRole('combobox', { name, exact: true })).toBeDisabled();
         }
         await expect(face.getByRole('checkbox', { name: 'Compact' })).toBeDisabled();
+        await expect(face.getByRole('switch', { name: 'Multi-part template' })).toBeDisabled();
         await expect(face.getByRole('button', { name: 'Instantiate template' })).toHaveCount(0);
     };
 
@@ -82,10 +84,12 @@ test('AI task fields are read-only outside Draft and Ready in the panel', async 
         await expect(statusButton).toHaveAttribute('data-status', status.toLowerCase());
         await expect.poll(() => task.status).toBe(status.toLowerCase());
         await panel.getByRole('tab', { name: 'Options', exact: true }).click();
-        for (const name of ['Agent', 'Effort', 'Permission mode', 'Transition mode', 'On success']) {
+        await expect(panel.getByRole('button', { name: 'Agent', exact: true })).toBeEnabled();
+        for (const name of ['Effort', 'Permission mode', 'Transition mode', 'On success']) {
             await expect(panel.getByRole('combobox', { name, exact: true })).toBeEnabled();
         }
         await expect(panel.getByRole('checkbox', { name: 'Compact' })).toBeEnabled();
+        await expect(panel.getByRole('switch', { name: 'Multi-part template' })).toBeEnabled();
         await expect(panel.getByRole('button', { name: 'Instantiate template' })).toBeVisible();
         await panel.getByRole('tab', { name: 'Spec', exact: true }).click();
         await expect(panel.getByRole('combobox', { name: 'Output type', exact: true })).toBeEnabled();

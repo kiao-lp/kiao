@@ -19,7 +19,8 @@
 .header {
     display: flex;
     align-items: center;
-    gap: 10px;
+    flex-wrap: wrap;
+    gap: 6px;
 }
 
 .title {
@@ -36,17 +37,22 @@
     max-width: 860px;
 }
 
+.panel .list {
+    gap: 0;
+}
+
 .row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 8px 10px;
     border: 1px solid var(--kiao-border, rgba(128, 128, 128, 0.28));
     border-radius: 6px;
 }
 
+.panel .row {
+    border: 0;
+    border-radius: 3px;
+}
+
 .row:hover {
-    background: var(--kiao-hover, rgba(128, 128, 128, 0.12));
+    background: var(--state-pointed-bg);
 }
 
 .row.selected,
@@ -54,31 +60,68 @@
     background-color: var(--state-selected-bg);
 }
 
-.main {
+.rowTarget {
     display: flex;
     align-items: center;
-    gap: 10px;
-    flex: 1;
+    box-sizing: border-box;
     min-width: 0;
-    min-height: 24px;
+    min-height: 40px;
+    padding: 8px 10px;
+    -webkit-touch-callout: none;
+}
+
+.panel .rowTarget {
+    min-height: 28px;
+    padding: 2px 4px;
+}
+
+.boardLink {
+    gap: 10px;
     text-decoration: none;
     color: inherit;
 }
 
-/* Focusing the link exposes the row's buttons for keyboard navigation. */
-.actions {
-    display: none;
-    gap: 2px;
+.panel .boardLink {
+    padding-inline-start: 20px;
+    gap: 5px;
+}
+
+.folderToggle {
+    gap: 5px;
+    width: 100%;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: start;
+    cursor: pointer;
+}
+
+.switcher {
+    display: inline-flex;
+    justify-content: center;
+    width: 16px;
     flex: none;
+    color: var(--muted);
+    font-size: 10px;
 }
 
-.row:hover .actions,
-.row:focus-within .actions {
+.folderContents:not([hidden]) {
     display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-block-start: 6px;
+    margin-inline-start: 16px;
 }
 
-@media (hover: none) {
-    .actions { display: flex; }
+.panel .folderContents {
+    margin-block-start: 0;
+    gap: 0;
+}
+
+.destinations > :global(.ant-dropdown-menu) {
+    max-height: min(60vh, 24rem);
+    overflow-y: auto;
 }
 
 .icon {
@@ -107,17 +150,3 @@
 }
 
 .archived .name { opacity: 0.5; }
-
-.empty {
-    opacity: 0.7;
-    max-width: 44rem;
-    line-height: 1.5;
-}
-
-/* The rename dialog's reassurance: the board keeps its handle. Small and dimmed, beside the
-   field rather than under a heading — it answers a worry, it is not a paragraph to read. */
-.renameNote {
-    margin: 8px 0 0;
-    opacity: 0.6;
-    font-size: 0.85em;
-}

@@ -198,7 +198,7 @@ func TestCodexStopBeforeSpawn(t *testing.T) {
 
 func TestCodexInterruptedConversationResumesAfterProcessesExit(t *testing.T) {
 	store, cfg := newTurnRegistry(t)
-	binary := codexProcessBinary(t, cfg.RootPath)
+	binary := codexProcessBinary(t, cfg.DCMSRoot)
 	hub := assembly.NewEngine(cfg, store)
 	t.Cleanup(hub.Shutdown)
 	hub.Harnesses = &harnessapi.HarnessRegistry{Entries: []harnessapi.HarnessEntry{
@@ -217,7 +217,7 @@ func TestCodexInterruptedConversationResumesAfterProcessesExit(t *testing.T) {
 	if refusal != nil || first == nil {
 		t.Fatalf("start = %+v", refusal)
 	}
-	pids := fixturePIDs(t, cfg.RootPath)
+	pids := fixturePIDs(t, cfg.DCMSRoot)
 	waitLifecycle(t, "the session was not recorded", func() bool {
 		meta, err := store.Get(conversation.ID)
 		return err == nil && meta.SessionID == "lifecycle-session"
@@ -226,7 +226,7 @@ func TestCodexInterruptedConversationResumesAfterProcessesExit(t *testing.T) {
 		t.Fatal("the real process turn was not interrupted")
 	}
 	awaitLifecycleSignal(t, first.Settled, "the interrupted turn was not recorded")
-	assertFixtureStopped(t, cfg.RootPath, pids)
+	assertFixtureStopped(t, cfg.DCMSRoot, pids)
 	waitLifecycle(t, "the interrupted process stream never closed", func() bool {
 		first.Mu.Lock()
 		defer first.Mu.Unlock()
@@ -237,20 +237,20 @@ func TestCodexInterruptedConversationResumesAfterProcessesExit(t *testing.T) {
 		t.Fatalf("resume = %+v", refusal)
 	}
 	waitLifecycle(t, "the resumed turn never started a new harness", func() bool {
-		raw, _ := os.ReadFile(filepath.Join(cfg.RootPath, "tool.pid"))
+		raw, _ := os.ReadFile(filepath.Join(cfg.DCMSRoot, "tool.pid"))
 		pid, _ := strconv.Atoi(string(raw))
 		return pid > 0 && pid != pids[2]
 	})
-	resumed := fixturePIDs(t, cfg.RootPath)
-	args := mustRead(t, filepath.Join(cfg.RootPath, "launcher.args"))
+	resumed := fixturePIDs(t, cfg.DCMSRoot)
+	args := mustRead(t, filepath.Join(cfg.DCMSRoot, "launcher.args"))
 	if !strings.Contains(args, `"resume"`) || !strings.Contains(args, `"lifecycle-session"`) {
 		t.Fatalf("resumed argv = %s, want the interrupted session", args)
 	}
-	assertFixtureStopped(t, cfg.RootPath, pids)
+	assertFixtureStopped(t, cfg.DCMSRoot, pids)
 	if !hub.StopProcess(conversation.ID, "tester") {
 		t.Fatal("the resumed turn was not interrupted")
 	}
-	assertFixtureStopped(t, cfg.RootPath, resumed)
+	assertFixtureStopped(t, cfg.DCMSRoot, resumed)
 }
 
 func TestCodexStopPreservesIndependentlyOwnedWork(t *testing.T) {

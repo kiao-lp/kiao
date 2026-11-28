@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, within } from 'src/test/render';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { Modal } from 'antd';
@@ -8,6 +8,7 @@ import type { FileDto } from 'kiao-worker';
 // Deletion covers only ticked files; nothing starts ticked.
 
 vi.mock('@kiao-dashboard-core', async () => ({
+    useConfirmation: (await import('src/core/ui-foundation/forms/ConfirmationDialog')).useConfirmation,
     Tooltip: (await import('../../core/ui-foundation/feedback/Tooltip')).Tooltip,
     useNavigation: () => ({ open: vi.fn(), openInNewTab: vi.fn(), openInNewWindow: vi.fn(), goUp: vi.fn(), goTo: vi.fn() }),
 }));

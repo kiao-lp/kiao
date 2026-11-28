@@ -1,22 +1,21 @@
-import React from 'react';
+import React, { useId, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { Alert, Button, Input, Modal, Spin } from 'antd';
-import { DeleteOutlined, DownloadOutlined, EditOutlined } from '@ant-design/icons';
+import { Alert, type MenuProps } from 'antd';
+import {
+    AppstoreOutlined, DeleteOutlined, DownloadOutlined, DownOutlined, EditOutlined, FolderOpenOutlined,
+    FolderOutlined, RightOutlined,
+} from '@ant-design/icons';
+import { AsyncList, ContextMenu, NameDialog, dispatchContextMenuAt, useLongPress } from '@kiao-dashboard-core';
 import { boardUrl } from '../boardRoute';
+import { useBoardsCatalog } from '../BoardsCatalog-ctx';
 import { useBoardsList } from '../BoardsList-ctx';
+import type { BoardSummary, FolderDto } from '../service';
 import iconImg from '../hybridflow.svg';
 import styles from './BoardsList.module.css';
 
-/** Shared board list for the Boards panel and the Board panel's empty state. */
-export const BoardsList: React.FC<{ compact?: boolean; header?: React.ReactNode }> = ({
-    compact, header,
-}) => {
-    const {
-        client, boards, error, load,
-        creating, setCreating, newName, setNewName, create,
-        renaming, renameTo, setRenameTo, startRename, closeRename, rename,
-        askDelete, download, downloading, currentHandle,
-    } = useBoardsList();
+/** Shared board list for the Boards tab and the list at /boards. */
+export const BoardsList: React.FC<{ compact?: boolean; header?: React.ReactNode }> = ({ compact, header }) => {
+    const { client, catalog, error, loading, reload } = useBoardsCatalog();
 
     return (
         <>
@@ -26,87 +25,176 @@ export const BoardsList: React.FC<{ compact?: boolean; header?: React.ReactNode 
                 {header}
 
                 {!client ? (
-                    <Alert type="info" showIcon
-                        message="No hybridflow store"
-                        description={'This instance is not configured to reach one, so it has no boards to list. '
-                            + 'The boards live in a database served by operation/hybridflow-store.'} />
-                ) : error ? (
-                    <Alert type="error" showIcon
-                        message="The boards could not be read"
-                        description={error}
-                        action={<Button size="small" onClick={() => void load()}>Try again</Button>} />
-                ) : boards === null ? (
-                    <Spin />
-                ) : boards.length === 0 ? (
-                    <p className={styles.empty}>
-                        No boards yet. A board is a place to lay out the work you are doing — a card per
-                        flowNode, chained to what comes after it — and a card can be played by an agent.
-                    </p>
+                    <Alert type="info" showIcon title="No hybridflow store" />
                 ) : (
-                    <div className={styles.list}>
-                        {boards.map(board => {
-                            const selected = currentHandle !== null && currentHandle === board.slug;
-                            return (
-                            <div key={board.id}
-                                className={`${styles.row} ${board.archived ? styles.archived : ''} ${selected ? styles.selected : ''}`}
-                                data-testid={`board-row-${board.slug}`}>
-                                <Link to={boardUrl(board.slug)} className={styles.main}
-                                    aria-current={selected ? 'page' : undefined}>
-                                    <img src={iconImg} className={styles.icon} alt="" />
-                                    <span className={styles.name}>{board.name}</span>
-                                    {!compact && (
-                                        <>
-                                            <span className={styles.slug}>/{board.slug}</span>
-                                            <span className={styles.spacer} />
-                                            <span className={styles.when}>{whenOf(board.updatedAt)}</span>
-                                        </>
-                                    )}
-                                </Link>
-                                <span className={styles.actions}>
-                                    <Button type="text" size="small" icon={<DownloadOutlined />}
-                                        aria-label={`Download board “${board.name}”`}
-                                        data-testid={`download-board-${board.slug}`}
-                                        loading={downloading === board.slug}
-                                        onClick={() => void download(board)} />
-                                    <Button type="text" size="small" icon={<EditOutlined />}
-                                        aria-label={`Rename board “${board.name}”`}
-                                        data-testid={`rename-board-${board.slug}`}
-                                        onClick={() => startRename(board)} />
-                                    <Button type="text" size="small" danger icon={<DeleteOutlined />}
-                                        aria-label={`Delete board “${board.name}”`}
-                                        data-testid={`delete-board-${board.slug}`}
-                                        onClick={() => askDelete(board)} />
-                                </span>
-                            </div>
-                            );
-                        })}
-                    </div>
+                    <AsyncList loading={!catalog} error={error} errorTitle="The boards list could not be read"
+                        onRetry={reload} retrying={loading}
+                        empty={catalog && !catalog.boards.length && !catalog.folders.length && 'No boards yet.'}>
+                        {catalog && <BoardTree {...catalog} compact={compact} />}
+                    </AsyncList>
                 )}
             </div>
-
-            <Modal open={creating} title="New board" okText="Create"
-                onOk={() => void create()} onCancel={() => { setCreating(false); setNewName(''); }}
-                okButtonProps={{ disabled: newName.trim() === '' }}>
-                <Input autoFocus value={newName} placeholder="What the board is about"
-                    onChange={event => setNewName(event.target.value)}
-                    onPressEnter={() => void create()} />
-            </Modal>
-
-            <Modal open={renaming !== null} title={renaming ? `Rename “${renaming.name}”` : 'Rename board'}
-                okText="Rename" onOk={() => void rename()} onCancel={closeRename}
-                okButtonProps={{ disabled: renameTo.trim() === '' }}>
-                <Input autoFocus value={renameTo} placeholder="What the board is about"
-                    aria-label="Board name"
-                    onChange={event => setRenameTo(event.target.value)}
-                    onPressEnter={() => void rename()} />
-
-                {renaming && (
-                    <p className={styles.renameNote}>
-                        The board stays at /boards/{renaming.slug} — a rename moves nothing.
-                    </p>
-                )}
-            </Modal>
+            <BoardNameDialog />
         </>
+    );
+};
+
+const BoardTree: React.FC<{ boards: BoardSummary[]; folders: FolderDto[]; compact?: boolean }> = ({
+    boards, folders, compact,
+}) => {
+    const boardsByFolder = new Map(folders.map(folder => [folder.id, [] as BoardSummary[]]));
+    const topLevel: BoardSummary[] = [];
+    for (const board of boards) {
+        // A folder can be removed between the two list requests. Keep the board reachable.
+        const group = board.folderId ? boardsByFolder.get(board.folderId) : undefined;
+        (group ?? topLevel).push(board);
+    }
+    const rows = (list: BoardSummary[]) => list.map(board =>
+        <BoardRow key={board.id} board={board} folders={folders} compact={compact} />);
+
+    return <div className={styles.list}>
+        {folders.map(folder => (
+            <FolderBranch key={folder.id} folder={folder}>
+                {rows(boardsByFolder.get(folder.id) ?? [])}
+            </FolderBranch>
+        ))}
+        {rows(topLevel)}
+    </div>;
+};
+
+const useRowMenuTrigger = () => {
+    const suppressTouchClick = useRef(false);
+    const longPress = useLongPress({
+        onLongPress: event => {
+            suppressTouchClick.current = true;
+            dispatchContextMenuAt(event.target, event.clientX, event.clientY);
+        },
+    });
+
+    return {
+        ...longPress,
+        'aria-haspopup': 'menu' as const,
+        'aria-keyshortcuts': 'Shift+F10',
+        onPointerDown: (event: React.PointerEvent) => {
+            suppressTouchClick.current = false;
+            longPress.onPointerDown(event);
+        },
+        onClickCapture: (event: React.MouseEvent) => {
+            // Releasing a long press can also click the link or folder toggle.
+            if (!suppressTouchClick.current || event.detail === 0) return;
+            suppressTouchClick.current = false;
+            event.preventDefault();
+            event.stopPropagation();
+        },
+        onKeyDown: (event: React.KeyboardEvent) => {
+            if (event.key !== 'ContextMenu' && !(event.key === 'F10' && event.shiftKey)) return;
+            event.preventDefault();
+            const { left, bottom } = event.currentTarget.getBoundingClientRect();
+            dispatchContextMenuAt(event.currentTarget, left, bottom);
+        },
+    };
+};
+
+const FolderBranch: React.FC<{ folder: FolderDto; children: React.ReactNode }> = ({ folder, children }) => {
+    const branchId = useId();
+    const { expandedFolders, toggleFolder } = useBoardsCatalog();
+    const { askDeleteFolder, openNameDialog } = useBoardsList();
+    const expanded = expandedFolders.has(folder.id);
+    const trigger = useRowMenuTrigger();
+    const items: MenuProps['items'] = [
+        { key: 'create', label: 'New board', icon: <AppstoreOutlined aria-hidden="true" />,
+            onClick: () => openNameDialog({ kind: 'board', folder }) },
+        { type: 'divider' },
+        { key: 'rename', label: 'Rename', icon: <EditOutlined aria-hidden="true" />,
+            onClick: () => openNameDialog({ kind: 'folder', item: folder }) },
+        { key: 'delete', label: 'Delete', icon: <DeleteOutlined aria-hidden="true" />, danger: true,
+            onClick: () => askDeleteFolder(folder) },
+    ];
+
+    return <div>
+        <div className={styles.row}>
+            <ContextMenu items={items} autoFocus>
+                <button type="button" className={`${styles.rowTarget} ${styles.folderToggle}`} aria-expanded={expanded}
+                    aria-controls={branchId} onClick={() => toggleFolder(folder.id)} {...trigger}>
+                    <span className={styles.switcher} aria-hidden="true">
+                        {expanded ? <DownOutlined /> : <RightOutlined />}
+                    </span>
+                    {expanded ? <FolderOpenOutlined aria-hidden="true" /> : <FolderOutlined aria-hidden="true" />}
+                    <span className={styles.name}>{folder.name}</span>
+                </button>
+            </ContextMenu>
+        </div>
+        <div id={branchId} className={styles.folderContents} role="group" aria-label={folder.name} hidden={!expanded}>
+            {expanded && children}
+        </div>
+    </div>;
+};
+
+const BoardRow: React.FC<{ board: BoardSummary; folders: FolderDto[]; compact?: boolean }> = ({
+    board, folders, compact,
+}) => {
+    const { currentHandle, download, downloading, moveBoard, movingBoard, openNameDialog, askDelete } = useBoardsList();
+    const selected = currentHandle === board.slug;
+    const trigger = useRowMenuTrigger();
+    const items: NonNullable<MenuProps['items']> = [
+        { key: 'download', label: 'Download', icon: <DownloadOutlined aria-hidden="true" />,
+            disabled: downloading.has(board.slug),
+            onClick: () => void download(board) },
+        { key: 'rename', label: 'Rename', icon: <EditOutlined aria-hidden="true" />,
+            onClick: () => openNameDialog({ kind: 'board', item: board }) },
+    ];
+    if (folders.length > 0 || board.folderId) {
+        items.push({
+            key: 'move', label: 'Move board', icon: <FolderOpenOutlined aria-hidden="true" />, disabled: movingBoard,
+            popupClassName: styles.destinations,
+            children: [
+                { key: 'top-level', label: 'Top level', disabled: !board.folderId,
+                    onClick: () => void moveBoard(board, '') },
+                ...folders.map(folder => ({ key: folder.id, label: folder.name, disabled: folder.id === board.folderId,
+                    onClick: () => void moveBoard(board, folder.id) })),
+            ],
+        });
+    }
+    items.push({ key: 'delete', label: 'Delete', icon: <DeleteOutlined aria-hidden="true" />, danger: true,
+        onClick: () => askDelete(board) });
+
+    return <div className={`${styles.row} ${board.archived ? styles.archived : ''} ${selected ? styles.selected : ''}`}
+        data-testid={`board-row-${board.slug}`}>
+        <ContextMenu items={items} autoFocus>
+            <Link to={boardUrl(board.slug)} className={`${styles.rowTarget} ${styles.boardLink}`}
+                aria-current={selected ? 'page' : undefined} {...trigger}>
+                <img src={iconImg} className={styles.icon} alt="" />
+                <span className={styles.name}>{board.name}</span>
+                {!compact && <>
+                    <span className={styles.slug}>/{board.slug}</span>
+                    <span className={styles.spacer} />
+                    <span className={styles.when}>{whenOf(board.updatedAt)}</span>
+                </>}
+            </Link>
+        </ContextMenu>
+    </div>;
+};
+
+const BoardNameDialog: React.FC = () => {
+    const { nameDialog, saveName, closeNameDialog } = useBoardsList();
+    const kind = nameDialog?.kind ?? 'board';
+    const item = nameDialog?.item;
+    const folder = nameDialog?.kind === 'board' ? nameDialog.folder : undefined;
+    const title = item ? `Rename “${item.name}”` : folder ? `New board in “${folder.name}”` : `New ${kind}`;
+    const board = nameDialog?.kind === 'board' ? nameDialog.item : undefined;
+
+    return (
+        <NameDialog
+            open={nameDialog !== null}
+            title={title}
+            label={kind === 'board' ? 'Board name' : 'Folder name'}
+            okText={item ? 'Rename' : 'Create'}
+            initialName={item?.name}
+            placeholder={kind === 'board' ? 'What the board is about' : 'Folder name'}
+            description={board && `The board stays at /boards/${board.slug}.`}
+            onSubmit={saveName}
+            onClose={closeNameDialog}
+        />
     );
 };
 

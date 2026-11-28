@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { Modal, message } from 'antd';
 import type { GitResult, GitStatus } from 'kiao-worker';
 import { useWorkerClient } from '../files/service/ui';
@@ -23,7 +23,7 @@ const reportResult = (title: string, r: GitResult, detail: boolean) => {
 };
 
 export interface GitActions {
-    busy: boolean;
+    active: string | null;
     commitMsg: string;
     setCommitMsg: (msg: string) => void;
     stage: (path: string) => void;
@@ -34,13 +34,13 @@ export interface GitActions {
     revertAll: () => void;
     commit: (amend: boolean) => void;
     /** Resolves when the (long) consolidation has run and been reported. */
-    consolidate: (message: string, pushRemote: boolean) => Promise<void>;
+    consolidate: (message: string, pushRemote: boolean) => Promise<boolean>;
     push: () => void;
     pull: () => void;
     sync: () => void;
     checkout: (branch: string) => void;
     /** Resolves when the creation has run and been reported, so the modal can close after it. */
-    createBranch: (name: string) => Promise<void>;
+    createBranch: (name: string) => Promise<boolean>;
 }
 
 /**
@@ -57,23 +57,28 @@ export const useGitActions = (status: GitStatus | null, refresh: () => Promise<v
     const refreshFiles = useRefreshFileList();
     const { requestRefresh } = useGitDiff();
 
-    const [busy, setBusy] = useState(false);
+    const [active, setActive] = useState<string | null>(null);
+    const running = useRef(false);
     const [commitMsg, setCommitMsg] = useState(timestampCommitMessage);
 
     const runAction = useCallback(async (title: string, fn: () => Promise<GitResult>, detail = false) => {
-        if (busy) return;
-        setBusy(true);
+        if (running.current) return false;
+        running.current = true;
+        setActive(title);
         try {
             const r = await fn();
             reportResult(title, r, detail);
+            return r.ok;
         } catch (e: any) {
             message.error(`${title} failed: ${e?.message ?? e}`);
+            return false;
         } finally {
-            setBusy(false);
             await refresh();
             requestRefresh();
+            running.current = false;
+            setActive(null);
         }
-    }, [busy, refresh, requestRefresh]);
+    }, [refresh, requestRefresh]);
 
     // Staging always goes through the batch endpoints — a single row is a list of one — so the
     // service runs one git command per action instead of one per file.
@@ -95,7 +100,7 @@ export const useGitActions = (status: GitStatus | null, refresh: () => Promise<v
 
     const revertAll = useCallback(() => {
         if (!(status?.files ?? []).some(f => f.unstaged)) return;
-        runAction('Discard all changes', () => workerClient.gitRevertAll(folder));
+        return runAction('Discard all changes', () => workerClient.gitRevertAll(folder));
     }, [status, runAction, workerClient, folder]);
 
     const commit = useCallback((amend: boolean) => {
@@ -136,8 +141,11 @@ export const useGitActions = (status: GitStatus | null, refresh: () => Promise<v
     // Starting a branch switches to it too, so it ends the same way a switch does.
     const createBranch = useCallback((name: string) => (
         runAction(`Create branch ${name}`, () => workerClient.gitCreateBranch(name, folder))
-            .then(() => { refreshFiles(); })
+            .then(created => {
+                if (created) refreshFiles();
+                return created;
+            })
     ), [runAction, workerClient, folder, refreshFiles]);
 
-    return { busy, commitMsg, setCommitMsg, stage, unstage, revert, stageAll, unstageAll, revertAll, commit, consolidate, push, pull, sync, checkout, createBranch };
+    return { active, commitMsg, setCommitMsg, stage, unstage, revert, stageAll, unstageAll, revertAll, commit, consolidate, push, pull, sync, checkout, createBranch };
 };

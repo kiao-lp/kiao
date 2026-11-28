@@ -50,7 +50,7 @@ const files = await vi.hoisted(async () => {
     return mockFunctions('listFiles', 'getFileText', 'getFileJson');
 });
 
-/** The board the open flow node is read off — one card saying a title and a description. */
+/** The board the open flow node is read off — one node saying a title and a description. */
 const board = await vi.hoisted(async () => {
     const { createBoardMock } = await import('../test/mocks');
     return createBoardMock();
@@ -82,7 +82,6 @@ vi.mock('../flowNodeTemplates', async importOriginal => ({
 import { CentralStackProvider, CentralStackView, useCentralStack } from '@kiao-dashboard-core';
 import { globalTemplateStore } from '@kiao-dashboard-kit/template-fields';
 import { FlowNodeEditingProvider, useFlowNodeEditing } from '../FlowNodeEditing-ctx';
-import { versionBodyTemplate } from '../flowNodeTemplates';
 import { noSuccess } from '../flowNodeSuccess';
 import { TemplateInstantiationPanel } from './TemplateInstantiationPanel';
 
@@ -130,7 +129,7 @@ const area = (behind = 'It crashes on Tuesdays.') => (
     </CentralStackProvider>
 );
 
-/** The panel, open on the template, over a card that says a title and a description. */
+/** The panel, open on the template, over a node that says a title and a description. */
 const open = async (body = 'It crashes.') => {
     const flowNode = {
         id: 'flow-node-1', title: 'Write the plan', type: 'human', tags: [] as string[], body,
@@ -160,7 +159,7 @@ describe('TemplateInstantiationPanel — what the template makes', () => {
         await open();
 
         expect(files.getFileText).toHaveBeenCalledWith(PATH);
-        expect(screen.getByText('What the board wants to know about a bug.')).toBeInTheDocument();
+        expect(screen.queryByText('What the board wants to know about a bug.')).not.toBeInTheDocument();
         expect(preview()).toContain('Context');
     });
 
@@ -172,7 +171,7 @@ describe('TemplateInstantiationPanel — what the template makes', () => {
         expect(shown.querySelector('h3')).toHaveTextContent('Context');
     });
 
-    // The card's own words are what the template is written around, so they are in the result without anybody typing them —.
+    // The node's own words are what the template is written around, so they are in the result without anybody typing them —.
     it('fills the description and the title itself, and asks for neither', async () => {
         await open();
 
@@ -260,91 +259,5 @@ describe('TemplateInstantiationPanel — into the flow node', () => {
         expect(heap.context?.value).toBe('On every open.');
         expect(heap.flowNodeDescription).toBeUndefined();
         expect(heap.flowNodeTitle).toBeUndefined();
-    });
-});
-
-describe('TemplateInstantiationPanel — a class version inline', () => {
-
-    const openInline = async (body = 'Read ${what:text} for “${flowNodeTitle}”.') => {
-        const flowNode = {
-            id: 'flow-node-1', title: 'Some other card', type: 'human', tags: [] as string[],
-            body: 'Unrelated.',
-            settings: {}, at: '', status: 'ready', chat: '', onSuccess: noSuccess(),
-        };
-        board.selectedFlowNode = { flowNode, index: 0 };
-        render(
-            <CentralStackProvider>
-                <FlowNodeEditingProvider>
-                    <TemplateInstantiationPanel
-                        inline={{ template: versionBodyTemplate(body, 'Review'), title: 'Review' }}
-                        onInstantiate={onInstantiate}
-                    />
-                </FlowNodeEditingProvider>
-            </CentralStackProvider>,
-            { workerClient: {} },
-        );
-        await screen.findByTestId('template-preview');
-    };
-
-    it('reads no file: the body is the template', async () => {
-        await openInline();
-
-        expect(files.getFileText).not.toHaveBeenCalled();
-        expect(preview()).toContain('for “Review”.');
-        expect(preview()).not.toContain('Some other card');
-    });
-
-    it('asks the body\'s variables, and the class answers its title', async () => {
-        await openInline();
-
-        expect(screen.getAllByTestId('value-field')).toHaveLength(1);
-        fireEvent.change(screen.getByTestId('value-field'), { target: { value: 'the auth module' } });
-
-        expect(preview()).toContain('Read the auth module for “Review”.');
-    });
-
-    it('hands the instantiated source over, to the character', async () => {
-        await openInline();
-        fireEvent.change(screen.getByTestId('value-field'), { target: { value: 'the auth module' } });
-
-        instantiate();
-
-        expect(onInstantiate).toHaveBeenCalledWith('Read the auth module for “Review”.');
-    });
-
-    it("offers a complete template's optional blocks", async () => {
-        await openInline(md(
-            '# Review',
-            '',
-            '## Root',
-            '',
-            '### textTemplate',
-            '',
-            '```text',
-            'Read ${what:text}.${context}',
-            '```',
-            '',
-            '## Context',
-            '',
-            '### defaultText',
-            '',
-            '```text',
-            '',
-            '```',
-            '',
-            '### textTemplate',
-            '',
-            '```text',
-            ' Context: ${detail:text}.',
-            '```',
-        ));
-
-        fireEvent.change(screen.getByTestId('value-field'), { target: { value: 'the auth module' } });
-        expect(preview()).toContain('Read the auth module.');
-        expect(preview()).not.toContain('Context:');
-
-        fireEvent.click(screen.getByRole('checkbox'));
-        fireEvent.change(screen.getAllByTestId('value-field')[1], { target: { value: 'caching' } });
-        expect(preview()).toContain('Read the auth module. Context: caching.');
     });
 });

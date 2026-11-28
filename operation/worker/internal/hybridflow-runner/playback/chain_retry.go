@@ -15,7 +15,7 @@ const chainRunRetryWait = 20 * time.Minute
 
 const chainRunRetryLimit = 3
 
-// ChainRunResumePrompt continues work interrupted by a usage limit.
+// ChainRunResumePrompt continues interrupted work in an existing session.
 const ChainRunResumePrompt = "You have been interrupted, please resume cleanly"
 
 // Allow for provider clock differences and contention when a quota window resets.

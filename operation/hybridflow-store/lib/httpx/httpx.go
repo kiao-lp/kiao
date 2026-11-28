@@ -49,10 +49,10 @@ func Errorf(status int, msg string) *Error { return &Error{Status: status, Msg: 
 //   - entities.ErrConflict, entities.ErrNameTaken, entities.ErrAgentNameTaken and
 //     entities.ErrRunnerNameTaken → 409, which is the one status a client acts on: read the thing
 //     again and decide against what it now says;
-//   - entities.ErrFlowNodeHeld → 409 as well: another run has the card;
+//   - entities.ErrFlowNodeHeld → 409 as well: another run has the flow node;
 //   - entities.ErrFlowNodeNotRunnable / ErrFlowNodeEmptyPrompt → 422 — the request was understood
 //     and the
-//     card is not in a state to be played, which is not the caller mistyping;
+//     flow node is not in a state to be played, which is not the caller mistyping;
 //   - anything else → 500, message hidden, cause logged.
 func StatusFor(err error) (int, string) {
 	var pinned *Error

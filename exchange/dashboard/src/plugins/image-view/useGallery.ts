@@ -1,8 +1,9 @@
 import { useCallback, useMemo } from 'react';
-import { Modal, notification } from 'antd';
+import { notification } from 'antd';
 import {
     extractName,
-    storedLinkOf,
+    encodedDcmsLinkOf,
+    useConfirmation,
     useCurrentFileListContext,
     useFileBrowsingPersistenceContext,
     useWorkerClient,
@@ -30,6 +31,7 @@ export const useGallery = (): Gallery => {
     const files = useCurrentFileListContext();
     const navigation = useNavigation();
     const client = useWorkerClient();
+    const confirm = useConfirmation();
     const refreshFileList = useRefreshFileList();
 
     const path = currentFile?.path ?? '';
@@ -37,7 +39,7 @@ export const useGallery = (): Gallery => {
     const { rank, count, previous, next } = useMemo(() => positionOf(images, path), [images, path]);
 
     const open = useCallback(
-        (target: string | null) => { if (target) navigation.open(storedLinkOf(target)); },
+        (target: string | null) => { if (target) navigation.open(encodedDcmsLinkOf(target)); },
         [navigation],
     );
 
@@ -49,13 +51,10 @@ export const useGallery = (): Gallery => {
         // Compute destination before deletion.
         const destination = afterDeleting(images, path);
 
-        Modal.confirm({
+        confirm({
             title: `Delete “${extractName(path)}”?`,
-            content: 'The picture is removed from the store.',
-            okText: 'Delete',
-            okButtonProps: { danger: true },
-            cancelText: 'Cancel',
-            onOk: async () => {
+            description: 'The picture is removed from the store.',
+            onConfirm: async () => {
                 try {
                     // deleteBatch also repairs links to the deleted file.
                     await client.deleteBatch([path]);
@@ -65,11 +64,11 @@ export const useGallery = (): Gallery => {
                     return;
                 }
                 // Fall back to the folder if no image remains.
-                navigation.open(storedLinkOf(destination ?? currentPath));
+                navigation.open(encodedDcmsLinkOf(destination ?? currentPath));
                 refreshFileList();
             },
         });
-    }, [path, images, client, navigation, currentPath, refreshFileList]);
+    }, [confirm, path, images, client, navigation, currentPath, refreshFileList]);
 
     return { rank, count, previous, next, goPrevious, goNext, remove };
 };

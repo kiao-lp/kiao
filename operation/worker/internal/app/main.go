@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"kiao/gitidentity"
 	"kiao/worker/internal/core/access"
 	coreconfig "kiao/worker/internal/core/config"
 	"kiao/worker/internal/core/filesystem"
 	"kiao/worker/internal/core/logging"
+	"kiao/worker/internal/core/mcp"
 	"kiao/worker/internal/core/process"
 	"kiao/worker/internal/files"
 	fileconfig "kiao/worker/internal/files/configuration"
@@ -30,6 +32,9 @@ import (
 
 func Run() {
 	if process.RunHarnessProcessSupervisor() {
+		return
+	}
+	if mcp.RunStdioRelay() {
 		return
 	}
 	// Build-time preinstallation needs no store, port or deployment configuration.
@@ -79,7 +84,7 @@ func Run() {
 	// one, so two instances sharing a directory would not corrupt a file, they would silently
 	// discard each other's writes. The lock is taken before the migrations so a second instance
 	// fails immediately rather than after doing work.
-	if err := filesystem.EnsureStateDir(shared.RootPath, shared.StatePath); err != nil {
+	if err := filesystem.EnsureStateDir(shared.DCMSRoot, shared.StatePath); err != nil {
 		logging.LogMain.Error("state directory failure; aborting startup", "error", err)
 		os.Exit(1)
 	}
@@ -99,7 +104,12 @@ func Run() {
 	}
 	defer releaseState()
 
-	skills.RetireLegacyCopies(shared.RootPath)
+	if err := gitidentity.Install(shared.StatePath); err != nil {
+		logging.LogMain.Error("cannot configure Git subprocesses; aborting startup", "error", err)
+		os.Exit(1)
+	}
+
+	skills.RetireLegacyCopies(shared.DCMSRoot)
 
 	// The store's exclusions from automatic document passes — seeded with defaults on a
 	// store that has none, and absorbing a legacy migration-ignore on a store written by the
@@ -177,8 +187,7 @@ func Run() {
 	fileSvc.OnRunnerConfigSaved(hybridflowRunnerSvc.SyncRunnerIdentity)
 
 	// The one place a credential other than a Keycloak JWT is accepted: the turns this very process
-	// spawns, calling back in through their MCP servers. The registry is nil unless there is an MCP
-	// configuration to spawn them with, so a deployment without one has no second path at all.
+	// spawns, calling back in through their MCP servers.
 	authenticator := access.NewAuthenticator(shared)
 	if tokens := hybridflowRunnerSvc.TurnTokens(); tokens != nil {
 		authenticator.AcceptTurnTokens(tokens)
@@ -197,7 +206,7 @@ func Run() {
 	}
 
 	// Graceful shutdown: on SIGINT/SIGTERM (systemd stop), stop accepting connections, kill any
-	// running agent turns, and drain in-flight requests within the grace period.
+	// active turns, and drain in-flight requests within the grace period.
 	shutdownDone := make(chan struct{})
 	go func() {
 		sig := make(chan os.Signal, 1)
@@ -230,7 +239,7 @@ func migrateFilesOnly(cfg *fileconfig.Config) error {
 	if problems := cfg.Validate(); len(problems) > 0 {
 		return fmt.Errorf("invalid migration configuration: %s", strings.Join(problems, "; "))
 	}
-	if err := filesystem.EnsureStateDir(cfg.RootPath, cfg.StatePath); err != nil {
+	if err := filesystem.EnsureStateDir(cfg.DCMSRoot, cfg.StatePath); err != nil {
 		return err
 	}
 	release, locked, err := filesystem.AcquireLock(filepath.Join(cfg.StatePath, filesystem.StateLockFile))
@@ -241,6 +250,9 @@ func migrateFilesOnly(cfg *fileconfig.Config) error {
 		return fmt.Errorf("another worker owns the state directory; stop it before migrate-files")
 	}
 	defer release()
+	if err := gitidentity.Install(cfg.StatePath); err != nil {
+		return err
+	}
 	return migrations.RunMigrations(cfg)
 }
 
@@ -251,7 +263,7 @@ func migrateFilesOnly(cfg *fileconfig.Config) error {
 func logResolvedConfig(cfg *fileconfig.Config, hybridflowRunnerCfg *runnerconfig.Config, toolCfg *toolconfig.Config) {
 	logging.LogMain.Info("configuration",
 		"port", cfg.Port,
-		"root_path", cfg.RootPath,
+		"root_path", cfg.DCMSRoot,
 		"state_path", cfg.StatePath,
 		"auth_mode", cfg.AuthMode,
 		"issuer_uri", cfg.IssuerURI,

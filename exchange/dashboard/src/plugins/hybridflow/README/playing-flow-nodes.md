@@ -16,9 +16,13 @@ remain available.
 Multiple runs may execute concurrently, even on one board. A second run cannot take a node
 already held by another; a chain reaching it stops and names its owner.
 
-An eligible AI or Scheduler node offers Play. Pressing it asks for a run name, prefilled from
-the start time, such as `Started 4 Sep 13:22`. That name identifies the run in panels and notices. The active node offers its run's Stop. Shutdown and Gateway are reached
-through chains and controlled from the runs panel.
+A configured AI, Scheduler, Bitbucket event or Limiter in Ready or Done offers Play.
+Pressing it asks for a run name, prefilled from the start time, such as `Started 4 Sep 13:22`.
+That name identifies the run in panels and notices. The active node offers its run's Stop.
+Shutdown and Gateway are reached through chains and controlled from the runs panel.
+
+An interrupted AI task also offers Play. It resumes in the task's existing conversation and moves
+back to In progress. If the run is still suspended, Play continues that run with its original name.
 
 ## The chain runs panel
 
@@ -46,8 +50,9 @@ description or criterion cannot play and ends a chain that reaches it.
 
 Images linked in the body accompany the first turn as notes giving their actual absolute
 paths (`flow_node_images.go`). Markdown images count, as do ordinary links with image
-extensions. Relative links resolve against the **board's folder**, independently of the task's
-working directory. Files are not copied, so the agent can inspect or change the stored image.
+extensions. Use DCMS links to identify images in task descriptions. The preview and runner
+use the DCMS root as the base for images, independently of the task's working folder. The
+agent receives paths to the original images and can inspect or change them.
 Missing images are reported but do not stop execution.
 
 Playing preserves task text and position; output belongs in the conversation. Every step
@@ -56,14 +61,16 @@ Dashboard merges watched revisions and responds to `documentAt` notifications wi
 the selected editor. See [board synchronization](../README.md#two-writers-one-board).
 
 The service rechecks eligibility independently of buttons: AI needs all four settings and a
-prompt, Scheduler needs valid timing, and archived nodes never run. Human, Note and Value are
-not runnable. Shutdown and Gateway run without an agent turn. Replaying a task uses its existing
-chat and records `running` before sending anything.
+prompt, Scheduler needs valid timing, and each Bitbucket event needs its ID and target status.
+The runner claims executable flow nodes. Human tasks use Work and offer it again after completion.
+Note, Value and Role are display flow nodes. Shutdown and Gateway run without an agent turn. On a replay,
+a completed AI task starts a new conversation and links it before sending the prompt. The previous
+conversation stays available in Conversations.
 
 ## Stop and resume
 
 **Board Stop ends the chain after the current turn.** It lets agent work finish and record its
-result, then starts no successor. During retry, usage or Scheduler waits it cancels immediately.
+result, then starts no successor. During retry, usage, Scheduler or Bitbucket waits it cancels immediately.
 
 **Chat Stop interrupts the turn and suspends the chain.** The node becomes `interrupted`; the
 run retains its node and chat for resumption. The next message in that conversation asks once
@@ -134,11 +141,43 @@ by four attempts in total.
 
 An AI task's **Output type** selects a JSON Schema value from any board. The prompt requests
 matching JSON in exactly one fenced `output` block in the final message. A missing or invalid
-export marks the task as error and stops the chain; the Node panel shows the last export in its
+export marks the task as error and stops the chain; the **Flow node** panel shows the last export in its
 **Result** tab.
 
-A successor description can use `{{input}}` for the entire export or `{{input.message}}` for
-a field. Nested paths and numeric array indices work; a missing field stops execution before
-sending a turn. Saved descriptions retain placeholders. Data passes independently of chat
-handoff, through Schedulers, and through Gateway joins as an array in board order, for example
-`{{input.0.message}}`.
+A successor can use `{{input}}` for the entire export or `{{input.message}}` for a field.
+Nested paths and numeric array indices work. A missing field stops execution before the
+flow node executes. Saved fields retain their references. Data passes independently of chat
+handoff, through Scheduler and Bitbucket waits and through the branch selected by an exclusive gateway. A parallel
+join passes an array in board order, accessible through placeholders such as `{{input.0.message}}`.
+[Fields that accept value references](flow-node-types.md)
+
+## Shared workflow values
+
+Flow nodes in the same workflow can share values across separate plays. The workflow's name and ID
+are available as `{{currentWokflow.name}}` and `{{currentWokflow.id}}`.
+
+Click the workflow rectangle to open the **Workflow** panel. Edit **Shared values** as a JSON
+object. Valid edits save automatically. Remove a property to clear its value.
+
+Put a fenced block in an AI task description to set a field for that task. An agent can set or
+replace a field by including the same kind of block in its final reply.
+
+````markdown
+```currentWokflow.message
+how are you?
+```
+````
+
+Choose which values an AI task receives by referencing them in its description, title fallback
+or success criteria. Use `{{currentWorkflow.message}}` for one field, a dotted path for a nested
+value or `{{currentWorkflow}}` for the whole object. Human tasks display referenced values in
+the Work panel, and Notes display them on the canvas. An exclusive gateway can use
+`currentWorkflow.message` in a CEL condition. Both `currentWokflow` and `currentWorkflow` work.
+
+Each block sets one field. Plain text is stored as a string and valid JSON is stored as its JSON
+type. Names and IDs follow the workflow and are read-only.
+
+An AI task sees its description's assignments before it starts. Its successful completion saves
+the changes for other tasks, including any values from the final reply. When both set the same
+field, the reply wins. A missing field stops execution and appears as an unresolved reference
+in a Human task's Work panel or in a Note.

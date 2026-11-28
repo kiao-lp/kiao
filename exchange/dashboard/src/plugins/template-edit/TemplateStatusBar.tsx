@@ -1,6 +1,6 @@
 import React from 'react';
-import { Space, Button } from 'antd';
-import { Tooltip } from '@kiao-dashboard-core';
+import { Space } from 'antd';
+import { IconButton } from '@kiao-dashboard-core';
 import { EditOutlined, FileAddOutlined } from '@ant-design/icons';
 
 export type TemplateEditMode = 'edit' | 'instantiate';
@@ -14,20 +14,19 @@ export const TemplateStatusBar: React.FC<TemplateStatusBarProps> = ({ mode, setM
 
     const navigationButtons = (
         <Space size={2}>
-            <Button aria-label="Modify Template"
+            <IconButton
+                label="Modify Template"
                 type={mode === 'edit' ? 'primary' : 'text'}
-                size="small"
                 icon={<EditOutlined />}
                 onClick={() => setMode('edit')}
             />
-            <Tooltip title="Instantiate Template">
-                <Button
-                    type={mode === 'instantiate' ? 'primary' : 'text'}
-                    size="small"
-                    icon={<FileAddOutlined />}
-                    onClick={() => setMode('instantiate')}
-                />
-            </Tooltip>
+            <IconButton
+                label="Instantiate Template"
+                tooltip
+                type={mode === 'instantiate' ? 'primary' : 'text'}
+                icon={<FileAddOutlined />}
+                onClick={() => setMode('instantiate')}
+            />
         </Space>
     );
 

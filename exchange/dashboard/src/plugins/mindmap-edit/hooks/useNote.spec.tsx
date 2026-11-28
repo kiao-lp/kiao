@@ -13,7 +13,7 @@ vi.mock('@kiao-dashboard-core', () => ({
     useSelectionContext: () => [context.selection, vi.fn()],
     Clipboard: {},
     useWorkerClient: () => ({}),
-    toStoredLink: (link: string) => link,
+    normalizeDocumentLink: (link: string) => link,
     useFileBrowsingPersistenceContext: () => ({ currentFile: null, currentPath: '' }),
 }));
 

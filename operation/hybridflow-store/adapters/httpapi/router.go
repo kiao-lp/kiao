@@ -26,8 +26,8 @@ type API struct {
 	requireAgentPackages bool
 	executions           *services.Executions
 	boards               *services.Boards
+	boardFolders         *services.Folders
 	flowNodes            *services.FlowNodes
-	flowNodeClasses      *services.FlowNodeClasses
 	workflows            *services.Workflows
 	agents               *services.Agents
 	runners              *services.Runners
@@ -47,8 +47,8 @@ type Options struct {
 	RequireAgentPackages bool
 	Executions           *services.Executions
 	Boards               *services.Boards
+	BoardFolders         *services.Folders
 	FlowNodes            *services.FlowNodes
-	FlowNodeClasses      *services.FlowNodeClasses
 	Workflows            *services.Workflows
 	Agents               *services.Agents
 	Runners              *services.Runners
@@ -67,7 +67,9 @@ func New(opts Options) *API {
 	return &API{
 		agentAPI:             opts.AgentAPI,
 		requireAgentPackages: opts.RequireAgentPackages,
-		executions:           opts.Executions, boards: opts.Boards, flowNodes: opts.FlowNodes, flowNodeClasses: opts.FlowNodeClasses,
+		executions:           opts.Executions,
+		boards:               opts.Boards, boardFolders: opts.BoardFolders,
+		flowNodes: opts.FlowNodes,
 		workflows: opts.Workflows,
 		agents:    opts.Agents, runners: opts.Runners, usage: opts.Usage,
 		changes: opts.Changes, schema: opts.Schema, watchTimeout: timeout,
@@ -108,7 +110,11 @@ func (a *API) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /boards/{handle}", a.getBoard)
 	mux.HandleFunc("PATCH /boards/{handle}", a.patchBoard)
 	mux.HandleFunc("DELETE /boards/{handle}", a.deleteBoard)
+	if a.boardFolders != nil {
+		registerFolderRoutes(mux, "/folders/"+string(entities.BoardFolderScope), a.boardFolders)
+	}
 
+	mux.HandleFunc("GET /flow-nodes/{id}/board", a.getFlowNodeBoard)
 	mux.HandleFunc("POST /boards/{handle}/flow-nodes", a.createFlowNodes)
 	mux.HandleFunc("DELETE /boards/{handle}/flow-nodes", a.deleteFlowNodes)
 	mux.HandleFunc("GET /boards/{handle}/flow-nodes/{id}", a.getFlowNode)
@@ -116,32 +122,16 @@ func (a *API) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /boards/{handle}/flow-nodes/{id}/chain", a.chainFlowNode)
 	mux.HandleFunc("POST /boards/{handle}/flow-nodes/{id}/play", a.playFlowNode)
 	mux.HandleFunc("POST /boards/{handle}/flow-nodes/{id}/played", a.playedFlowNode)
+	mux.HandleFunc("POST /boards/{handle}/flow-nodes/{id}/pass", a.passLimiter)
 	mux.HandleFunc("POST /boards/{handle}/flow-nodes/{id}/usage", a.recordUsage)
 	mux.HandleFunc("GET /boards/{handle}/flow-nodes/{id}/usage", a.getUsageTotals)
-	mux.HandleFunc("POST /boards/{handle}/flow-nodes/{id}/to-class", a.convertFlowNodeToClass)
-
-	mux.HandleFunc("GET /flow-node-classes", a.listFlowNodeClasses)
-	mux.HandleFunc("POST /boards/{handle}/flow-node-classes", a.createFlowNodeClass)
-	mux.HandleFunc("DELETE /boards/{handle}/flow-node-classes", a.deleteFlowNodeClasses)
-	mux.HandleFunc("GET /boards/{handle}/flow-node-classes/{id}", a.getFlowNodeClass)
-	mux.HandleFunc("PATCH /boards/{handle}/flow-node-classes/{id}", a.patchFlowNodeClass)
-	mux.HandleFunc("POST /boards/{handle}/flow-node-classes/{id}/chain", a.chainFlowNodeClass)
-	mux.HandleFunc("POST /boards/{handle}/flow-node-classes/{id}/versions", a.createClassVersion)
-	mux.HandleFunc("PATCH /boards/{handle}/flow-node-classes/{id}/versions/{versionId}", a.patchClassVersion)
-	mux.HandleFunc("DELETE /boards/{handle}/flow-node-classes/{id}/versions/{versionId}", a.deleteClassVersion)
-	mux.HandleFunc("POST /boards/{handle}/flow-node-classes/{id}/instantiate", a.instantiateFlowNodeClass)
 
 	mux.HandleFunc("POST /boards/{handle}/workflows", a.createWorkflow)
+	mux.HandleFunc("POST /boards/{handle}/workflows/clipboard", a.pasteWorkflow)
+	mux.HandleFunc("GET /boards/{handle}/workflows/{id}/clipboard", a.copyWorkflow)
 	mux.HandleFunc("DELETE /boards/{handle}/workflows", a.deleteWorkflows)
 	mux.HandleFunc("GET /boards/{handle}/workflows/{id}", a.getWorkflow)
 	mux.HandleFunc("PATCH /boards/{handle}/workflows/{id}", a.patchWorkflow)
-
-	mux.HandleFunc("GET /workflow-classes", a.listWorkflowClasses)
-	mux.HandleFunc("POST /boards/{handle}/workflow-classes", a.createWorkflowClass)
-	mux.HandleFunc("DELETE /boards/{handle}/workflow-classes", a.deleteWorkflowClasses)
-	mux.HandleFunc("GET /boards/{handle}/workflow-classes/{id}", a.getWorkflowClass)
-	mux.HandleFunc("PATCH /boards/{handle}/workflow-classes/{id}", a.patchWorkflowClass)
-	mux.HandleFunc("POST /boards/{handle}/workflow-classes/{id}/instantiate", a.instantiateWorkflowClass)
 
 	mux.HandleFunc("GET /changes", a.getChanges)
 	mux.HandleFunc("POST /runs/{run}/settle", a.settleRun)
@@ -255,7 +245,7 @@ func cors(origins []string, next http.Handler) http.Handler {
 
 // ── reading a request ─────────────────────────────────────────────────────────
 
-// maxBodyBytes bounds a request. A paste of cards is the largest thing on the wire and is
+// maxBodyBytes bounds a request. A paste of flow nodes is the largest thing on the wire and is
 // measured in kilobytes; four megabytes are room for a very long one and a refusal for anything
 // that is not a board.
 const maxBodyBytes = 4 << 20
@@ -331,7 +321,7 @@ func settingsOf(dto *SettingsDto) entities.TaskSettings {
 }
 
 // transitionOf is the half of an `onSuccess` that belongs to the task: what becomes of the chat.
-// The other half — the card played next — is the flow node's own, and is read beside it.
+// The other half — the flow node played next — is the flow node's own, and is read beside it.
 func transitionOf(dto *SuccessDto) entities.Transition {
 	if dto == nil {
 		return entities.Transition{Mode: entities.TransitionModeDefault}
@@ -347,6 +337,18 @@ func spotOf(dto *SpotDto) *entities.Spot {
 		return nil
 	}
 	return &entities.Spot{X: dto.X, Y: dto.Y}
+}
+
+func sizeOf(dto *SizeDto) *entities.Size {
+	// A size without a positive width says nothing: the height alone cannot place the box.
+	if dto == nil || dto.W <= 0 {
+		return nil
+	}
+	size := &entities.Size{W: dto.W}
+	if dto.H > 0 {
+		size.H = dto.H
+	}
+	return size
 }
 
 // contextWithTimeout bounds a held request by the watch timeout — and by the client going away,

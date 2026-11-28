@@ -49,7 +49,7 @@ const Area: React.FC = () => (
     </CentralStackProvider>
 );
 
-const Harness: React.FC<{ area: boolean }> = ({ area }) => (
+const SearchResultsFixture: React.FC<{ area: boolean }> = ({ area }) => (
     <FileSearchProvider>
         <Opener />
         {area && <Area />}
@@ -102,7 +102,7 @@ beforeEach(() => {
 
 describe('FileSearchResultsStackPanel', () => {
     it('opens the results over the area when the search answers', async () => {
-        render(<Harness area />);
+        render(<SearchResultsFixture area />);
 
         fireEvent.click(screen.getByTestId('search'));
 
@@ -116,7 +116,7 @@ describe('FileSearchResultsStackPanel', () => {
     });
 
     it('shows each hit with its matched lines marked', async () => {
-        render(<Harness area />);
+        render(<SearchResultsFixture area />);
         fireEvent.click(screen.getByTestId('search'));
         const panel = await screen.findByTestId(panelId);
 
@@ -128,7 +128,7 @@ describe('FileSearchResultsStackPanel', () => {
 
     it('says so when the server stopped at its cap', async () => {
         h.truncated = true;
-        render(<Harness area />);
+        render(<SearchResultsFixture area />);
         fireEvent.click(screen.getByTestId('search'));
 
         await screen.findByTestId(panelId);
@@ -137,7 +137,7 @@ describe('FileSearchResultsStackPanel', () => {
 
     it('says so when nothing matches', async () => {
         h.results = [];
-        render(<Harness area />);
+        render(<SearchResultsFixture area />);
         fireEvent.click(screen.getByTestId('search'));
 
         const panel = await screen.findByTestId(panelId);
@@ -146,7 +146,7 @@ describe('FileSearchResultsStackPanel', () => {
     });
 
     it('closes through the floating cross, and opens again after', async () => {
-        render(<Harness area />);
+        render(<SearchResultsFixture area />);
         fireEvent.click(screen.getByTestId('search'));
         await screen.findByTestId(panelId);
 
@@ -159,7 +159,7 @@ describe('FileSearchResultsStackPanel', () => {
     });
 
     it('closes when the search is cleared in code', async () => {
-        render(<Harness area />);
+        render(<SearchResultsFixture area />);
         fireEvent.click(screen.getByTestId('search'));
         await screen.findByTestId(panelId);
 
@@ -169,20 +169,20 @@ describe('FileSearchResultsStackPanel', () => {
     });
 
     it('comes back after the area is remounted', async () => {
-        const { rerender } = render(<Harness area />);
+        const { rerender } = render(<SearchResultsFixture area />);
         fireEvent.click(screen.getByTestId('search'));
         await screen.findByTestId(panelId);
 
-        rerender(<Harness area={false} />);
+        rerender(<SearchResultsFixture area={false} />);
         expect(screen.queryByTestId(panelId)).toBeNull();
-        rerender(<Harness area />);
+        rerender(<SearchResultsFixture area />);
 
         await screen.findByTestId(panelId);
         expect(screen.getByTestId('file-search-results-view')).toBeInTheDocument();
     });
 
     it('opens a hit in place and clears the search', async () => {
-        render(<Harness area />);
+        render(<SearchResultsFixture area />);
         fireEvent.click(screen.getByTestId('search'));
         const panel = await screen.findByTestId(panelId);
 
@@ -193,7 +193,7 @@ describe('FileSearchResultsStackPanel', () => {
     });
 
     it('leaves the panel up when a hit is opened beside this tab', async () => {
-        render(<Harness area />);
+        render(<SearchResultsFixture area />);
         fireEvent.click(screen.getByTestId('search'));
         const panel = await screen.findByTestId(panelId);
 

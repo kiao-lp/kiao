@@ -1,25 +1,27 @@
 import React from 'react';
-import { Dropdown, MenuProps } from 'antd';
+import type { MenuProps } from 'antd';
 import {
-    ArrowRightOutlined, BlockOutlined, ClockCircleOutlined, ClusterOutlined,
-    CopyOutlined, DatabaseOutlined, DeleteOutlined, DisconnectOutlined, ExclamationCircleOutlined,
+    ArrowRightOutlined, BlockOutlined, BranchesOutlined, CaretRightOutlined, ClockCircleOutlined,
+    CopyOutlined, DatabaseOutlined, DeleteOutlined, ExclamationCircleOutlined,
     ExportOutlined, FieldTimeOutlined, GroupOutlined, InboxOutlined, LoadingOutlined,
     MessageOutlined, PlayCircleOutlined,
-    PoweroffOutlined, RobotOutlined, ScissorOutlined, StopOutlined, SwapOutlined, SyncOutlined, UserOutlined,
+    PoweroffOutlined, PullRequestOutlined, RobotOutlined, ScissorOutlined, StopOutlined, SwapOutlined, SyncOutlined, UserOutlined,
 } from '@ant-design/icons';
-import { ConfiguredMarkdown, KEEP_MENU_IN_VIEWPORT, Tooltip } from '@kiao-dashboard-core';
+import { CardSurface, ConfiguredMarkdown, IconButton, Tooltip } from '@kiao-dashboard-core';
 import { useTagsUi } from '@kiao-dashboard-kit/capabilities';
 import { useAgents } from '../Agents-ctx';
-import { FlowNode } from '../boardContent';
+import { flowNodeInput, isRunnable, type BoardContent, type FlowNode, type Workflow } from '../boardContent';
+import { readLimiter } from '../flowNodeLimiter';
 import { scheduleLabel } from '../flowNodeSchedule';
-import { isLegacyAgent, isPlayable } from '../flowNodeSettings';
+import { hasLegacyHarness, isPlayable } from '../flowNodeSettings';
 import { STATUS_LABELS, FlowNodeStatus, WAITING_REFRESH } from '../flowNodeStatus';
 import { STATUS_GLYPH } from '../flowNodeStatusGlyph';
 import { brokenTransition, TransitionMode } from '../flowNodeSuccess';
-import { isTask, FlowNodeType } from '../flowNodeType';
+import { isTask, isWaitingEvent, FlowNodeType, splits } from '../flowNodeType';
 import { symbolKindOf } from '../boardSpots';
 import { FLOW_NODE_ID_ATTRIBUTE } from '../boardDom';
-import { retryClock } from '../usePlayFlowNode';
+import { hasContextReference, renderNodeContext } from '../nodeContext';
+import { retryClock, type FlowNodeRun } from '../usePlayFlowNode';
 import styles from '../Hybridflow.module.css';
 
 /**
@@ -28,7 +30,7 @@ import styles from '../Hybridflow.module.css';
  */
 export interface FlowNodePlayProps {
 
-    state: 'idle' | 'playing' | 'compacting' | 'scheduled' | 'waiting' | 'refreshing' | 'stopping';
+    state: 'idle' | FlowNodeRun['state'];
 
     retryAt?: number | null;
 
@@ -45,8 +47,6 @@ export interface FlowNodeMenuProps {
     onClone: () => void;
 
     onConvertType?: (type: 'ai' | 'human') => void;
-
-    onConvertToClass?: () => void;
 
     onCopy: () => void;
 
@@ -99,14 +99,15 @@ export interface FlowNodeChainProps {
 
 interface FlowNodeCardProps {
     flowNode: FlowNode;
+    board?: Pick<BoardContent, 'flowNodes'>;
+    workflow?: Workflow;
+    roles?: ReadonlyMap<string, string>;
 
     next: FlowNodeNextProps | null;
 
     chain: FlowNodeChainProps | null;
 
     onOpenChat: (() => void) | null;
-
-    onUnlinkClass: (() => void) | null;
 
     selected: boolean;
     play: FlowNodePlayProps | null;
@@ -128,9 +129,6 @@ interface FlowNodeCardProps {
     };
 }
 
-/** Whether the press is asking to **mark** the card rather than to open it: <kbd>Ctrl</kbd>,. */
-const marking = (event: { ctrlKey: boolean; metaKey: boolean }): boolean => event.ctrlKey || event.metaKey;
-
 /** What the knob shows of the way the card ends: not that a chain leaves it — the knob being tied says. */
 const MODE_GLYPH: Record<TransitionMode, React.ReactNode> = {
     continue: <ArrowRightOutlined />,
@@ -150,16 +148,24 @@ export const INVALID_HELP = 'Incomplete — open the node to see what\u2019s mis
 const TYPE_CHIP_LABEL: Partial<Record<FlowNodeType, (flowNode: FlowNode) => string>> = {
     shutdown: () => 'shutdown',
     scheduler: flowNode => scheduleLabel(flowNode.at, flowNode.duration),
-    gateway: flowNode => {
-        const count = flowNode.onSuccess.flowNodes.length;
-        return count === 0 ? 'no branches' : `${count} branch${count === 1 ? '' : 'es'}`;
-    },
 };
 
-/** The BPMN parallel-gateway mark — a plus, and nothing round it. */
-export const GatewayGlyph: React.FC<{ size?: number }> = ({ size = 13 }) => (
-    <svg width={size} height={size} viewBox="0 0 12 12" aria-hidden="true">
-        <path d="M 6 1 V 11 M 1 6 H 11" stroke="currentColor" strokeWidth="1.8" />
+export const GatewayGlyph: React.FC<{
+    size?: number;
+    exclusive?: boolean;
+    className?: string;
+    style?: React.CSSProperties;
+}> = ({ size = 13, exclusive, className, style }) => (
+    <svg className={className} style={style} width={size} height={size} viewBox="0 0 12 12" aria-hidden="true">
+        <path d={exclusive ? 'M 2 2 L 10 10 M 2 10 L 10 2' : 'M 6 1 V 11 M 1 6 H 11'} stroke="currentColor" strokeWidth="1.8" />
+    </svg>
+);
+
+export const RoleGlyph: React.FC<{ size?: number }> = ({ size = 18 }) => (
+    <svg width={size} height={size} viewBox="0 0 40 52" aria-hidden="true"
+        fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+        <circle cx="20" cy="8" r="6" />
+        <path d="M 20 14 V 34 M 6 22 H 34 M 9 49 L 20 34 L 31 49" />
     </svg>
 );
 
@@ -167,18 +173,29 @@ export const GatewayGlyph: React.FC<{ size?: number }> = ({ size = 13 }) => (
 const TYPE_MARK: Partial<Record<FlowNodeType, React.ReactNode>> = {
     ai: <RobotOutlined />,
     human: <UserOutlined />,
+    start: <CaretRightOutlined />,
     shutdown: <PoweroffOutlined />,
     scheduler: <FieldTimeOutlined />,
+    'bitbucket-pr-status': <PullRequestOutlined />,
+    'bitbucket-commit-status': <BranchesOutlined />,
     gateway: <GatewayGlyph size={36} />,
+    'exclusive-gateway': <GatewayGlyph size={36} exclusive />,
+    role: <RoleGlyph size={54} />,
 };
 
 /** What the mark says of itself, since it is the whole of what the card says about its kind. */
 export const MARK_HELP: Partial<Record<FlowNodeType, string>> = {
     ai: 'AI task',
     human: 'Somebody does this one by hand',
+    start: 'Start event',
     shutdown: 'Turns the machine off',
     scheduler: 'Waits for a duration or datetime, then plays the node after it',
+    'bitbucket-pr-status': 'Bitbucket PR Status',
+    'bitbucket-commit-status': 'Bitbucket Commit Status',
     gateway: 'Waits for every branch, then starts each successor',
+    'exclusive-gateway': 'Continues on each arrival, following the first matching route when configured',
+    limiter: 'Limiter',
+    role: 'Role',
 };
 
 /** Status colour on the whole border. */
@@ -221,8 +238,8 @@ const STATUS_TONE: Record<FlowNodeStatus, string> = {
 
 /** One flow node. */
 export const FlowNodeCard: React.FC<FlowNodeCardProps> = ({
-    flowNode, next, chain, selected, play, work, menu, onOpen, onMark, onKeyDown, onOpenChat,
-    onUnlinkClass, cardClass, dragProps,
+    flowNode, board, workflow, roles, next, chain, selected, play, work, menu, onOpen, onMark, onKeyDown, onOpenChat,
+    cardClass, dragProps,
 }) => {
     // The chips are whatever plugin owns the store's tags; in an assembly without one they draw nothing, and a card simply wears no.
     const { TagChips } = useTagsUi();
@@ -235,34 +252,41 @@ export const FlowNodeCard: React.FC<FlowNodeCardProps> = ({
 
     const { type, settings } = flowNode;
     const agentName = agents.find(agent => agent.id === settings.agent)?.name;
-    const agentLabel = agentName ?? (isLegacyAgent(settings) ? settings.model : undefined);
+    const agentLabel = agentName ?? (hasLegacyHarness(settings) ? settings.model : undefined);
     const label = type === 'ai' ? agentLabel : TYPE_CHIP_LABEL[type]?.(flowNode);
     const invalid = type === 'ai'
         ? !isPlayable(settings) || agentLabel === undefined
-        : type === 'scheduler' && !label;
+        : (isWaitingEvent(type) || type === 'limiter') && !isRunnable(flowNode, board);
     const runningAgent = agentName ?? settings.model ?? 'Claude';
     const chipLabel = playing && type === 'ai' ? runningAgent
         : invalid ? undefined
-            : label ?? (playing ? runningAgent : undefined);
+            : label ?? (playing && isTask(type) ? runningAgent : undefined);
 
     const knobTitle = broken ? BROKEN_NOTE
-        : flowNode.type === 'gateway' ? GATEWAY_CHAIN_HELP : CHAIN_HELP;
+        : splits(flowNode.type) ? GATEWAY_CHAIN_HELP : CHAIN_HELP;
 
     // Which chain run the Stop would end.
     const runNote = play?.chainRun ? ` (${play.chainRun})` : '';
     const retryTime = play?.retryAt ? retryClock(play.retryAt) : null;
 
-    const playLabel = state === 'waiting'
+    const playLabel = state === 'polling' ? `Stop waiting for the Bitbucket pull request${runNote}`
+        : state === 'queued' ? `Stop waiting for this flow node${runNote}`
+        : state === 'waiting'
         ? `The agent could not take this node; ${retryTime ? `it is played again at ${retryTime}` : 'waiting to retry'}`
         : state === 'refreshing'
             ? `The usage limit was reached; ${retryTime ? `this node’s turn resumes at ${retryTime}` : 'waiting for the reset'} — stop the play${runNote}`
             : state === 'compacting' ? `This node’s chat is being shortened — stop the play${runNote}`
-                : state === 'scheduled' ? `Holding for this card\u2019s schedule — stop the play${runNote}`
+                : state === 'scheduled' ? `Stop waiting for the scheduled time${runNote}`
                     : state === 'stopping' ? 'Finishing the node under way…'
-                        : state === 'playing' ? `Claude is on this node — stop after it${runNote}`
-                            : 'Play this node and what follows it';
+                        : state === 'playing' ? (type === 'start' ? `Stop the run${runNote}`
+                            : type === 'limiter' ? `Stop limiter run${runNote}` : `Claude is on this node — stop after it${runNote}`)
+                            : type === 'ai' && flowNode.status === 'interrupted' && flowNode.chat
+                                ? 'Resume this task in its conversation'
+                                : 'Play this node and what follows it';
 
-    const note = state === 'waiting' ? (retryTime ? `Played again at ${retryTime}` : 'Waiting to retry')
+    const note = state === 'polling' ? 'Waiting for Bitbucket…'
+        : state === 'queued' ? 'Waiting for the flow node…'
+        : state === 'waiting' ? (retryTime ? `Played again at ${retryTime}` : 'Waiting to retry')
         : state === 'refreshing'
             ? `${STATUS_LABELS[WAITING_REFRESH]}${retryTime ? ` · back at ${retryTime}` : ''}`
             : state === 'compacting' ? 'Shortening its chat…'
@@ -273,8 +297,9 @@ export const FlowNodeCard: React.FC<FlowNodeCardProps> = ({
 
     const kind = symbolKindOf(flowNode.type);
 
-
-    const playTestId = state === 'waiting' ? 'flow-node-card-waiting'
+    const playTestId = state === 'polling' ? 'flow-node-card-polling'
+        : state === 'queued' ? 'flow-node-card-queued'
+        : state === 'waiting' ? 'flow-node-card-waiting'
         : state === 'refreshing' ? 'flow-node-card-refreshing'
             : state === 'compacting' ? 'flow-node-card-compacting'
                 : state === 'scheduled' ? 'flow-node-card-scheduled'
@@ -282,50 +307,37 @@ export const FlowNodeCard: React.FC<FlowNodeCardProps> = ({
                     : state === 'playing' ? 'flow-node-card-playing'
                         : 'play-flow-node';
 
-
     const playIcon = state === 'stopping' ? <LoadingOutlined />
-        : state === 'waiting' || state === 'refreshing'
+        : state === 'waiting' || state === 'refreshing' || state === 'queued'
             ? <ClockCircleOutlined />
             : running ? <StopOutlined />
                 : <PlayCircleOutlined />;
 
-
     const control = running ? play?.onStop : play?.onPlay;
 
     const playButton = control && (
-        <button
-            type="button"
+        <IconButton
+            type="plain"
+            label={playLabel}
+            icon={playIcon}
             className={styles.cardPlay}
-            aria-label={playLabel}
             data-testid={playTestId}
             disabled={state === 'stopping'}
-            onKeyDown={event => event.stopPropagation()}
-            onPointerDown={event => event.stopPropagation()}
-            onClick={event => { event.stopPropagation(); control(); }}
-        >
-            {playIcon}
-        </button>
+            onClick={control}
+        />
     );
 
     const workButton = work && (
-        <Tooltip title="Work on this task">
-            <button
-                type="button"
-                className={styles.cardPlay}
-                aria-label="Work on this task"
-                data-testid="work-on-flow-node"
-                onKeyDown={event => event.stopPropagation()}
-                onPointerDown={event => event.stopPropagation()}
-                onClick={event => { event.stopPropagation(); work.onWork(); }}
-            >
-                <PlayCircleOutlined />
-            </button>
-        </Tooltip>
+        <IconButton
+            type="plain"
+            label="Work on this task"
+            tooltip
+            icon={<PlayCircleOutlined />}
+            className={styles.cardPlay}
+            data-testid="work-on-flow-node"
+            onClick={work.onWork}
+        />
     );
-
-
-    const symbolMark = TYPE_MARK[flowNode.type];
-
 
     const tagsClass = kind === 'rect' ? styles.cardTags : styles.symbolTags;
 
@@ -340,35 +352,6 @@ export const FlowNodeCard: React.FC<FlowNodeCardProps> = ({
                 <ExclamationCircleOutlined />
             </span>
         </Tooltip>
-    ) : null;
-
-    const classRef = flowNode.classVersion ? (
-        <div className={styles.cardClassRef} data-testid="flow-node-class-ref">
-            <ClusterOutlined />
-            <span>
-                {flowNode.classVersion.classTitle || 'Untitled'}
-                {' · '}
-                v{flowNode.classVersion.versionNumber}
-            </span>
-            {onUnlinkClass && (
-                <Tooltip title="Break the link to the class — the node keeps what it says">
-                    <button
-                        type="button"
-                        className={styles.cardClassUnlink}
-                        aria-label="Break the link to the class"
-                        data-testid="unlink-flow-node-class"
-                        onKeyDown={event => event.stopPropagation()}
-                        onPointerDown={event => event.stopPropagation()}
-                        onClick={event => {
-                            event.stopPropagation();
-                            onUnlinkClass();
-                        }}
-                    >
-                        <DisconnectOutlined />
-                    </button>
-                </Tooltip>
-            )}
-        </div>
     ) : null;
 
     const stateLine = note ? (
@@ -401,8 +384,6 @@ export const FlowNodeCard: React.FC<FlowNodeCardProps> = ({
 
     const foot = (
         <>
-            {classRef}
-            {stateLine}
             {invalidMark}
             {chipsRow}
             <TagChips labels={flowNode.tags} className={tagsClass} />
@@ -411,24 +392,16 @@ export const FlowNodeCard: React.FC<FlowNodeCardProps> = ({
 
     const items: MenuProps['items'] = [
         { key: 'clone', icon: <BlockOutlined />, label: 'Clone node', onClick: menu.onClone },
-        ...(isTask(flowNode.type) && (menu.onConvertType || menu.onConvertToClass) ? [{
+        ...(isTask(flowNode.type) && menu.onConvertType ? [{
             key: 'convert',
             icon: <SwapOutlined />,
             label: 'Convert',
-            children: [
-                ...(menu.onConvertType ? [{
-                    key: 'convert-type',
-                    icon: flowNode.type === 'ai' ? <UserOutlined /> : <RobotOutlined />,
-                    label: flowNode.type === 'ai' ? 'Human task' : 'AI task',
-                    onClick: () => menu.onConvertType?.(flowNode.type === 'ai' ? 'human' : 'ai'),
-                }] : []),
-                ...(menu.onConvertToClass ? [{
-                    key: 'convert-class',
-                    icon: <ClusterOutlined />,
-                    label: 'Node class',
-                    onClick: menu.onConvertToClass,
-                }] : []),
-            ],
+            children: [{
+                key: 'convert-type',
+                icon: flowNode.type === 'ai' ? <UserOutlined /> : <RobotOutlined />,
+                label: flowNode.type === 'ai' ? 'Human task' : 'AI task',
+                onClick: () => menu.onConvertType?.(flowNode.type === 'ai' ? 'human' : 'ai'),
+            }],
         }] : []),
         ...((menu.onCreateWorkflow && (menu.creating ?? 0) > 0) ? [{
             key: 'create-workflow',
@@ -479,33 +452,22 @@ export const FlowNodeCard: React.FC<FlowNodeCardProps> = ({
         },
     ];
 
-
     const chatMark = onOpenChat && (
-        <button
-            type="button"
+        <IconButton
+            type="plain"
+            label="Open the node’s chat"
+            icon={<MessageOutlined />}
             className={kind === 'rect' ? styles.cardChat : styles.symbolChat}
-            aria-label="Open the node’s chat"
             data-testid="flow-node-card-chat"
-            onKeyDown={event => event.stopPropagation()}
-            onPointerDown={event => event.stopPropagation()}
-            onClick={event => {
-                event.stopPropagation();
-                onOpenChat();
-            }}
-        >
-            <MessageOutlined />
-        </button>
+            onClick={onOpenChat}
+        />
     );
-
 
     const knob = chain && (
         <Tooltip title={knobTitle}>
             <span
                 {...chain.knobProps}
-                onPointerDown={event => {
-                    chain.knobProps.onPointerDown(event);
-                    event.stopPropagation();
-                }}
+                data-card-control
                 className={[
                     styles.chainKnob,
                     kind === 'rect' ? '' : styles.symbolKnob,
@@ -519,9 +481,8 @@ export const FlowNodeCard: React.FC<FlowNodeCardProps> = ({
                 data-mode={next ? mode : undefined}
                 data-compact={flowNode.onSuccess.compact ? 'true' : undefined}
                 data-broken={broken ? 'true' : undefined}
-                onClick={event => event.stopPropagation()}
             >
-                {next && flowNode.type !== 'gateway' && MODE_GLYPH[mode]}
+                {next && !splits(flowNode.type) && MODE_GLYPH[mode]}
             </span>
         </Tooltip>
     );
@@ -553,161 +514,130 @@ export const FlowNodeCard: React.FC<FlowNodeCardProps> = ({
         </Tooltip>
     ) : null;
 
+    const title = hasContextReference(flowNode.title)
+        ? renderNodeContext(flowNode.title, { input: board && flowNodeInput(board, flowNode), workflow, roles })
+        : flowNode.title;
+    const cardTitle = flowNode.title ? title : 'Untitled';
+    const surface = {
+        selected, onOpen, onToggleSelection: onMark, onKeyDown, menuItems: items,
+        [FLOW_NODE_ID_ATTRIBUTE]: flowNode.id,
+        ...dragProps,
+    };
+
     if (flowNode.type === 'note' || flowNode.type === 'value') {
         return (
-            <div onContextMenu={event => event.stopPropagation()}>
-                <Dropdown menu={{ items }} trigger={['contextMenu']} {...KEEP_MENU_IN_VIEWPORT}>
-                    <div
-                        className={[styles.card, flowNode.type === 'note' ? styles.noteCard : '', selected ? styles.cardSelected : '', cardClass ?? ''].filter(Boolean).join(' ')}
-                        role="button"
-                        tabIndex={0}
-                        data-testid={flowNode.type === 'note' ? 'flow-node-note-card' : 'flow-node-value-card'}
-                        data-type={flowNode.type}
-                        {...{ [FLOW_NODE_ID_ATTRIBUTE]: flowNode.id }}
-                        {...dragProps}
-                        onClick={event => (marking(event) ? onMark() : onOpen())}
-                        onKeyDown={event => {
-                            if (event.key === 'Enter' || event.key === ' ') {
-                                event.preventDefault();
-                                if (marking(event)) onMark(); else onOpen();
-                                return;
-                            }
-                            onKeyDown(event);
-                        }}
-                    >
-                        {flowNode.type === 'note' ? (
-                            <div data-testid="flow-node-note-body">
-                                {flowNode.note.trim()
-                                    ? <ConfiguredMarkdown className={styles.noteBody}>{flowNode.note}</ConfiguredMarkdown>
-                                    : <span>Empty note</span>}
-                            </div>
-                        ) : (
-                            <div className={`${styles.cardTitle} ${styles.valueTitle}`}>
-                                <DatabaseOutlined role="img" aria-label="Value"
-                                    data-testid="flow-node-card-kind" data-type="value" />
-                                <span>{flowNode.title || 'Untitled'}</span>
-                            </div>
-                        )}
+            <CardSurface
+                {...surface}
+                className={[styles.card, flowNode.type === 'note' ? styles.noteCard : '', cardClass].filter(Boolean).join(' ')}
+                data-testid={flowNode.type === 'note' ? 'flow-node-note-card' : 'flow-node-value-card'}
+                data-type={flowNode.type}
+            >
+                {flowNode.type === 'note' ? (
+                    <div className={styles.noteScroll} data-testid="flow-node-note-body">
+                        {flowNode.note.trim()
+                            ? <ConfiguredMarkdown className={styles.noteBody}>{renderNodeContext(flowNode.note, { workflow, roles })}</ConfiguredMarkdown>
+                            : <span>Empty note</span>}
                     </div>
-                </Dropdown>
-            </div>
+                ) : (
+                    <div className={`${styles.cardTitle} ${styles.valueTitle}`}>
+                        <DatabaseOutlined role="img" aria-label="Value"
+                            data-testid="flow-node-card-kind" data-type="value" />
+                        <span>{cardTitle}</span>
+                    </div>
+                )}
+            </CardSurface>
         );
     }
 
     if (kind !== 'rect') {
         const circle = kind === 'event';
+        const actor = kind === 'actor';
+        const agentRole = actor && flowNode.roleKind === 'agent';
+        const symbolTitle = type === 'scheduler' ? '' : title.trim() || (type === 'start' ? 'Start' : '');
+        const remainingPasses = type === 'limiter' ? String(readLimiter(flowNode).remainingPasses) : null;
+        const markTitle = agentRole ? 'Agent role' : MARK_HELP[type];
+        const markLabel = remainingPasses === null ? markTitle
+            : `Limiter, ${remainingPasses} ${remainingPasses === '1' ? 'pass' : 'passes'} left`;
+        // As the count gains digits, shrink it to fit inside the diamond.
+        const typeMark = agentRole ? <RobotOutlined style={{ fontSize: 54 }} aria-hidden="true" /> : TYPE_MARK[type];
+        const symbolMark = remainingPasses === null ? typeMark : (
+            <span
+                className={styles.limiterPassCount}
+                style={{ fontSize: Math.min(28, 60 / (1 + remainingPasses.length * 0.6)) }}
+            >
+                {remainingPasses}
+            </span>
+        );
         const shapeClass = [
-            circle ? styles.symbolEvent : styles.symbolGateway,
+            actor ? styles.symbolRole : circle ? styles.symbolEvent : styles.symbolGateway,
             circle && flowNode.type === 'shutdown' ? styles.symbolEventEnd : '',
         ].filter(Boolean).join(' ');
         return (
-            // The node's menu and the canvas's are two menus on nested elements, and a right-click is one gesture: the node answers it.
-            <div onContextMenu={event => event.stopPropagation()}>
-                <Dropdown menu={{ items }} trigger={['contextMenu']} {...KEEP_MENU_IN_VIEWPORT}>
-                    <div
-                        className={[
-                            styles.symbol,
-                            selected ? styles.symbolSelected : '',
-                            SYMBOL_RING[flowNode.status],
-                            running ? styles.symbolPlaying : '',
-                            chain?.target ? styles.symbolChainTarget : '',
-                            cardClass ?? '',
-                        ].filter(Boolean).join(' ')}
-                        role="button"
-                        tabIndex={0}
-                        data-testid="flow-node-card"
-                        data-status={flowNode.status}
-                        data-shape={circle ? 'circle' : 'diamond'}
-                        {...{ [FLOW_NODE_ID_ATTRIBUTE]: flowNode.id }}
-                        {...dragProps}
-                        onClick={event => (marking(event) ? onMark() : onOpen())}
-                        onKeyDown={event => {
-                            if (event.key === 'Enter' || event.key === ' ') {
-                                event.preventDefault();
-                                if (marking(event)) onMark();
-                                else onOpen();
-                                return;
-                            }
-                            onKeyDown(event);
-                        }}
-                    >
-                        <div className={circle ? styles.symbolEventWrap : styles.symbolGatewayWrap}>
-                            {symbolMark && (
-                                <Tooltip title={MARK_HELP[flowNode.type]}>
-                                    <div
-                                        className={shapeClass}
-                                        role="img"
-                                        aria-label={MARK_HELP[flowNode.type]}
-                                        data-testid="flow-node-card-kind"
-                                        data-type={flowNode.type}
-                                    >
-                                        {circle ? symbolMark : (
-                                            <span className={styles.symbolGatewayInner}>
-                                                {symbolMark}
-                                            </span>
-                                        )}
-                                    </div>
-                                </Tooltip>
-                            )}
-                            {flowNode.type === 'scheduler' && playButton && (
-                                <div className={styles.symbolPlay}>{playButton}</div>
-                            )}
-                            {chatMark}
-                            {knob}
-                        </div>
-                        <div className={styles.symbolLabel}>
-                            {flowNode.type !== 'scheduler' && (
-                                <div className={styles.symbolTitle}>{flowNode.title || 'Untitled'}</div>
-                            )}
-                            {foot}
-                        </div>
-                    </div>
-                </Dropdown>
-            </div>
+            <CardSurface
+                {...surface}
+                className={[
+                    styles.symbol,
+                    actor ? '' : SYMBOL_RING[flowNode.status],
+                    running ? styles.symbolPlaying : '',
+                    chain?.target ? styles.symbolChainTarget : '',
+                    cardClass ?? '',
+                ].filter(Boolean).join(' ')}
+                data-testid="flow-node-card"
+                data-status={flowNode.status}
+                data-shape={actor ? 'actor' : circle ? 'circle' : 'diamond'}
+            >
+                <div className={kind === 'gateway' ? styles.symbolGatewayWrap : styles.symbolEventWrap}>
+                    {symbolMark && (
+                        <Tooltip title={markTitle}>
+                            <div
+                                className={shapeClass}
+                                role="img"
+                                aria-label={markLabel}
+                                data-testid="flow-node-card-kind"
+                                data-type={flowNode.type}
+                            >
+                                {kind === 'gateway' ? (
+                                    <span className={styles.symbolGatewayInner}>
+                                        {symbolMark}
+                                    </span>
+                                ) : symbolMark}
+                            </div>
+                        </Tooltip>
+                    )}
+                    {(type === 'start' || isWaitingEvent(type) || type === 'limiter') && playButton && (
+                        <div className={styles.symbolPlay}>{playButton}</div>
+                    )}
+                    {chatMark}
+                    {knob}
+                </div>
+                <div className={styles.symbolLabel}>
+                    {symbolTitle && <div className={styles.symbolTitle}>{symbolTitle}</div>}
+                    {!actor && foot}
+                </div>
+            </CardSurface>
         );
     }
 
     return (
-        // The card's menu and the canvas's are two menus on nested elements, and a right-click is one gesture: the card answers it.
-        <div onContextMenu={event => event.stopPropagation()}>
-            <Dropdown menu={{ items }} trigger={['contextMenu']} {...KEEP_MENU_IN_VIEWPORT}>
-                <div
-                    className={[
-                        styles.card,
-                        selected ? styles.cardSelected : '',
-                        STATUS_BORDER[flowNode.status],
-                        running ? styles.cardPlaying : '',
-                        chain?.target ? styles.cardChainTarget : '',
-                        cardClass ?? '',
-                    ].filter(Boolean).join(' ')}
-                    role="button"
-                    tabIndex={0}
-                    data-testid="flow-node-card"
-                    data-status={flowNode.status}
-                    {...{ [FLOW_NODE_ID_ATTRIBUTE]: flowNode.id }}
-                    {...dragProps}
-                    // Held down, Ctrl — Cmd where that is the key — makes the click a **mark** rather than an opening: the card joins the ones the next.
-                    onClick={event => (marking(event) ? onMark() : onOpen())}
-                    onKeyDown={event => {
-                        if (event.key === 'Enter' || event.key === ' ') {
-                            event.preventDefault();
-                            if (marking(event)) onMark();
-                            else onOpen();
-                            return;
-                        }
-                        onKeyDown(event);
-                    }}
-                >
-                    <div className={styles.cardTitle}>
-                        {rectKindMark}
-                        {flowNode.title || 'Untitled'}
-                    </div>
-                    {classRef}
-                    {chipsRow}
-                    {stateAndInteractions}
-                    <TagChips labels={flowNode.tags} className={tagsClass} />
-                </div>
-            </Dropdown>
-        </div>
+        <CardSurface
+            {...surface}
+            className={[
+                styles.card,
+                STATUS_BORDER[flowNode.status],
+                running ? styles.cardPlaying : '',
+                chain?.target ? styles.cardChainTarget : '',
+                cardClass ?? '',
+            ].filter(Boolean).join(' ')}
+            data-testid="flow-node-card"
+            data-status={flowNode.status}
+        >
+            <div className={styles.cardTitle}>
+                {rectKindMark}
+                {cardTitle}
+            </div>
+            {chipsRow}
+            {stateAndInteractions}
+            <TagChips labels={flowNode.tags} className={tagsClass} />
+        </CardSurface>
     );
 };

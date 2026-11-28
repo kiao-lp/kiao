@@ -9,11 +9,11 @@ import (
 	"kiao/hybridflow-store/core/ports"
 )
 
-// UsageStore is ports.UsageRepository over PostgreSQL: what the AI cards spent, one row per
+// UsageStore is ports.UsageRepository over PostgreSQL: what the AI flow nodes spent, one row per
 // report a runner filed.
 //
 // It is a store of its own rather than a method set on the board's, for the reason the port is
-// one: a usage log is an append beside the cards — rows are never updated, carry no revision,
+// one: a usage log is an append beside the flow nodes — rows are never updated, carry no revision,
 // and write no change event. The writes here run outside inTx for the same reason: there is no
 // change row to share a transaction with, and no actor to set for one.
 type UsageStore struct {
@@ -47,7 +47,7 @@ func (s *UsageStore) RecordUsage(ctx context.Context, usage *entities.TaskUsage)
 func (s *UsageStore) UsageTotals(ctx context.Context, flowNodeID string) (entities.TaskUsageTotals, error) {
 	var totals entities.TaskUsageTotals
 	// The cost sum stays NULL where no report priced itself — unknown, never zero — while the
-	// token sums count a card with no reports as zeros.
+	// token sums count a flow node with no reports as zeros.
 	err := s.pool.QueryRow(ctx, `
 		SELECT COUNT(*),
 			COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0),

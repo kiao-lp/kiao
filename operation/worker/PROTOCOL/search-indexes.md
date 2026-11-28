@@ -116,7 +116,7 @@ in **UTF-16 code units**, so a browser can `content.slice(...)` them directly. `
 that the walk stopped at the server's `MaxSearchResults` cap (500 files).
 
 **What a search does not reach.** Directories named `node_modules` or starting with `.` are never
-searched, whatever the store says — in production the storage root is the git work tree, and the
+searched, whatever the store says — in production the DCMS root is the git work tree, and the
 service's own state directory holds verbatim transcripts. Beyond that floor, both passes (the index
 refresh and the scan) honour the store's own `.kiao-files` declarations under the `[search]`
 concern, so a search of a folder holding a build tree or a network mount does not walk it. A rule

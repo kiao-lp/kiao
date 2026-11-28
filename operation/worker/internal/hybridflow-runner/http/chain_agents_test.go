@@ -34,7 +34,7 @@ func (s stubAgents) Agent(id string) (*pkgBoards.ManagedAgent, error) {
 	return nil, pkgBoards.ErrAgentUnknown
 }
 
-// A card naming a managed agent runs on what the agent says: its harness, its model, and its
+// A flow node naming a managed agent runs on what the agent says: its harness, its model, and its
 // standing instructions.
 func TestResolveAgentReadsAManagedAgent(t *testing.T) {
 	rt := newRunnerTest(t, `{"flowNodes":[]}`)
@@ -50,15 +50,15 @@ func TestResolveAgentReadsAManagedAgent(t *testing.T) {
 		t.Errorf("resolved = %+v, want the agent's harness, model and instructions", got)
 	}
 	if got.Id != "agent-1" {
-		t.Errorf("resolved id = %q, want the card's own words for the agent", got.Id)
+		t.Errorf("resolved id = %q, want the flow node's own words for the agent", got.Id)
 	}
 }
 
-// A card written before managed agents names the engine itself, with the model beside it. Where
-// the id names no agent and the value is an engine this build drives, that is still a card to
-// play — and nothing about the engine having to be offered right now, which is the refusal's own
+// A flow node written before managed agents names the harness itself, with the model beside it. Where
+// the id names no agent and the value is a harness this build drives, that is still a flow node to
+// play — and nothing about the harness having to be offered right now, which is the refusal's own
 // question rather than the resolution's.
-func TestResolveAgentReadsLegacyCards(t *testing.T) {
+func TestResolveAgentReadsLegacyFlowNodes(t *testing.T) {
 	rt := newRunnerTest(t, `{"flowNodes":[]}`)
 	rt.runner.Agents = stubAgents{}
 	got, err := rt.runner.ResolveAgent(pkgBoards.FlowNode{
@@ -68,15 +68,15 @@ func TestResolveAgentReadsLegacyCards(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got.Name != "" || got.Harness != "claude" || got.Model != "opus" || got.Instructions != "" {
-		t.Errorf("resolved = %+v, want the card's own engine and model", got)
+		t.Errorf("resolved = %+v, want the flow node's own harness and model", got)
 	}
 	if got.Id != "claude" {
-		t.Errorf("resolved id = %q, want the engine the card named", got.Id)
+		t.Errorf("resolved id = %q, want the harness the flow node named", got.Id)
 	}
 }
 
-// Anything else is refused with the card's own words in the message: an id nothing holds, or an
-// engine with no model beside it — which is not a card from before, it is a card that never said
+// Anything else is refused with the flow node's own words in the message: an id nothing holds, or an
+// harness with no model beside it — which is not a flow node from before, it is a flow node that never said
 // enough.
 func TestResolveAgentRefusesWhatItCannotRead(t *testing.T) {
 	rt := newRunnerTest(t, `{"flowNodes":[]}`)
@@ -92,8 +92,8 @@ func TestResolveAgentRefusesWhatItCannotRead(t *testing.T) {
 	}
 }
 
-// A service that cannot be asked is not the card's fault: the failure travels as it stands, and
-// the play stops on it rather than on a refusal of the card.
+// A service that cannot be asked is not the flow node's fault: the failure travels as it stands, and
+// the play stops on it rather than on a refusal of the flow node.
 func TestResolveAgentCarriesAServiceFailure(t *testing.T) {
 	rt := newRunnerTest(t, `{"flowNodes":[]}`)
 	cause := errors.New("the hybridflow store could not be reached")
@@ -105,8 +105,8 @@ func TestResolveAgentCarriesAServiceFailure(t *testing.T) {
 	}
 }
 
-// A runner with no resolver — no store is named — plays legacy cards only: an engine with
-// a model beside it, as every card said before managed agents.
+// A runner with no resolver — no store is named — plays legacy flow nodes only: a harness with
+// a model beside it, as every flow node said before managed agents.
 func TestResolveAgentWithoutAResolverPlaysLegacyOnly(t *testing.T) {
 	rt := newRunnerTest(t, `{"flowNodes":[]}`)
 	if rt.runner.Agents != nil {
@@ -115,7 +115,7 @@ func TestResolveAgentWithoutAResolverPlaysLegacyOnly(t *testing.T) {
 	if _, err := rt.runner.ResolveAgent(pkgBoards.FlowNode{
 		Settings: pkgBoards.FlowNodeSettings{Agent: "claude", Model: "opus"},
 	}); err != nil {
-		t.Errorf("a legacy card = %v, want it read", err)
+		t.Errorf("a legacy flow node = %v, want it read", err)
 	}
 	if _, err := rt.runner.ResolveAgent(pkgBoards.FlowNode{
 		Settings: pkgBoards.FlowNodeSettings{Agent: "agent-1"},
@@ -125,13 +125,13 @@ func TestResolveAgentWithoutAResolverPlaysLegacyOnly(t *testing.T) {
 }
 
 // A managed agent on an unavailable harness is refused by name;
-// a legacy engine/model card is refused by harness.
+// a legacy harness/model flow node is refused by harness.
 func TestAgentRefusalNamesTheAgent(t *testing.T) {
 	rt := newRunnerTest(t, `{"flowNodes":[]}`)
 	rt.runner.Agents = stubAgents{byID: map[string]*pkgBoards.ManagedAgent{
 		"agent-1": {Name: "Reviewer", Harness: "codex", Model: "gpt-5.6"},
 	}}
-	// Codex withdrawn from this host: the card is refused for the harness, not for the id.
+	// Codex withdrawn from this host: the flow node is refused for the harness, not for the id.
 	for i := range rt.hub.Harnesses.Entries {
 		if rt.hub.Harnesses.Entries[i].Name == harnessapi.HarnessCodex {
 			rt.hub.Harnesses.Entries[i].Allowed = false
@@ -145,7 +145,7 @@ func TestAgentRefusalNamesTheAgent(t *testing.T) {
 	legacy := rt.runner.AgentRefusal(pkgBoards.FlowNode{Type: pkgBoards.FlowNodeTypeAI,
 		Settings: pkgBoards.FlowNodeSettings{Agent: "codex", Model: "gpt-5.6", Effort: "high"}})
 	if !strings.Contains(legacy, "codex") || strings.Contains(legacy, "no agent of this store") {
-		t.Errorf("legacy refusal = %q, want the engine refused as unoffered", legacy)
+		t.Errorf("legacy refusal = %q, want the harness refused as unoffered", legacy)
 	}
 	// And a harness this host does offer, in a mode it has, is refused nothing.
 	rt.runner.Agents = stubAgents{byID: map[string]*pkgBoards.ManagedAgent{
@@ -158,10 +158,10 @@ func TestAgentRefusalNamesTheAgent(t *testing.T) {
 	}
 }
 
-// A card naming a managed agent is played on what the agent says: its chat is bound to the
+// A flow node naming a managed agent is played on what the agent says: its chat is bound to the
 // harness and the model, and its turn is given the standing instructions — in the system prompt
 // beside the briefing, never in the prompt text.
-func TestAPlayedCardRunsOnItsManagedAgent(t *testing.T) {
+func TestAPlayedFlowNodeRunsOnItsManagedAgent(t *testing.T) {
 	rt := newRunnerTest(t, `{"flowNodes":[
 		{"id":"flow-node-1","title":"A card","body":"Do a thing","settings":{"agent":"agent-1",
 		 "effort":"high","permission":"bypassPermissions","folder":"/"}}]}`)
@@ -180,7 +180,7 @@ func TestAPlayedCardRunsOnItsManagedAgent(t *testing.T) {
 
 	flowNode := rt.board().FlowNode("flow-node-1")
 	if flowNode.Status != pkgBoards.FlowNodeStatusDone {
-		t.Fatalf("status = %q, want the card played", flowNode.Status)
+		t.Fatalf("status = %q, want the flow node played", flowNode.Status)
 	}
 	meta, err := rt.convs.Get(flowNode.Chat)
 	if err != nil {
@@ -203,7 +203,7 @@ func TestAPlayedCardRunsOnItsManagedAgent(t *testing.T) {
 	}
 }
 
-func TestAReplayedCardKeepsItsConversationsPublishedAgent(t *testing.T) {
+func TestAReadyFlowNodeKeepsItsConversationsPublishedAgent(t *testing.T) {
 	rt := newRunnerTest(t, `{"flowNodes":[
 		{"id":"flow-node-1","title":"A card","body":"Do a thing","settings":{"agent":"agent-1",
 		 "effort":"high","permission":"bypassPermissions","folder":"/"}}]}`)
@@ -218,6 +218,7 @@ func TestAReplayedCardKeepsItsConversationsPublishedAgent(t *testing.T) {
 	rt.runner.Agents = stubAgents{byID: map[string]*pkgBoards.ManagedAgent{
 		"agent-1": {Name: "Renamed", Harness: "claude", Model: "sonnet", Archived: true, Instructions: "New orders."},
 	}}
+	rt.editFlowNode("flow-node-1", func(node *pkgBoards.FlowNode) { node.Status = pkgBoards.FlowNodeStatusReady })
 	rt.play("flow-node-1")
 	rt.waitIdle()
 	second := rt.board().FlowNode("flow-node-1")
@@ -237,9 +238,29 @@ func TestAReplayedCardKeepsItsConversationsPublishedAgent(t *testing.T) {
 	}
 }
 
-// A card whose agent is gone ends the chain unmarked, the way a chain reaching a card nobody can
+func TestPlayingACompletedFlowNodeUsesTheCurrentAgentPublication(t *testing.T) {
+	rt := newRunnerTest(t, `{"flowNodes":[{"id":"task","title":"Review","status":"done","chat":"chat-on-another-runner",
+		"settings":{"agent":"reviewer","effort":"high","permission":"bypassPermissions","folder":"/"}}]}`)
+	rt.runner.Agents = stubAgents{byID: map[string]*pkgBoards.ManagedAgent{
+		"reviewer": {Published: &pkgBoards.ManagedAgentVersion{
+			AgentID: "reviewer", Version: "2.0.0", Name: "Reviewer", Harness: "claude", Model: "sonnet",
+		}},
+	}}
+	rt.play("task")
+	rt.waitIdle()
+	task := rt.board().FlowNode("task")
+	if task.Status != pkgBoards.FlowNodeStatusDone || task.Chat == "" || task.Chat == "chat-on-another-runner" {
+		t.Fatalf("replayed task = %+v", task)
+	}
+	meta, err := rt.convs.Get(task.Chat)
+	if err != nil || meta.AgentVersion == nil || meta.AgentVersion.Version != "2.0.0" || meta.ForkedFrom != "" {
+		t.Fatalf("new conversation = %+v, %v", meta, err)
+	}
+}
+
+// A flow node whose agent is gone ends the chain unmarked, the way a chain reaching a flow node nobody can
 // play ends it — rather than as a turn that ran and failed.
-func TestAChainEndsOnACardWhoseAgentIsGone(t *testing.T) {
+func TestAChainEndsOnAFlowNodeWhoseAgentIsGone(t *testing.T) {
 	rt := newRunnerTest(t, `{"flowNodes":[
 		{"id":"flow-node-1","title":"First","body":"Do the first thing.","settings":{"agent":"claude","model":"opus",
 		 "effort":"high","permission":"bypassPermissions","folder":"/"},"onSuccess":{"flowNode":"flow-node-2","mode":"end"}},
@@ -257,7 +278,7 @@ func TestAChainEndsOnACardWhoseAgentIsGone(t *testing.T) {
 	if first.Status != pkgBoards.FlowNodeStatusDone {
 		t.Errorf("first = %q, want it played", first.Status)
 	}
-	// Standing as it stood: a chain reaching a card nobody can play ends there, and the card is
+	// Standing as it stood: a chain reaching a flow node nobody can play ends there, and the flow node is
 	// marked nothing — no spinner, no error, no mark.
 	switch second.Status {
 	case "", pkgBoards.FlowNodeStatusReady:
@@ -270,7 +291,7 @@ func TestAChainEndsOnACardWhoseAgentIsGone(t *testing.T) {
 }
 
 // The agent read over HTTP: the fields a play runs on, and a 404 answered as unknown rather than
-// as a failure — the caller reads a legacy card next.
+// as a failure — the caller reads a legacy flow node next.
 func TestHybridflowStoreReadsAnAgent(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/agents/agent-1" {
@@ -306,7 +327,10 @@ func TestChangingTaskAgentForksItsPublishedConversation(t *testing.T) {
 	rt.play("flow-node-1")
 	rt.waitIdle()
 	original := rt.board().FlowNode("flow-node-1").Chat
-	rt.editFlowNode("flow-node-1", func(node *pkgBoards.FlowNode) { node.Settings.Agent = "second" })
+	rt.editFlowNode("flow-node-1", func(node *pkgBoards.FlowNode) {
+		node.Settings.Agent = "second"
+		node.Status = pkgBoards.FlowNodeStatusReady
+	})
 	rt.play("flow-node-1")
 	rt.waitIdle()
 	next := rt.board().FlowNode("flow-node-1").Chat

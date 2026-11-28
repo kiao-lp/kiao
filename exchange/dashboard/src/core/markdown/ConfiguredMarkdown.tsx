@@ -24,8 +24,7 @@ import { storePathOfImage } from './imageSource';
 import { ErrorBoundary } from '../ui-foundation/feedback/ErrorBoundary';
 import { Mermaid, PlantUML, SvgRenderer, ArchDia, Graph } from './lazy';
 import { AsyncImage } from '../ui-foundation/media/AsyncImage';
-import { CopyButton } from '../ui-foundation/clipboard/CopyButton';
-import { CopySvgButton } from '../ui-foundation/clipboard/CopySvgButton';
+import { BlockFrame } from '../ui-foundation/layout/BlockFrame';
 import { CopyHtmlButton } from '../ui-foundation/clipboard/CopyHtmlButton';
 import { EditBlockButton } from './components/buttons/EditBlockButton';
 import { ExtractBlockButton } from './components/buttons/ExtractBlockButton';
@@ -48,21 +47,18 @@ export interface ConfiguredMarkdownProps {
     revealLinkTargets?: boolean;
 }
 
-const MermaidBlock: React.FC<{ code: string; theme: Theme; actions?: React.ReactNode }> = ({ code, theme, actions }) => {
+type DiagramBlockProps = { code: string; theme: Theme; actions: React.ReactNode };
+
+const MermaidBlock: React.FC<DiagramBlockProps> = ({ code, theme, actions }) => {
     const svgRef = useRef<string | null>(null);
     return (
-        <div className="code-block-wrapper diagram-block">
-            <div className="code-block-actions">
-                <CopyButton className="code-copy-btn" code={code} />
-                <CopySvgButton className="code-copy-btn svg-copy-btn" getSvg={() => svgRef.current} />
-                {actions}
-            </div>
+        <BlockFrame variant="diagram" source={code} getSvg={() => svgRef.current} actions={actions}>
             <Mermaid theme={theme} onSvg={(svg) => { svgRef.current = svg; }}>{code}</Mermaid>
-        </div>
+        </BlockFrame>
     );
 };
 
-const PlantUMLBlock: React.FC<{ code: string; theme: Theme; actions?: React.ReactNode }> = ({ code, theme, actions }) => {
+const PlantUMLBlock: React.FC<DiagramBlockProps> = ({ code, theme, actions }) => {
     const imageUrlRef = useRef<string | null>(null);
     const getSvg = useCallback(async () => {
         if (!imageUrlRef.current) return null;
@@ -70,18 +66,13 @@ const PlantUMLBlock: React.FC<{ code: string; theme: Theme; actions?: React.Reac
         return await res.text();
     }, []);
     return (
-        <div className="code-block-wrapper diagram-block">
-            <div className="code-block-actions">
-                <CopyButton className="code-copy-btn" code={code} />
-                <CopySvgButton className="code-copy-btn svg-copy-btn" getSvg={getSvg} />
-                {actions}
-            </div>
+        <BlockFrame variant="diagram" source={code} getSvg={getSvg} actions={actions}>
             <PlantUML theme={theme} onUrl={(url) => { imageUrlRef.current = url; }}>{code}</PlantUML>
-        </div>
+        </BlockFrame>
     );
 };
 
-const ArchDiaBlock: React.FC<{ code: string; theme: Theme; actions?: React.ReactNode }> = ({ code, theme, actions }) => {
+const ArchDiaBlock: React.FC<DiagramBlockProps> = ({ code, theme, actions }) => {
     const wrapperRef = useRef<HTMLDivElement>(null);
     // Scoped to this wrapper; a document-wide lookup would copy the first diagram.
     const getSvg = useCallback(async () => {
@@ -91,14 +82,9 @@ const ArchDiaBlock: React.FC<{ code: string; theme: Theme; actions?: React.React
         return serializeSvgForExport(svg);
     }, []);
     return (
-        <div className="code-block-wrapper diagram-block" ref={wrapperRef}>
-            <div className="code-block-actions">
-                <CopyButton className="code-copy-btn" code={code} />
-                <CopySvgButton className="code-copy-btn svg-copy-btn" getSvg={getSvg} />
-                {actions}
-            </div>
+        <BlockFrame variant="diagram" source={code} getSvg={getSvg} actions={actions} ref={wrapperRef}>
             <ArchDia theme={theme}>{code}</ArchDia>
-        </div>
+        </BlockFrame>
     );
 };
 
@@ -149,14 +135,14 @@ export const ConfiguredMarkdown: React.FC<ConfiguredMarkdownProps> = ({
         p: useDivForParagraphs ? 'div' : 'p',
         img: (props) => <AsyncImage {...props} resolveImage={effectiveResolveImage} />,
         code: ({ className: codeClassName, children, node, ...props }: any) => {
-            const match = /language-(\w+)/.exec(codeClassName || '');
-            const isInline = !match && !String(children).includes('\n');
+            const language = /language-(\w+)/.exec(codeClassName || '')?.[1];
+            if (!language) return <code {...props} className={codeClassName}>{children}</code>;
             const codeString = String(children).replace(/\n$/, '');
             // Offsets span the whole fence; they survive duplicates where line numbers do not.
             const start = node?.position?.start?.offset;
             const end = node?.position?.end?.offset;
-            const block = match && start !== undefined && end !== undefined
-                ? { language: match[1], code: codeString, range: { start, end } }
+            const block = start !== undefined && end !== undefined
+                ? { language, code: codeString, range: { start, end } }
                 : null;
             const editBlock = block ? blockEditors?.[block.language] : undefined;
             const extractBlock = block ? blockExtractors?.[block.language] : undefined;
@@ -167,68 +153,41 @@ export const ConfiguredMarkdown: React.FC<ConfiguredMarkdownProps> = ({
                 </>
             ) : null;
 
-            if (!isInline && match && match[1] === 'mermaid') {
-                return <MermaidBlock code={codeString} theme={theme} actions={actions} />;
+            switch (language) {
+                case 'mermaid':
+                    return <MermaidBlock code={codeString} theme={theme} actions={actions} />;
+                case 'plantuml':
+                    return <PlantUMLBlock code={codeString} theme={theme} actions={actions} />;
+                case 'archdia':
+                    return <ArchDiaBlock code={codeString} theme={theme} actions={actions} />;
+                case 'graph':
+                    return (
+                        <BlockFrame variant="diagram" source={codeString} actions={actions}>
+                            <Graph theme={theme}>{codeString}</Graph>
+                        </BlockFrame>
+                    );
+                case 'svg':
+                    return (
+                        <BlockFrame variant="diagram" source={codeString} actions={actions}>
+                            <SvgRenderer>{codeString}</SvgRenderer>
+                        </BlockFrame>
+                    );
+                default: {
+                    const { ref: _ref, style: _style, ...rest } = props;
+                    return (
+                        <BlockFrame source={codeString} actions={actions}>
+                            <SyntaxHighlighter
+                                style={isDark ? vscDarkPlus as any : vsLight as any}
+                                language={language}
+                                PreTag="div"
+                                {...rest}
+                            >
+                                {codeString}
+                            </SyntaxHighlighter>
+                        </BlockFrame>
+                    );
+                }
             }
-
-            if (!isInline && match && match[1] === 'plantuml') {
-                return <PlantUMLBlock code={codeString} theme={theme} actions={actions} />;
-            }
-
-            if (!isInline && match && match[1] === 'archdia') {
-                return <ArchDiaBlock code={codeString} theme={theme} actions={actions} />;
-            }
-
-            if (!isInline && match && match[1] === 'graph') {
-                return (
-                    <div className="code-block-wrapper diagram-block">
-                        <div className="code-block-actions">
-                            <CopyButton className="code-copy-btn" code={codeString} />
-                            {actions}
-                        </div>
-                        <Graph theme={theme}>{codeString}</Graph>
-                    </div>
-                );
-            }
-
-            if (!isInline && match && match[1] === 'svg') {
-                return (
-                    <div className="code-block-wrapper diagram-block">
-                        <div className="code-block-actions">
-                            <CopyButton className="code-copy-btn" code={codeString} />
-                            {actions}
-                        </div>
-                        <SvgRenderer>{codeString}</SvgRenderer>
-                    </div>
-                );
-            }
-
-            if (!isInline && match) {
-                const { ref: _ref, style: _style, ...rest } = props;
-                return (
-                    <div className="code-block-wrapper">
-                        <div className="code-block-actions">
-                            <CopyButton className="code-copy-btn" code={codeString} />
-                            {actions}
-                        </div>
-                        <SyntaxHighlighter
-                            style={isDark ? vscDarkPlus as any : vsLight as any}
-                            language={match[1]}
-                            PreTag="div"
-                            customStyle={{ maxWidth: '100%', overflowX: 'auto' }}
-                            {...rest}
-                        >
-                            {codeString}
-                        </SyntaxHighlighter>
-                    </div>
-                );
-            }
-
-            return (
-                <code {...props} className={codeClassName}>
-                    {children}
-                </code>
-            );
         },
         a: ({ href, children, ...props }) => {
             const nodeHref = (props as any).node?.properties?.href as string | undefined;

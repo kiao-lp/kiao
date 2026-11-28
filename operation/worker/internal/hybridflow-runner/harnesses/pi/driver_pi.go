@@ -181,13 +181,13 @@ func (d *PiDriver) Spawn(run harnessapi.HarnessRun) error {
 	}
 	d.dir = dir
 	args := piArgs(dir, d.sessionDir, session)
-	if err := os.WriteFile(filepath.Join(dir, "instructions.md"), []byte(briefing.HarnessBriefingWith(run.StoreRoot, run.Instructions)), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "instructions.md"), []byte(briefing.HarnessBriefingWith(run.DCMSRoot, run.Instructions)), 0o600); err != nil {
 		os.RemoveAll(dir)
 		return err
 	}
 	args = append(args, "--append-system-prompt", filepath.Join(dir, "instructions.md"))
-	// Use the installed store catalogue, including when cwd is below the store root.
-	for _, skill := range piSkillPaths(run.StoreRoot) {
+	// Use the installed store catalogue, including when cwd is below the DCMS root.
+	for _, skill := range piSkillPaths(run.DCMSRoot) {
 		args = append(args, "--skill", skill)
 	}
 	for _, group := range []struct {

@@ -23,7 +23,7 @@ const (
 // Existing folders are left untouched so intentionally deleted categories stay deleted.
 // New bundled categories require manual copying or deleting the folder to re-seed.
 func EnsureImportGateMatchers(cfg *Config) {
-	dir := filepath.Join(cfg.RootPath, filepath.FromSlash(importGateDirRel))
+	dir := filepath.Join(cfg.DCMSRoot, filepath.FromSlash(importGateDirRel))
 	if _, err := os.Stat(dir); err == nil {
 		return
 	} else if !os.IsNotExist(err) {

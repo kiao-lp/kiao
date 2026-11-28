@@ -12,7 +12,7 @@ func TestChainRunRetryBudgetResetsAfterSuccessfulFlowNode(t *testing.T) {
 	rt := newRunnerTest(t, chainBoard(pkgBoards.TransitionContinue))
 	rt.runner.RetryLimit = 1
 	const overloaded = "API Error: 529 Overloaded."
-	rt.answers(overloaded, "First card done.", overloaded, "Second card done.")
+	rt.answers(overloaded, "First flow node done.", overloaded, "Second flow node done.")
 
 	rt.play("flow-node-1")
 	rt.waitIdle()
@@ -20,11 +20,11 @@ func TestChainRunRetryBudgetResetsAfterSuccessfulFlowNode(t *testing.T) {
 	board := rt.board()
 	for _, id := range []string{"flow-node-1", "flow-node-2"} {
 		if got := board.FlowNode(id).Status; got != pkgBoards.FlowNodeStatusDone {
-			t.Errorf("%s status = %q, want each card to have its own retry budget", id, got)
+			t.Errorf("%s status = %q, want each flow node to have its own retry budget", id, got)
 		}
 	}
 	if prompts := rt.prompts(); len(prompts) != 4 {
-		t.Fatalf("prompts = %q, want one retry per card", prompts)
+		t.Fatalf("prompts = %q, want one retry per flow node", prompts)
 	}
 }
 
@@ -49,7 +49,7 @@ func TestChainRunRetryPromptFollowsLatestFailure(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			rt := newRunnerTest(t, chainBoard(pkgBoards.TransitionContinue))
-			rt.answers(tc.failures[0], tc.failures[1], "First card done.", "Second card done.")
+			rt.answers(tc.failures[0], tc.failures[1], "First flow node done.", "Second flow node done.")
 
 			rt.play("flow-node-1")
 			rt.waitIdle()
@@ -65,7 +65,7 @@ func TestChainRunRetryPromptFollowsLatestFailure(t *testing.T) {
 			}
 			board := rt.board()
 			if board.FlowNode("flow-node-1").Status != pkgBoards.FlowNodeStatusDone || board.FlowNode("flow-node-2").Status != pkgBoards.FlowNodeStatusDone {
-				t.Fatal("both cards must finish after the retries")
+				t.Fatal("both flow nodes must finish after the retries")
 			}
 		})
 	}
@@ -83,7 +83,7 @@ func TestChainRunStopCancelsRetryWait(t *testing.T) {
 
 	board := rt.board()
 	if got := board.FlowNode("flow-node-1").Status; got != pkgBoards.FlowNodeStatusInterrupted {
-		t.Errorf("status = %q, want the card interrupted when the retry wait is stopped", got)
+		t.Errorf("status = %q, want the flow node interrupted when the retry wait is stopped", got)
 	}
 	if got := board.FlowNode("flow-node-2").Status; got != "" {
 		t.Errorf("successor status = %q, want it untouched", got)

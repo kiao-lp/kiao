@@ -1,8 +1,8 @@
 import React, { CSSProperties, SyntheticEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Button, Select } from 'antd';
+import { Select } from 'antd';
 import { DeleteOutlined, LineOutlined, SwapOutlined } from '@ant-design/icons';
-import { useCleanSelectionAndPointing } from '@kiao-dashboard-core';
+import { IconButton, useCleanSelectionAndPointing } from '@kiao-dashboard-core';
 
 import { MindmapRelation, RelationBody, RelationColor } from '../model';
 import { useDeleteElement } from '../hooks/useDeleteElement';
@@ -145,28 +145,9 @@ export const RelationContextMenuCmp: React.FC<RelationContextMenuProps> = ({ rel
                 onChange={changeColor}
                 aria-label="Colour"
             />
-            {body === 'triangle' && <Button
-                size="small"
-                type="text"
-                icon={<SwapOutlined />}
-                onClick={handleFlip}
-                aria-label="Turn the triangle round"
-            />}
-            {relation.bend && <Button
-                size="small"
-                type="text"
-                icon={<LineOutlined />}
-                onClick={handleStraighten}
-                aria-label="Straighten relation"
-            />}
-            <Button
-                size="small"
-                type="text"
-                danger
-                icon={<DeleteOutlined />}
-                onClick={handleDelete}
-                aria-label="Delete relation"
-            />
+            {body === 'triangle' && <IconButton label="Turn the triangle round" icon={<SwapOutlined />} onClick={handleFlip} />}
+            {relation.bend && <IconButton label="Straighten relation" icon={<LineOutlined />} onClick={handleStraighten} />}
+            <IconButton label="Delete relation" danger icon={<DeleteOutlined />} onClick={handleDelete} />
         </div>,
         document.body
     );

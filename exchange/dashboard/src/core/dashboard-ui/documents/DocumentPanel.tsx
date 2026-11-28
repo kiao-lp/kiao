@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef } from 'react';
-import { Button } from 'antd';
+import { IconButton } from '../../ui-foundation/toolbar/IconButton';
 import { CloseOutlined, FileOutlined } from '@ant-design/icons';
 import { FileSearchResultsStackPanel } from '../../files/browser/FileSearchResultsView';
 import { useFileBrowsingPersistenceContext } from '../../files/core/FileBrowsingPersistence-ctx';
@@ -16,12 +16,12 @@ const CloseDocumentButton = () => {
     const handleClose = useCallback(() => {
         nav.open(currentPath);
     }, [nav, currentPath]);
-    return <Button
+    return <IconButton
+        label="Close document"
+        size="middle"
         className="cms-close-document"
-        type="text"
         icon={<CloseOutlined />}
         onClick={handleClose}
-        aria-label="Close document"
         data-testid="close-document"
     />;
 };

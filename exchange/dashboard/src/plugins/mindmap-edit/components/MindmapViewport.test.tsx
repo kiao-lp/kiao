@@ -16,10 +16,11 @@ const context = vi.hoisted(() => ({
     relationPulledFrom: null as string | null,
 }));
 
-vi.mock('@kiao-dashboard-core', () => ({
+vi.mock('@kiao-dashboard-core', async () => ({
+    ContextMenu: (await import('src/core/ui-foundation/interactions/ContextMenu')).ContextMenu,
+    ZoomSurface: (await import('src/core/ui-foundation/zoom/ZoomSurface')).ZoomSurface,
     useFileBrowsingPersistenceContext: () => ({ currentFile: 'test-file' }),
     useSelectionContext: () => [[], vi.fn()],
-    KEEP_MENU_IN_VIEWPORT: {},
     useMouseOverViewport: () => ({ isMouseOverViewport: false, onMouseEnter: vi.fn(), onMouseLeave: vi.fn() }),
 }));
 
@@ -64,10 +65,6 @@ vi.mock('./RelationDrag-ctx', () => ({
 
 vi.mock('./RelationDraft-cmp', () => ({
     RelationDraftCmp: ({ from, to }: any) => <div data-testid="relation-draft">{from} {String(to)}</div>,
-}));
-
-vi.mock('../hooks/useWheelZoom', () => ({
-    useWheelZoom: vi.fn(),
 }));
 
 vi.mock('../hooks/useKeyboardZoom', () => ({
@@ -213,6 +210,20 @@ describe('MindmapViewportCmp Double Click', () => {
 
         expect(mockCreateNote).not.toHaveBeenCalled();
     });
+});
+
+it('opens the map context menu only in edit mode', () => {
+    context.mode = 'VISUALIZE';
+    context.pointedElement = null;
+    context.relationPulledFrom = null;
+    const { container, rerender } = render(<MindmapViewportCmp />);
+    const mindmap = container.querySelector('.mindmap')!;
+
+    expect(fireEvent.contextMenu(mindmap)).toBe(true);
+
+    context.mode = 'EDIT';
+    rerender(<MindmapViewportCmp />);
+    expect(fireEvent.contextMenu(mindmap)).toBe(false);
 });
 
 describe('MindmapViewportCmp Relation Drag', () => {

@@ -4,7 +4,8 @@ import { vi, describe, it, expect, beforeEach } from 'vitest';
 
 const bars = vi.hoisted(() => ({ showTab: vi.fn() }));
 
-vi.mock('@kiao-dashboard-core', () => ({
+vi.mock('@kiao-dashboard-core', async () => ({
+    IconButton: (await import('src/core/ui-foundation/toolbar/IconButton')).IconButton,
     useToolBars: () => bars,
 }));
 

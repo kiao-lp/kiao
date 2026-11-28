@@ -1,79 +1,128 @@
-import React, { useEffect, useRef } from 'react';
-import { Button, Input, Modal, type InputRef } from 'antd';
-import { DeleteOutlined } from '@ant-design/icons';
-import { SelectedWorkflow, useHybridflow } from '../Hybridflow-ctx';
-import { Workflow, WorkflowClass } from '../boardContent';
+import React, { useEffect, useId, useRef } from 'react';
+import { Input, type InputRef } from 'antd';
+import { CloseOutlined, DeleteOutlined } from '@ant-design/icons';
+import { CommitInput, IconButton, useConfirmation, useFileDrop, useFilesDrop } from '@kiao-dashboard-core';
+import { dcmsLinkOf } from 'kiao-worker/utils';
+import { workflowFilesError, type Workflow } from '../boardContent';
+import { normalizeFolder } from '../flowNodeSettings';
+import { useHybridflow } from '../Hybridflow-ctx';
+import { workflowDeletion } from './workflowDeletion';
 import styles from '../Hybridflow.module.css';
+import { WorkflowValuesEditor } from './WorkflowValuesEditor';
 
-/** The open workflow: its name in a box of its own, and nothing else — a name is all a rectangle has. */
 export const WorkflowPanel: React.FC = () => {
+    const confirm = useConfirmation();
     const {
-        content, selectedWorkflow, selectedWorkflowGroup,
-        editWorkflow, editWorkflowClass, removeWorkflows, removeWorkflowClasses,
+        handle, selectedWorkflowGroup: workflow, editWorkflow, removeWorkflows,
         titleCaret, takeTitleCaret,
     } = useHybridflow();
     const nameRef = useRef<InputRef>(null);
 
-    const group = selectedWorkflowGroup;
-
     useEffect(() => {
-        if (!group || titleCaret !== group.id) return;
+        if (!workflow || titleCaret !== workflow.id) return;
         takeTitleCaret();
         nameRef.current?.focus();
-    }, [group, titleCaret, takeTitleCaret]);
+    }, [workflow, titleCaret, takeTitleCaret]);
 
-    if (!selectedWorkflow || !group || !content) {
+    if (!workflow) {
         return <div className={styles.panelHint}>Select a workflow on the board to edit it.</div>;
     }
-
-    const isClass = selectedWorkflow.kind === 'workflowClass';
-    const rename = (name: string) => (isClass
-        ? editWorkflowClass(group.id, name)
-        : editWorkflow(group.id, name));
-    const remove = () => (isClass
-        ? removeWorkflowClasses([group.id])
-        : removeWorkflows([group.id]));
 
     return (
         <div className={styles.panel} data-testid="workflow-panel">
             <div className={styles.panelHeader}>
-                <span className={styles.panelKind}>{isClass ? 'Workflow class' : 'Workflow'}</span>
-                <Button
-                    size="small"
-                    type="text"
+                <span className={styles.panelKind}>Workflow</span>
+                <IconButton
+                    label="Delete workflow"
                     danger
                     icon={<DeleteOutlined />}
-                    aria-label={isClass ? 'Delete workflow class' : 'Delete workflow'}
                     data-testid="delete-workflow"
-                    onClick={() => confirmDelete(selectedWorkflow, group, remove)}
+                    onClick={() => confirm({
+                        ...workflowDeletion(workflow.name),
+                        onConfirm: () => removeWorkflows([workflow.id]),
+                    })}
                 />
             </div>
             <Input
                 ref={nameRef}
                 size="small"
                 className={styles.panelTitle}
-                value={group.name}
-                placeholder={isClass ? 'Workflow class name' : 'Workflow name'}
-                aria-label={isClass ? 'Workflow class name' : 'Workflow name'}
+                value={workflow.name}
+                placeholder="Workflow name"
+                aria-label="Workflow name"
                 data-testid="workflow-name"
-                onChange={event => rename(event.target.value)}
+                onChange={event => editWorkflow(workflow.id, event.target.value)}
             />
+            <WorkflowFields key={`${handle}/${workflow.id}`} workflow={workflow} />
         </div>
     );
 };
 
-const confirmDelete = (
-    selected: SelectedWorkflow, group: Workflow | WorkflowClass, remove: () => void,
-): void => {
-    const isClass = selected.kind === 'workflowClass';
-    Modal.confirm({
-        title: `Delete the workflow ${isClass ? 'class ' : ''}“${group.name || 'Untitled'}”?`,
-        content: isClass
-            ? 'Its classes are ungrouped and stay where they are.'
-            : 'Its cards are ungrouped and stay where they are.',
-        okText: isClass ? 'Delete workflow class' : 'Delete workflow',
-        okType: 'danger',
-        cancelText: 'Keep it',
-        onOk: remove,
+const WorkflowFields: React.FC<{ workflow: Workflow }> = ({ workflow }) => {
+    const { editWorkflowFiles } = useHybridflow();
+    const folderId = useId();
+    const error = workflowFilesError(workflow);
+    const setFolder = (workflowFolder: string) => {
+        void editWorkflowFiles(workflow.id, current =>
+            workflowFolder === (current.workflowFolder ?? '') ? null : { workflowFolder });
+    };
+    const folderDrop = useFileDrop(file => {
+        if (file.isDirectory) setFolder(dcmsLinkOf(file.path));
     });
+    const filesDrop = useFilesDrop(dropped => {
+        const links = dropped.map(file => dcmsLinkOf(file.path));
+        void editWorkflowFiles(workflow.id, current => {
+            const existing = current.files ?? [];
+            const files = Array.from(new Set([...existing, ...links]));
+            return files.length === existing.length ? null : { files };
+        });
+    });
+    const removeFile = (path: string) => {
+        void editWorkflowFiles(workflow.id, current => current.files?.includes(path)
+            ? { files: current.files.filter(file => file !== path) }
+            : null);
+    };
+
+    return (
+        <>
+            <div className={styles.workflowField}>
+                <label htmlFor={folderId}>Folder</label>
+                <CommitInput
+                    id={folderId}
+                    value={workflow.workflowFolder ?? ''}
+                    placeholder="/workflow-folder"
+                    aria-invalid={!!error && !workflow.workflowFolder}
+                    className={folderDrop.dropping ? styles.workflowFolderDrop : undefined}
+                    onCommit={value => setFolder(value.trim() ? dcmsLinkOf(normalizeFolder(value)) : '')}
+                    {...folderDrop.dropProps}
+                />
+            </div>
+            {error && <div role="alert" className={styles.workflowInvalid}>{error}</div>}
+            <div className={styles.workflowSections}>
+                <section className={styles.workflowSection} aria-label="Files" {...filesDrop.dropProps}>
+                    <div>Files</div>
+                    <div className={[styles.workflowFiles, filesDrop.dropping && styles.workflowFilesDrop].filter(Boolean).join(' ')}>
+                        {workflow.files?.length ? (
+                            <ul>
+                                {workflow.files.map(file => (
+                                    <li key={file}>
+                                        <span title={file}>{file}</span>
+                                        <IconButton
+                                            danger
+                                            label={`Remove ${file}`}
+                                            icon={<CloseOutlined />}
+                                            onClick={() => removeFile(file)}
+                                        />
+                                    </li>
+                                ))}
+                            </ul>
+                        ) : (
+                            <div className={styles.workflowDropHint}>Drop files or folders from the File tree.</div>
+                        )}
+                    </div>
+                </section>
+                <WorkflowValuesEditor workflow={workflow} />
+            </div>
+        </>
+    );
 };

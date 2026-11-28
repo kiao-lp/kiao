@@ -3,7 +3,6 @@ package filesystem
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -124,12 +123,16 @@ func (s *Store) ListResources(ctx context.Context) ([]entities.AgenticResource, 
 			if commit, err := s.git(ctx, dir, "rev-parse", "HEAD"); err == nil {
 				r.Commit = strings.TrimSpace(string(commit))
 			}
+			tags, err := s.releaseTags(ctx, dir)
+			if err != nil {
+				return nil, err
+			}
+			if len(tags) > 0 {
+				r.PublishedVersion = tags[len(tags)-1].version.String()
+			}
 			if manifest, err := readReleaseManifest(dir); err == nil {
-				tags, err := s.releaseTags(ctx, dir)
-				if err != nil {
-					return nil, err
-				}
 				r.Version = manifest.base(tags).String()
+				r.Description = manifest.description
 			}
 			status, err := s.git(ctx, dir, "status", "--porcelain")
 			if err != nil {
@@ -151,7 +154,7 @@ func (s *Store) ListResources(ctx context.Context) ([]entities.AgenticResource, 
 					return nil
 				}
 				if d.Type()&os.ModeSymlink != 0 {
-					return fmt.Errorf("resource %s contains a symlink: %s", name, relative)
+					return entities.Invalidf("Resource %q contains a symbolic link at %q. Use a regular file or directory there.", name, relative)
 				}
 				if !d.IsDir() {
 					r.Files = append(r.Files, filepath.ToSlash(relative))
@@ -291,14 +294,14 @@ func (s *Store) ResourceOperation(ctx context.Context, name, operation, message,
 		if err != nil {
 			return err
 		}
-		return s.commitRelease(ctx, dir, manifest, version, message, func() error {
-			if err := clearManagedSkillProjections(dir); err != nil {
+		return s.commitRelease(ctx, dir, manifest, version, message, func(stage string) error {
+			if err := s.lockLocalDependencies(ctx, stage, dir); err != nil {
 				return err
 			}
-			if err := s.restoreResourceDependencies(ctx, dir); err != nil {
+			if err := s.restoreResourceDependencies(ctx, stage); err != nil {
 				return err
 			}
-			return s.keepSkillProjectionsLocal(ctx, dir)
+			return s.keepSkillProjectionsLocal(ctx, stage)
 		})
 	default:
 		return entities.Invalidf("unknown resource operation")

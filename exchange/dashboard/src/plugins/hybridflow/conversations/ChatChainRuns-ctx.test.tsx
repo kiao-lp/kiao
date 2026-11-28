@@ -167,13 +167,13 @@ describe('ChatChainRunsProvider', () => {
         show();
         await act(async () => { screen.getByText('play').click(); });
         expect(state.playChainRun)
-            .toHaveBeenCalledWith('major', 'flow-node-2', 'Nightly');
+            .toHaveBeenCalledWith('major', 'flow-node-2', 'Nightly', undefined, undefined);
 
         await act(async () => { screen.getByText('stop').click(); });
         expect(state.stopChainRun).toHaveBeenCalledWith('run-1');
 
         await act(async () => { screen.getByText('resume').click(); });
-        expect(state.resumeChainRun).toHaveBeenCalledWith('run-1');
+        expect(state.resumeChainRun).toHaveBeenCalledWith('run-1', true);
 
         await act(async () => { screen.getByText('restart').click(); });
         expect(state.restartChainRun).toHaveBeenCalledWith('run-1');

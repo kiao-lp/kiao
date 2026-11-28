@@ -10,8 +10,8 @@ import (
 // Config combines shared deployment settings with document-store settings: git identity,
 // link fixing, migrations and file actions.
 type Config struct {
-	// Config is the socle's share of the deployment: the store root, the state directory, the
-	// port and who may call in. Embedded rather than copied, so cfg.RootPath reads the one value
+	// Config is the socle's share of the deployment: the DCMS root, the state directory, the
+	// port and who may call in. Embedded rather than copied, so cfg.DCMSRoot reads the one value
 	// the program loaded once and handed to both halves.
 	*coreconfig.Config
 
@@ -35,7 +35,7 @@ type Config struct {
 // confusing runtime failures, and returns a human-readable list (empty when the config is
 // sound). main logs each problem and exits, so a misconfigured deployment fails fast at startup.
 func (c *Config) Validate() []string {
-	// The socle checks what it owns — the data root, the state path, the auth mode — and this adds
+	// The socle checks what it owns — the DCMS root, the state path, the auth mode — and this adds
 	// what only this half can judge. One list, so a misconfigured deployment reads every problem at
 	// once rather than one per restart.
 	problems := c.Config.Validate()

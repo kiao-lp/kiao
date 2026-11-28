@@ -1,6 +1,7 @@
 package git
 
 import (
+	"errors"
 	"fmt"
 	"kiao/worker/internal/core/filesystem"
 	pkgFilesystem "kiao/worker/internal/core/filesystem"
@@ -17,11 +18,12 @@ import (
 // GitService runs git commands against a store directory containing a git work tree.
 // Commands use explicit argument lists, so paths and messages cannot inject shell commands.
 //
-// rootPath is the command working directory, scoped by At to the browsed folder;
-// storeRoot remains the store root for resolving folder arguments.
+// workDir is the command working directory, scoped by At to the browsed folder;
+// dcmsRoot remains the DCMS root for resolving folder arguments.
 type GitService struct {
-	rootPath     string
-	storeRoot    string
+	workDir      string
+	dcmsRoot     string
+	statePath    string
 	gitUserName  string
 	gitUserEmail string
 }
@@ -35,8 +37,9 @@ const (
 
 func NewGitService(cfg *fileconfig.Config) *GitService {
 	return &GitService{
-		rootPath:     cfg.RootPath,
-		storeRoot:    cfg.RootPath,
+		workDir:      cfg.DCMSRoot,
+		dcmsRoot:     cfg.DCMSRoot,
+		statePath:    cfg.StatePath,
 		gitUserName:  cfg.GitUserName,
 		gitUserEmail: cfg.GitUserEmail,
 	}
@@ -45,22 +48,22 @@ func NewGitService(cfg *fileconfig.Config) *GitService {
 // At scopes git operations to the repository containing the browsed folder.
 // Every path it reports or accepts is relative to that repository root, so callers
 // must use the same folder throughout a sequence of operations.
-// An escaping folder falls back to the store root; a missing folder walks up to its
+// An escaping folder falls back to the DCMS root; a missing folder walks up to its
 // nearest existing directory within the store.
 func (g *GitService) At(folder string) *GitService {
 	scoped := *g
-	dir, err := pkgFilesystem.ResolvePath(g.storeRoot, folder)
+	dir, err := pkgFilesystem.NewStorage(g.dcmsRoot, g.statePath).Resolve(folder)
 	if err != nil {
 		return &scoped
 	}
-	root := filepath.Clean(g.storeRoot)
+	root := filepath.Clean(g.dcmsRoot)
 	for dir != root {
 		if info, err := os.Stat(dir); err == nil && info.IsDir() {
 			break
 		}
 		dir = filepath.Dir(dir)
 	}
-	scoped.rootPath = dir
+	scoped.workDir = dir
 	return &scoped
 }
 
@@ -504,7 +507,7 @@ func parseBranchLine(line string, dto *GitStatusDto) {
 
 // repoRoot returns the git top-level for the configured root, or "" when it is not a work tree.
 func (g *GitService) repoRoot() string {
-	r := g.run([]string{"rev-parse", "--show-toplevel"}, g.rootPath, gitDefaultTimeout)
+	r := g.run([]string{"rev-parse", "--show-toplevel"}, g.workDir, gitDefaultTimeout)
 	if !r.OK() {
 		return ""
 	}
@@ -512,14 +515,11 @@ func (g *GitService) repoRoot() string {
 	return top
 }
 
-// repoLabel names the repository within the store: "" for the store's own repository, the
-// store-relative path for one nested inside it. It is what lets the panel say which repository the
-// folder it is scoped to belongs to, instead of leaving a changed file list unexplained. A
-// repository that contains the store — the store checked out as a subdirectory of a larger tree —
-// has no such path, and is reported as the store's own.
+// repoLabel gives the path from the DCMS root to a nested Git worktree. For a worktree
+// at or above the DCMS root it returns "".
 func (g *GitService) repoLabel(root string) string {
-	store := filepath.Clean(g.storeRoot)
-	// repoRoot comes back from git with symlinks resolved; the configured store root may not be,
+	store := filepath.Clean(g.dcmsRoot)
+	// repoRoot comes back from git with symlinks resolved; the configured DCMS root may not be,
 	// and an unresolved pair would make every repository look nested.
 	if resolved, err := filepath.EvalSymlinks(store); err == nil {
 		store = resolved
@@ -549,7 +549,9 @@ func (g *GitService) safePath(base, path string) (string, *GitResultDto) {
 	for strings.HasPrefix(p, "/") {
 		p = p[1:]
 	}
-	if _, err := pkgFilesystem.ResolvePath(base, p); err != nil {
+	if _, err := pkgFilesystem.NewStorage(base, g.statePath).Resolve(p); errors.Is(err, pkgFilesystem.ErrStatePath) {
+		return "", &GitResultDto{Ok: false, Output: err.Error()}
+	} else if err != nil {
 		return "", &GitResultDto{Ok: false, Output: "Path is outside the repository"}
 	}
 	if strings.HasPrefix(filepath.Clean(p), "..") {

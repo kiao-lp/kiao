@@ -3,7 +3,7 @@
 import React from 'react';
 import { Button } from 'antd';
 import { CloseOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
-import { useToolBars } from '@kiao-dashboard-core';
+import { IconButton, useToolBars } from '@kiao-dashboard-core';
 import { localizeNoticeDateTimes } from '@kiao-dashboard-kit/date-time';
 import type { ConversationRuntime } from './chatConversationReducer';
 import { CHAT_USAGE_TAB_ID } from './constants';
@@ -28,13 +28,7 @@ export const ChatErrorNotice: React.FC<{
                     Open Usage to sign in
                 </Button>
             )}
-            <Button
-                type="text"
-                size="small"
-                icon={<CloseOutlined />}
-                onClick={onDismiss}
-                aria-label="Dismiss"
-            />
+            <IconButton label="Dismiss" icon={<CloseOutlined />} onClick={onDismiss} />
         </div>
     );
 };

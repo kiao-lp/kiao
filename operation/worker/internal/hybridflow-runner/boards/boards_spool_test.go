@@ -144,7 +144,7 @@ func (f *spoolUpstream) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer f.mu.Unlock()
 	w.Header().Set("Content-Type", "application/json")
 	if r.Method == http.MethodGet {
-		_ = json.NewEncoder(w).Encode(BoardPayload{FlowNodes: []FlowNode{{ID: "node", Status: FlowNodeStatusRunning}}})
+		_ = json.NewEncoder(w).Encode(BoardContent{FlowNodes: []FlowNode{{ID: "node", Status: FlowNodeStatusRunning}}})
 		return
 	}
 	f.writes = append(f.writes, r.URL.Path)
@@ -265,7 +265,7 @@ func TestSpoolEncodingFailureKeepsQueueAndCache(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := readSpool(t, s)
-	if board, err := s.Finish("board", "node", "run", FlowNodeStatusDone, json.RawMessage(`{`)); err == nil || board != nil {
+	if board, err := s.Finish("board", "node", "run", PlayResult{Status: FlowNodeStatusDone, Output: json.RawMessage(`{`)}); err == nil || board != nil {
 		t.Fatalf("Finish = %v, %v, want an encoding error", board, err)
 	}
 	if !bytes.Equal(readSpool(t, s), before) || len(s.pending) != 1 || s.boards["board"].FlowNode("node").Status == FlowNodeStatusDone {
@@ -291,7 +291,7 @@ func TestSpoolAcknowledgementPersistenceFailures(t *testing.T) {
 				if _, err := s.Start("board", "node", "run"); err != nil {
 					t.Fatal(err)
 				}
-				if _, err := s.Finish("board", "node", "run", FlowNodeStatusDone, json.RawMessage(`{"result":1}`)); err != nil {
+				if _, err := s.Finish("board", "node", "run", PlayResult{Status: FlowNodeStatusDone, Output: json.RawMessage(`{"result":1}`)}); err != nil {
 					t.Fatal(err)
 				}
 				cached := cloneBoard(s.boards["board"])
@@ -416,7 +416,7 @@ func TestSpoolFailedAcknowledgementKeepsConcurrentAppend(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("sender did not reach the upstream")
 	}
-	board, err := s.Finish("board", "node", "run", FlowNodeStatusDone, json.RawMessage(`{"result":1}`))
+	board, err := s.Finish("board", "node", "run", PlayResult{Status: FlowNodeStatusDone, Output: json.RawMessage(`{"result":1}`)})
 	if err != nil {
 		t.Fatal(err)
 	}

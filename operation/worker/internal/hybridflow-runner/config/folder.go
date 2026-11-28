@@ -12,15 +12,16 @@ import (
 // in case it was renamed, deleted or replaced. It is a scope, not a sandbox: Read and Bash
 // can reach anything the service user can; permission mode and human approval bound access.
 type WorkingFolder struct {
-	Virtual string // normalised root-relative path, "" for the store root
+	Virtual string // normalised root-relative path, "" for the DCMS root
 	Abs     string // absolute, symlinks resolved — this is what becomes the CLI's cwd
 }
 
 // Resolve symlinks and re-check containment: filesystem.ResolvePath's lexical check alone
 // would allow a store symlink to put the CLI's working directory outside the root.
-func ResolveFolder(root, folder string) (WorkingFolder, error) {
+func (c *Config) ResolveFolder(folder string) (WorkingFolder, error) {
+	root := c.DCMSRoot
 	virtual := filesystem.NormaliseVirtual(folder)
-	abs, err := filesystem.ResolvePath(root, virtual)
+	abs, err := filesystem.NewStorage(root, c.StatePath).Resolve(virtual)
 	if err != nil {
 		return WorkingFolder{}, err
 	}
@@ -43,7 +44,7 @@ func ResolveFolder(root, folder string) (WorkingFolder, error) {
 
 func folderLabel(virtual string) string {
 	if virtual == "" {
-		return "the store root"
+		return "the DCMS root"
 	}
 	return virtual
 }

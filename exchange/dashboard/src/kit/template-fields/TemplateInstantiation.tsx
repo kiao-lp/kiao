@@ -15,17 +15,13 @@ export interface TemplateInstantiationProps {
     template: TemplateCollectionV0;
     /**
      * The values the caller fills itself, merged over the shared answers on the way to the
-     * preview — a flow node's title and description, a class's title. Filled rather than asked:
-     * the keys named here are not drawn, and they are never kept among the answers the
-     * application shares.
+     * preview. For example, a task can supply its existing title and description.
+     * Bound values need no input and are omitted from the shared answers.
      */
     bound?: KiaoElHeap;
-    /** The instantiated text: into a file, a flow node's description, a class version's body. */
+    /** Receives the completed Markdown. */
     onInstantiate: (text: string) => void;
-    /**
-     * Where the instantiated text has somewhere to go that is not the clipboard — a flow node's
-     * description, a class version's body — the Copy button is off.
-     */
+    /** Hide Copy when the caller already handles the result. */
     copyDisabled?: boolean;
 }
 
@@ -66,10 +62,7 @@ const TemplateFields: React.FC<{
  * Instantiating a template: answer what it asks on the left, read what it makes on the right,
  * and Instantiate hands the text over — or Copy takes it to the clipboard.
  *
- * The one instantiation component of the CMS, used wherever a template is filled in: the
- * Preview of a `.temp.md` file being edited, a flow node's description written from a template,
- * a class version's body in the instantiation wizard. What differs per caller is only what
- * Instantiate is wired to and whether Copy is on.
+ * Used for template previews, task descriptions and copied board cards.
  *
  * Templates are always markdown, so the preview is always rendered markdown — there is no
  * source view to switch to. What Instantiate hands over is the markdown source it was rendered
@@ -107,9 +100,6 @@ export const TemplateInstantiation: React.FC<TemplateInstantiationProps> = ({
                 <HeapContext.Provider
                     value={[heap, setHeap as React.Dispatch<React.SetStateAction<KiaoElHeap>>]}
                 >
-                    {template.index && (
-                        <div style={{ color: 'var(--muted)', fontSize: '0.8rem' }}>{template.index}</div>
-                    )}
                     <div className={styles.instantiatePanes}>
                         {asked.length > 0 && (
                             <div className={styles.templateFields}>

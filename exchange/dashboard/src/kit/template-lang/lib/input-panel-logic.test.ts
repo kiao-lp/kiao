@@ -5,7 +5,6 @@ import { TemplateCollectionV0 } from './model';
 describe('collectRenderNodes', () => {
     // Mock data
     const mockTemplates: TemplateCollectionV0 = {
-        index: 'test',
         rootTemplate: {
             id: 'root',
             textTemplate: 'Start ${title} Middle ${instructions} End ${footer}'
@@ -109,7 +108,6 @@ describe('collectRenderNodes', () => {
 
 describe('collectRenderNodesFromAll', () => {
     const template1: TemplateCollectionV0 = {
-        index: 'test1',
         name: 'Template1',
         rootTemplate: {
             id: 'root1',
@@ -119,7 +117,6 @@ describe('collectRenderNodesFromAll', () => {
     };
 
     const template2: TemplateCollectionV0 = {
-        index: 'test2',
         name: 'Template2',
         rootTemplate: {
             id: 'root2',

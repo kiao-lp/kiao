@@ -14,7 +14,7 @@ import (
 func importGateCfg(t *testing.T) (*Config, string) {
 	t.Helper()
 	root := t.TempDir()
-	cfg := &Config{Config: &coreconfig.Config{RootPath: root, StatePath: filepath.Join(root, ".kiao-config")}}
+	cfg := &Config{Config: &coreconfig.Config{DCMSRoot: root, StatePath: filepath.Join(root, ".kiao-config")}}
 	return cfg, filepath.Join(root, filepath.FromSlash(importGateDirRel))
 }
 
@@ -149,7 +149,7 @@ func TestEnsureImportGateKeepsAnExistingFolder(t *testing.T) {
 func TestEnsureImportGateSurvivesAnUnwritableStore(t *testing.T) {
 	cfg, dir := importGateCfg(t)
 	// kiao-user-config is a file, so the folder underneath it cannot be created.
-	mustWrite(t, filepath.Join(cfg.RootPath, "kiao-user-config"), "not a folder")
+	mustWrite(t, filepath.Join(cfg.DCMSRoot, "kiao-user-config"), "not a folder")
 
 	EnsureImportGateMatchers(cfg) // must not panic
 

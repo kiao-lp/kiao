@@ -7,11 +7,16 @@ import { TOOLBOX_CHANGED_EVENT } from './events';
 /** How often the panel asks after a running install. */
 const POLL_MS = 1200;
 
+export type ToolboxRequest =
+    | { kind: 'install' | 'uninstall'; ids: string[] }
+    | { kind: 'registration'; id: string };
+
 export interface ToolboxController {
     toolbox: Toolbox | null;
     loading: boolean;
     /** The install in flight, or the last one to have finished. */
     job: ToolboxJob | null;
+    request: ToolboxRequest | null;
     busy: boolean;
     error: string | null;
     refresh: () => Promise<void>;
@@ -25,41 +30,50 @@ export const useToolbox = (): ToolboxController => {
     const workerClient = useWorkerClient();
     const [toolbox, setToolbox] = useState<Toolbox | null>(null);
     const [job, setJob] = useState<ToolboxJob | null>(null);
+    const [request, setRequest] = useState<ToolboxRequest | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
     // Guards setState and timers after unmount.
     const mounted = useRef(true);
+    const latestRead = useRef(0);
+    const requesting = useRef(false);
     useEffect(() => {
         mounted.current = true;
         return () => { mounted.current = false; };
     }, []);
 
     const refresh = useCallback(async () => {
+        const read = ++latestRead.current;
+        setLoading(true);
         try {
             const next = await workerClient.getToolbox();
-            if (!mounted.current) return;
+            if (!mounted.current || read !== latestRead.current) return;
             setToolbox(next);
             setJob(next.job ?? null);
             setError(null);
         } catch (e: any) {
-            if (!mounted.current) return;
+            if (!mounted.current || read !== latestRead.current) return;
             setError(e?.message ?? String(e));
         } finally {
-            if (mounted.current) setLoading(false);
+            if (mounted.current && read === latestRead.current) setLoading(false);
         }
     }, [workerClient]);
 
     useEffect(() => { void refresh(); }, [refresh]);
 
     // Poll while running; full refresh on completion.
-    const running = job?.state === 'running';
+    const runningJobId = job?.state === 'running' ? job.id : undefined;
     useEffect(() => {
-        if (!running || !job) return;
+        if (!runningJobId) return;
+        let cancelled = false;
+        let reading = false;
         const id = window.setInterval(async () => {
+            if (reading) return;
+            reading = true;
             try {
-                const next = await workerClient.getToolboxJob(job.id);
-                if (!mounted.current) return;
+                const next = await workerClient.getToolboxJob(runningJobId);
+                if (cancelled) return;
                 setJob(next);
                 if (next.state !== 'running') {
                     window.dispatchEvent(new Event(TOOLBOX_CHANGED_EVENT));
@@ -67,40 +81,53 @@ export const useToolbox = (): ToolboxController => {
                 }
             } catch {
                 // Stale job or transient failure; a full read settles state.
-                if (mounted.current) void refresh();
+                if (!cancelled) await refresh();
+            } finally {
+                reading = false;
             }
         }, POLL_MS);
-        return () => window.clearInterval(id);
-    }, [running, job, workerClient, refresh]);
+        return () => {
+            cancelled = true;
+            window.clearInterval(id);
+        };
+    }, [runningJobId, workerClient, refresh]);
 
-    const start = useCallback(async (
-        run: () => Promise<ToolboxJob>,
-    ) => {
+    const runRequest = useCallback(async (next: ToolboxRequest, work: () => Promise<void>) => {
+        if (requesting.current || runningJobId || loading) return;
+        requesting.current = true;
+        setRequest(next);
         try {
-            const started = await run();
+            await work();
+        } catch (e: any) {
+            message.error(e?.message ?? String(e));
+        } finally {
+            requesting.current = false;
+            if (mounted.current) setRequest(null);
+        }
+    }, [loading, runningJobId]);
+
+    const start = useCallback((kind: 'install' | 'uninstall', ids: string[]) =>
+        runRequest({ kind, ids }, async () => {
+            const started = await (kind === 'install'
+                ? workerClient.installToolboxComponents(ids)
+                : workerClient.uninstallToolboxComponents(ids));
             if (!mounted.current) return;
             setJob(started);
-        } catch (e: any) {
-            message.error(e?.message ?? String(e));
-        }
-    }, []);
+            if (started.state !== 'running') {
+                window.dispatchEvent(new Event(TOOLBOX_CHANGED_EVENT));
+                await refresh();
+            }
+        }), [runRequest, workerClient, refresh]);
 
-    const install = useCallback((ids: string[]) =>
-        start(() => workerClient.installToolboxComponents(ids)), [start, workerClient]);
+    const install = useCallback((ids: string[]) => start('install', ids), [start]);
+    const uninstall = useCallback((ids: string[]) => start('uninstall', ids), [start]);
 
-    const uninstall = useCallback((ids: string[]) =>
-        start(() => workerClient.uninstallToolboxComponents(ids)), [start, workerClient]);
-
-    const setRegistered = useCallback(async (id: string, enabled: boolean) => {
-        try {
+    const setRegistered = useCallback((id: string, enabled: boolean) =>
+        runRequest({ kind: 'registration', id }, async () => {
             const next = await workerClient.setToolboxRegistration([id], enabled);
             window.dispatchEvent(new Event(TOOLBOX_CHANGED_EVENT));
-            if (!mounted.current) return;
-            setToolbox(next);
-        } catch (e: any) {
-            message.error(e?.message ?? String(e));
-        }
-    }, [workerClient]);
+            if (mounted.current) setToolbox(next);
+        }), [runRequest, workerClient]);
 
-    return { toolbox, loading, job, busy: running, error, refresh, install, uninstall, setRegistered };
+    return { toolbox, loading, job, request, busy: loading || !!runningJobId || !!request, error, refresh, install, uninstall, setRegistered };
 };

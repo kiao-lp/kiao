@@ -4,13 +4,16 @@ document:
   role: PRIMARY_SOURCE
 ---
 
-# Workflow agents and harnesses
+<a id="workflow-agents-and-harnesses"></a>
+# Agents and harnesses
 
 ← [worker wire protocol](/operation/worker/PROTOCOL.md) · assumes the index.
 
-## Workflow agents
+<a id="workflow-agents"></a>
+## Agents
 
-Agent definitions are served by agentic-resource-manager, also available through the worker proxy:
+The [Hybridflow concept catalog](/docs/architecture/data/hybridflow-concept-catalog.md) defines
+agents and harnesses. The worker proxies agentic-resource-manager's agent endpoints:
 
 | Method | Path | Meaning |
 |---|---|---|
@@ -22,10 +25,10 @@ Agent definitions are served by agentic-resource-manager, also available through
 | GET | `/hybridflow-runner/agents/{id}/deletion` | local changes, remote status and deletion confirmation fingerprint |
 | DELETE | `/hybridflow-runner/agents/{id}` | delete its clone with `?confirmation=…` from the deletion status |
 
-An agent response includes its latest publication as `published`. Task conversations capture
-that complete configuration at creation as `agentVersion`, and retain it on replay. These
-definitions and publications keep harness and model strings even when the runtime catalogues
-no longer list them.
+An agent response includes its latest publication as `published`. A task conversation captures
+that configuration at creation as `agentVersion`. A replay of a completed flow node selects the current
+publication for its new conversation. Definitions and publications retain their harness and model
+strings when runtime catalogues change.
 
 ## Harness endpoints
 
@@ -49,10 +52,9 @@ using the same handler and payload.
 | POST | `/hybridflow-runner/auth/{harness}/login/cancel` | — | `HarnessLoginDto` |
 | GET | `/hybridflow-runner/runner` | — | `{ runnerId, source }` — which runner this service is, and whether the environment pinned it (`env`), the state directory names it (`file`), or it names none (`none`) |
 
-**Usage is per harness, and the payload is a list of windows.** A quota belongs to an account and an
-account belongs to an engine: a Claude conversation spends a claude.ai subscription and a Codex one
-spends a ChatGPT plan, and neither takes anything out of the other — so `?harness=codex` answers about
-that plan, and omitting `harness` answers the default harness's.
+**Usage is per harness, and the payload is a list of windows.** It reports the quota for the
+account the harness uses. For example, `?harness=codex` reports the ChatGPT plan used by Codex.
+Omit `harness` to get the default harness's quota.
 The payload is `{ windows: [{ windowMinutes, percentUsed, resetAtEpochSeconds }] }`,
 tightest window first. Each window names its own duration, and the client derives its label
 from the minutes. An empty list is a real answer — an account whose
@@ -95,7 +97,7 @@ become `cacheReadTokens`, `cacheWriteTokens`, and `reasoningTokens`. Cache count
 of Codex input, and reasoning is included in its output total; neither is added to the totals again.
 No dollar cost is inferred. Older reports without these breakdowns still carry their totals.
 
-`harnesses` lists each available engine and its models, effort levels and permission modes.
+`harnesses` lists each available harness and its models, effort levels and permission modes.
 The first entry is the default harness, also named in `defaultHarness`. Its lists are repeated
 at the top level for older clients.
 
@@ -136,15 +138,16 @@ remain. A catalogue read leaves the saved preferences intact.
 
 ## Harnesses
 
-An agent publication selects the **harness** that runs its conversation. Four are implemented — `claude`, the default,
-`codex`, `muse` and `pi` — and which ones a deployment offers is what `GET /hybridflow-runner/options` reports.
+An agent publication specifies a default harness and can support additional harnesses. A
+conversation captures the selection at creation. `GET /hybridflow-runner/options` reports which
+of `claude`, `codex`, `muse` and `pi` are available on this deployment.
 
 **Offered is decided per request, from three things**, so that installing a CLI takes effect on the
 next page rather than at the next restart: whether the deployment vetoed the harness
 (`KIAO_WORKER_HYBRIDFLOW_RUNNER_{CLAUDE,CODEX,MUSE,PI}_ENABLED`, all defaulting to on), whether its CLI is on
 the service's PATH, and whether the configuration panel has switched its row off. `harnesses` is
 therefore a list that can shrink or grow while a service runs, and **can be empty**: a machine with
-no harness CLI on it says so, and a client shows that rather than offering an engine whose first
+no harness CLI on it says so, and a client shows that rather than offering a harness whose first
 prompt would come back `unknown_harness`.
 
 **Disabling a CLI disables all of its features.** The deployment flag and the configuration

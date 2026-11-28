@@ -22,8 +22,7 @@ func (s *Service) HandleGetChainRuns(w http.ResponseWriter, r *http.Request) {
 // HandlePlayChainRun serves POST /hybridflow-runner/chain-runs/play: this flow node of this board, and
 // then whatever the chain says comes after it, under the name the user gave it.
 //
-// Runs already under way are left alone — several play at once. What is refused is a second run on
-// the same card, which would be two turns on one flow node.
+// Flow nodes have one owner at a time. An arrival at an exclusive gateway can queue for the flow node.
 func (s *Service) HandlePlayChainRun(w http.ResponseWriter, r *http.Request) {
 	if s.chainRunner == nil {
 		httpkit.WriteError(w, r, &httpkit.HTTPError{Status: http.StatusServiceUnavailable, Msg: playback.ErrNoChainRunner.Error()})
@@ -34,9 +33,9 @@ func (s *Service) HandlePlayChainRun(w http.ResponseWriter, r *http.Request) {
 		httpkit.WriteError(w, r, &httpkit.HTTPError{Status: http.StatusBadRequest, Msg: "invalid request body"})
 		return
 	}
-	run, err := s.chainRunner.Play(access.IdentityFromRequest(r), req.Handle, req.FlowNodeID, req.Name)
+	run, err := s.chainRunner.PlayRequest(access.IdentityFromRequest(r), req)
 	if err != nil {
-		httpkit.WriteError(w, r, err) // not a board, no such flow node, or a card already being played → 400/404/409
+		httpkit.WriteError(w, r, err) // not a board, no such flow node, or a flow node already being played → 400/404/409
 		return
 	}
 	httpkit.WriteJSON(w, http.StatusOK, runstate.ChainRunDto{Run: run})
@@ -64,9 +63,8 @@ func (s *Service) HandleStopChainRun(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// HandleResumeChainRun serves POST /hybridflow-runner/chain-runs/resume: a run stopped with its chat
-// picks up where it left off. It attaches to the turn the user is starting rather than sending one
-// of its own, so the message that resumes the conversation is the flow node's turn.
+// HandleResumeChainRun continues a suspended task in its conversation.
+// Clients can start a turn immediately or wait for a separate prompt.
 func (s *Service) HandleResumeChainRun(w http.ResponseWriter, r *http.Request) {
 	if s.chainRunner == nil {
 		httpkit.WriteError(w, r, &httpkit.HTTPError{Status: http.StatusServiceUnavailable, Msg: playback.ErrNoChainRunner.Error()})
@@ -77,7 +75,11 @@ func (s *Service) HandleResumeChainRun(w http.ResponseWriter, r *http.Request) {
 		httpkit.WriteError(w, r, err)
 		return
 	}
-	run, err := s.chainRunner.Resume(access.IdentityFromRequest(r), req.RunID)
+	resume := s.chainRunner.Resume
+	if req.StartTurn {
+		resume = s.chainRunner.ResumeNow
+	}
+	run, err := resume(access.IdentityFromRequest(r), req.RunID)
 	if err != nil {
 		httpkit.WriteError(w, r, err) // nothing suspended → 409
 		return
@@ -86,11 +88,7 @@ func (s *Service) HandleResumeChainRun(w http.ResponseWriter, r *http.Request) {
 }
 
 // HandleRestartChainRun serves POST /hybridflow-runner/chain-runs/restart: an ended run is played again
-// from the card it was started on, keeping its name and its place in the list.
-//
-// A card whose description went into its conversation the first time round has nothing left to
-// send, and this refuses in those words — the same thing the board says by drawing no Play on a
-// card that has already run.
+// from the flow node it was started on, keeping its name and its place in the list.
 func (s *Service) HandleRestartChainRun(w http.ResponseWriter, r *http.Request) {
 	if s.chainRunner == nil {
 		httpkit.WriteError(w, r, &httpkit.HTTPError{Status: http.StatusServiceUnavailable, Msg: playback.ErrNoChainRunner.Error()})

@@ -24,7 +24,7 @@ const readInstantiation = async (request: import('../../harness').APIRequestCont
 test.describe('template instantiation to a markdown file', () => {
 
     test.afterEach(async ({ request }) => {
-        // The instantiation lands in the shared data root, so it must not outlive the test.
+        // The instantiation lands in the shared DCMS root, so it must not outlive the test.
         await request.delete(`${workerApi()}/delete?path=${encodeURIComponent(INSTANTIATION_PATH)}`);
     });
 
@@ -39,8 +39,9 @@ test.describe('template instantiation to a markdown file', () => {
         await expect(preview).toBeVisible({ timeout: 10000 });
         await expect(preview).toContainText('Hello from the Greeting template.');
         await expect(preview).toContainText('Nothing to fill in');
+        await expect(page.getByText(/A template with neither variable nor optional section/)).toHaveCount(0);
 
-        const instantiateButton = page.getByRole('button', { name: 'Instantiate' });
+        const instantiateButton = page.getByRole('button', { name: 'Instantiate', exact: true });
         await expect(instantiateButton).toBeVisible();
 
         await instantiateButton.click();
@@ -60,5 +61,10 @@ test.describe('template instantiation to a markdown file', () => {
         await expect(confirmDialog).toBeHidden({ timeout: 10000 });
 
         expect(await readInstantiation(request)).toBe(written);
+
+        await page.getByRole('button', { name: 'Modify Template' }).click();
+        await expect(page.getByLabel('Name', { exact: true })).toHaveValue('Greeting');
+        await expect(page.getByLabel('Root Template')).toHaveValue(EXPECTED);
+        await expect(page.getByRole('button', { name: 'Syntax Help' })).toBeVisible();
     });
 });

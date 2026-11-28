@@ -1,0 +1,11 @@
+.status {
+    padding: 12px 8px;
+    text-align: center;
+    color: var(--muted);
+}
+
+.status,
+.error {
+    flex-shrink: 0;
+    overflow-wrap: anywhere;
+}

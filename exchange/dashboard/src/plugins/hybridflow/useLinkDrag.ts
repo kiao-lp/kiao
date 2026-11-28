@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FLOW_NODE_ID_ATTRIBUTE } from './boardDom';
 import { edgeScroll, scrollerOf } from './boardScroll';
 
-/** Drag-to-chain for board cards: pull from a card's knob to another card, and the first flow node. */
+/** Drag from one card’s connector to another card to link their flow nodes. */
 
 /** Movement, in pixels, that turns a press on the knob into a drag rather than a click. */
 const DRAG_THRESHOLD_PX = 4;
@@ -39,7 +39,7 @@ export interface LinkDrag {
     lineRef: (element: SVGLineElement | null) => void;
 }
 
-/** The flow node an element sits in, by id, or null where it is in no card at all. */
+/** Find the flow node ID associated with the rendered card under this element. */
 const flowNodeIdOf = (element: Element | null): string | null =>
     element?.closest(`[${FLOW_NODE_ID_ATTRIBUTE}]`)?.getAttribute(FLOW_NODE_ID_ATTRIBUTE) || null;
 

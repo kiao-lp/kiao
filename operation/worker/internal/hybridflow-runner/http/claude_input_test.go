@@ -29,7 +29,7 @@ func TestClaudeContinuationKeepsApprovalsBeforeItsFirstTool(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			srv.hub.Harnesses.Set(harnessapi.HarnessClaude, claudeAgentAt(cfg, binary))
+			srv.hub.Harnesses.Set(harnessapi.HarnessClaude, claudeHarnessAt(cfg, binary))
 			srv.hub.AutoAllowDelay = 25 * time.Millisecond
 			ts := httptest.NewServer(srv.handler())
 			defer ts.Close()
@@ -44,7 +44,7 @@ func TestClaudeContinuationKeepsApprovalsBeforeItsFirstTool(t *testing.T) {
 			conn := dialClaude(t, ts.URL)
 			defer conn.Close()
 			readUntil(t, conn, "hello")
-			gate := filepath.Join(cfg.RootPath, "permission-fixture-continue")
+			gate := filepath.Join(cfg.DCMSRoot, "permission-fixture-continue")
 			var previous *pkgTurns.Turn
 			if resumed {
 				sendFrame(t, conn, map[string]any{"type": "prompt", "conversationId": conversation.ID, "prompt": "fixture:tools"})
@@ -55,7 +55,7 @@ func TestClaudeContinuationKeepsApprovalsBeforeItsFirstTool(t *testing.T) {
 				mustWrite(t, gate, "")
 				awaitProcessRelease(t, previous)
 				for _, file := range []string{"permission-fixture-continue", "permission-fixture-first.txt", "permission-fixture-second.txt"} {
-					if err := os.Remove(filepath.Join(cfg.RootPath, file)); err != nil {
+					if err := os.Remove(filepath.Join(cfg.DCMSRoot, file)); err != nil {
 						t.Fatal(err)
 					}
 				}
@@ -86,7 +86,7 @@ func TestClaudeContinuationKeepsApprovalsBeforeItsFirstTool(t *testing.T) {
 				}
 			}
 			for _, file := range []string{"permission-fixture-first.txt", "permission-fixture-second.txt"} {
-				if _, err := os.ReadFile(filepath.Join(cfg.RootPath, file)); err != nil {
+				if _, err := os.ReadFile(filepath.Join(cfg.DCMSRoot, file)); err != nil {
 					t.Fatalf("continuation did not write %s: %v", file, err)
 				}
 			}
@@ -94,7 +94,7 @@ func TestClaudeContinuationKeepsApprovalsBeforeItsFirstTool(t *testing.T) {
 			if err != nil || meta.SessionID != "permission-fixture-session" || meta.SessionLost {
 				t.Fatalf("session after continuation = %+v, error = %v", meta, err)
 			}
-			data, err := os.ReadFile(filepath.Join(cfg.RootPath, "permission-fixture-runs.jsonl"))
+			data, err := os.ReadFile(filepath.Join(cfg.DCMSRoot, "permission-fixture-runs.jsonl"))
 			if err != nil {
 				t.Fatal(err)
 			}

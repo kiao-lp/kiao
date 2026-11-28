@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
     HarnessQueuedMessage,
-    HarnessConversation,
     HarnessConversationDetail,
     HarnessPermissionMode,
     HarnessTranscriptMessage,
@@ -18,15 +17,17 @@ export interface SendOptions {
     effort?: string;
     thinking?: boolean;
     permissionMode?: HarnessPermissionMode;
+    responseTokenLimit?: string;
 
     attachments?: string[];
+    resumeRunId?: string;
 }
 
 export interface ChatConversationView {
     queue: HarnessQueuedMessage[];
     sendFollowUp: (text: string) => void;
     clearQueue: () => void;
-    conversation: HarnessConversation | null;
+    conversation: HarnessConversationDetail | null;
 
     messages: ChatMessage[];
     running: boolean;

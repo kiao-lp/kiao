@@ -1,67 +1,26 @@
-import React, { CSSProperties, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
-import { Menu, MenuProps } from 'antd';
+import React from 'react';
+import type { MenuProps } from 'antd';
 import {
     CopyOutlined, DeleteOutlined, FontSizeOutlined,
     VerticalAlignBottomOutlined, VerticalAlignTopOutlined,
 } from '@ant-design/icons';
-import { useSelectionContext } from '@kiao-dashboard-core';
+import { ContextMenu, type ContextMenuPoint, useSelectionContext } from '@kiao-dashboard-core';
 import { useSvgStateContext } from '../state';
 import { FONT_STEP, useDeleteShapes, useDuplicateShapes, useResizeTextSelection } from '../hooks/useShapes';
 import { shapeById } from '../model';
 
-export interface SvgMenuAnchor {
-    x: number;
-    y: number;
-}
-
 interface SvgContextMenuProps {
-    anchor: SvgMenuAnchor;
+    anchor: ContextMenuPoint | null;
     onClose: () => void;
 }
 
-const MARGIN = 8;
-
-/** What a right-click on a shape offers: the shape verbs with no gesture of their own — duplicate. */
 export const SvgContextMenu: React.FC<SvgContextMenuProps> = ({ anchor, onClose }) => {
     const { document: svgDocument, restackShapes, saveSvg } = useSvgStateContext();
     const [selection] = useSelectionContext();
     const duplicateShapes = useDuplicateShapes();
     const deleteShapes = useDeleteShapes();
     const resizeText = useResizeTextSelection();
-    const menuRef = useRef<HTMLDivElement>(null);
-    const [position, setPosition] = useState<CSSProperties | null>(null);
-
-    useLayoutEffect(() => {
-        const element = menuRef.current;
-        if (!element) return;
-        setPosition({
-            left: Math.max(MARGIN, Math.min(anchor.x, window.innerWidth - element.offsetWidth - MARGIN)),
-            top: Math.max(MARGIN, Math.min(anchor.y, window.innerHeight - element.offsetHeight - MARGIN)),
-        });
-    }, [anchor]);
-
-    useEffect(() => {
-        const onPointerDown = (event: PointerEvent) => {
-            if (menuRef.current && !menuRef.current.contains(event.target as Node)) onClose();
-        };
-        const onKeyDown = (event: KeyboardEvent) => {
-            if (event.key === 'Escape') onClose();
-        };
-        document.addEventListener('pointerdown', onPointerDown);
-        document.addEventListener('keydown', onKeyDown);
-        return () => {
-            document.removeEventListener('pointerdown', onPointerDown);
-            document.removeEventListener('keydown', onKeyDown);
-        };
-    }, [onClose]);
-
-    const hasText = useMemo(() => {
-        if (!svgDocument) return false;
-        return selection.some(id => shapeById(svgDocument.drawing.nodes, id)?.tag === 'text');
-    }, [svgDocument, selection]);
-
-    const closeAfter = (run: () => void) => () => { run(); onClose(); };
+    const hasText = svgDocument && selection.some(id => shapeById(svgDocument.drawing.nodes, id)?.tag === 'text');
 
     const textItems: NonNullable<MenuProps['items']> = hasText ? [
         { type: 'divider' },
@@ -69,13 +28,13 @@ export const SvgContextMenu: React.FC<SvgContextMenuProps> = ({ anchor, onClose 
             key: 'larger',
             icon: <FontSizeOutlined />,
             label: 'Text larger',
-            onClick: closeAfter(() => resizeText(FONT_STEP)),
+            onClick: () => resizeText(FONT_STEP),
         },
         {
             key: 'smaller',
             icon: <FontSizeOutlined />,
             label: 'Text smaller',
-            onClick: closeAfter(() => resizeText(-FONT_STEP)),
+            onClick: () => resizeText(-FONT_STEP),
         },
     ] : [];
 
@@ -85,7 +44,7 @@ export const SvgContextMenu: React.FC<SvgContextMenuProps> = ({ anchor, onClose 
             icon: <CopyOutlined />,
             label: 'Duplicate',
             extra: 'Ctrl+D',
-            onClick: closeAfter(() => duplicateShapes()),
+            onClick: () => duplicateShapes(),
         },
         { type: 'divider' },
         {
@@ -93,14 +52,14 @@ export const SvgContextMenu: React.FC<SvgContextMenuProps> = ({ anchor, onClose 
             icon: <VerticalAlignTopOutlined />,
             label: 'Bring to front',
             extra: 'Ctrl+Shift+F',
-            onClick: closeAfter(() => { restackShapes(selection, 'front'); saveSvg(); }),
+            onClick: () => { restackShapes(selection, 'front'); saveSvg(); },
         },
         {
             key: 'back',
             icon: <VerticalAlignBottomOutlined />,
             label: 'Send to back',
             extra: 'Ctrl+Shift+B',
-            onClick: closeAfter(() => { restackShapes(selection, 'back'); saveSvg(); }),
+            onClick: () => { restackShapes(selection, 'back'); saveSvg(); },
         },
         ...textItems,
         { type: 'divider' },
@@ -110,21 +69,9 @@ export const SvgContextMenu: React.FC<SvgContextMenuProps> = ({ anchor, onClose 
             label: 'Delete',
             extra: 'Del',
             danger: true,
-            onClick: closeAfter(() => deleteShapes(selection)),
+            onClick: () => deleteShapes(selection),
         },
     ];
 
-    if (selection.length === 0) return null;
-
-    return createPortal(
-        <div
-            ref={menuRef}
-            className="svg-context-menu"
-            style={position ?? { visibility: 'hidden' }}
-            onContextMenu={event => event.preventDefault()}
-        >
-            <Menu items={items} selectable={false} />
-        </div>,
-        document.body,
-    );
+    return <ContextMenu items={items} anchor={selection.length ? anchor : null} onClose={onClose} />;
 };

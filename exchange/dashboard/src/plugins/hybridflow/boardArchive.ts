@@ -2,19 +2,23 @@
 
 import { readComplexity, readCriteria, readTags } from './boardContent';
 import { readDuration, readSchedule } from './flowNodeSchedule';
+import { readBitbucketEvent, writeBitbucketEvent } from './flowNodeBitbucket';
+import { readLimiter } from './flowNodeLimiter';
 import { readStatus } from './flowNodeStatus';
 import { readSuccess, saysSuccess, successFor, writeSuccess } from './flowNodeSuccess';
 import { readType } from './flowNodeType';
-import { readSettings, type AgentSelection } from './flowNodeSettings';
+import { readRoutes } from './flowNodeRoutes';
+import { upgradeBoardArchiveV1 } from './boardArchiveV1';
 import { chainConnectionIssue } from './flowConnections';
+import { readSize } from './flowNodeSize';
 import type { HybridflowClient } from './service';
 import type {
-    BoardDetailDto, BoardSummary, CriterionDto, FlowNodeClassDto, FlowNodeDto,
-    SettingsDto, SpotDto, SuccessDto, WorkflowClassDto, WorkflowDto,
+    BoardDetailDto, BoardSummary, CriterionDto, FlowNodeDto, GatewayRoute,
+    SettingsDto, SizeDto, SpotDto, SuccessDto, WorkflowDto,
 } from './service';
 
 export const BOARD_ARCHIVE_KIND = 'kiao-board';
-export const BOARD_ARCHIVE_VERSION = 1;
+export const BOARD_ARCHIVE_VERSION = 2;
 
 export interface ArchivedFlowNode {
     id: string;
@@ -22,58 +26,35 @@ export interface ArchivedFlowNode {
     type?: string;
     tags?: string[];
     body?: string;
+    multiPartTemplate?: boolean;
+    note?: string;
     criteria?: CriterionDto[];
     complexity?: number;
     settings?: SettingsDto;
     at?: string;
     duration?: string;
+    pullRequestId?: string;
+    pullRequestStatus?: string;
+    commitId?: string;
+    commitStatus?: string;
+    maxPasses?: number;
+    remainingPasses?: number;
     spot?: SpotDto;
+    size?: SizeDto;
     status?: string;
     archived?: boolean;
     onSuccess?: SuccessDto;
+    routes?: GatewayRoute[];
     workflow?: string;
-    classVersion?: string;
 }
 
-export interface ArchivedClassVersion {
-    id: string;
-    body?: string;
-    criteria?: CriterionDto[];
-    template?: boolean;
-    agent?: string;
-    published: boolean;
-}
-
-export interface ArchivedFlowNodeClass {
-    id: string;
-    title: string;
-    instantiable?: boolean;
-    type?: string;
-    tags?: string[];
-    at?: string;
-    duration?: string;
-    spot?: SpotDto;
-    onSuccess?: SuccessDto;
-    permission?: string;
-    runner?: string;
-    selection?: AgentSelection;
-    note?: string;
-    workflowClass?: string;
-    versions: ArchivedClassVersion[];
-}
-
-export interface ArchivedGrouping {
-    id: string;
-    name: string;
-}
+type ArchivedWorkflow = Pick<WorkflowDto, 'id' | 'name' | 'workflowFolder' | 'files'>;
 
 export interface BoardArchive {
     name: string;
     archived: boolean;
     flowNodes: ArchivedFlowNode[];
-    flowNodeClasses: ArchivedFlowNodeClass[];
-    workflows: ArchivedGrouping[];
-    workflowClasses: ArchivedGrouping[];
+    workflows: ArchivedWorkflow[];
 }
 
 export const boardArchiveText = (detail: BoardDetailDto): string =>
@@ -83,9 +64,9 @@ export const boardArchiveText = (detail: BoardDetailDto): string =>
         name: detail.board.name,
         ...(detail.board.archived ? { archived: true } : {}),
         flowNodes: detail.flowNodes.map(archivedFlowNode),
-        flowNodeClasses: detail.flowNodeClasses.map(archivedClass),
-        workflows: detail.workflows.map(archivedGrouping),
-        workflowClasses: detail.workflowClasses.map(archivedGrouping),
+        workflows: detail.workflows.map(workflow => ({
+            id: workflow.id, name: workflow.name, workflowFolder: workflow.workflowFolder, files: workflow.files,
+        })),
     }, null, 2);
 
 export const boardArchiveFilename = (slug: string): string => `${slug}.json`;
@@ -96,46 +77,22 @@ const archivedFlowNode = (flowNode: FlowNodeDto): ArchivedFlowNode => ({
     ...(optional(flowNode.type) ? { type: flowNode.type } : {}),
     ...(flowNode.tags?.length ? { tags: flowNode.tags } : {}),
     ...(optional(flowNode.body) ? { body: flowNode.body } : {}),
+    ...(flowNode.multiPartTemplate ? { multiPartTemplate: true } : {}),
+    ...(optional(flowNode.note) ? { note: flowNode.note } : {}),
     ...(flowNode.criteria?.length ? { criteria: flowNode.criteria } : {}),
     ...(flowNode.complexity !== undefined ? { complexity: flowNode.complexity } : {}),
     ...(flowNode.settings && !emptySettings(flowNode.settings) ? { settings: flowNode.settings } : {}),
     ...(optional(flowNode.at) ? { at: flowNode.at } : {}),
     ...(optional(flowNode.duration) ? { duration: flowNode.duration } : {}),
+    ...writeBitbucketEvent(flowNode),
+    ...(flowNode.type === 'limiter' ? readLimiter(flowNode) : {}),
     ...(flowNode.spot ? { spot: flowNode.spot } : {}),
+    ...(flowNode.size ? { size: flowNode.size } : {}),
     ...(optional(flowNode.status) ? { status: flowNode.status } : {}),
     ...(flowNode.archived ? { archived: true } : {}),
     ...archiveSuccess(flowNode.onSuccess, flowNode.type, flowNode.settings),
+    ...(flowNode.routes?.length ? { routes: flowNode.routes } : {}),
     ...(optional(flowNode.workflow) ? { workflow: flowNode.workflow } : {}),
-    ...(flowNode.classVersion ? { classVersion: flowNode.classVersion.versionId } : {}),
-});
-
-const archivedClass = (flowNodeClass: FlowNodeClassDto): ArchivedFlowNodeClass => ({
-    id: flowNodeClass.id,
-    title: flowNodeClass.title,
-    ...(flowNodeClass.instantiable ? { instantiable: true } : {}),
-    ...(optional(flowNodeClass.type) ? { type: flowNodeClass.type } : {}),
-    ...(flowNodeClass.tags?.length ? { tags: flowNodeClass.tags } : {}),
-    ...(optional(flowNodeClass.at) ? { at: flowNodeClass.at } : {}),
-    ...(optional(flowNodeClass.duration) ? { duration: flowNodeClass.duration } : {}),
-    ...(flowNodeClass.spot ? { spot: flowNodeClass.spot } : {}),
-    ...archiveSuccess(flowNodeClass.onSuccess, flowNodeClass.type),
-    ...(optional(flowNodeClass.permission) ? { permission: flowNodeClass.permission } : {}),
-    ...(optional(flowNodeClass.runner) ? { runner: flowNodeClass.runner } : {}),
-    ...(flowNodeClass.selection?.agent ? { selection: flowNodeClass.selection } : {}),
-    ...(optional(flowNodeClass.note) ? { note: flowNodeClass.note } : {}),
-    ...(optional(flowNodeClass.workflowClass) ? { workflowClass: flowNodeClass.workflowClass } : {}),
-    versions: flowNodeClass.versions.map(version => ({
-        id: version.id,
-        ...(optional(version.body) ? { body: version.body } : {}),
-        ...(version.criteria?.length ? { criteria: version.criteria } : {}),
-        ...(version.template ? { template: true } : {}),
-        published: version.status === 'published',
-    })),
-});
-
-const archivedGrouping = (grouping: WorkflowDto | WorkflowClassDto): ArchivedGrouping => ({
-    id: grouping.id,
-    name: grouping.name,
 });
 
 const archiveSuccess = (raw: SuccessDto | undefined, type?: string, settings?: SettingsDto): { onSuccess?: SuccessDto } => {
@@ -158,66 +115,36 @@ const emptySettings = (settings: SettingsDto): boolean =>
 
 /** Strict on kind, version, name, and list types. */
 export const readBoardArchive = (text: string): BoardArchive | null => {
-    const parsed = parse(text);
-    if (!parsed || parsed.kind !== BOARD_ARCHIVE_KIND || parsed.version !== BOARD_ARCHIVE_VERSION) {
-        return null;
-    }
+    const source = parse(text);
+    if (!source || source.kind !== BOARD_ARCHIVE_KIND) return null;
+    const parsed = source.version === 1 ? upgradeBoardArchiveV1(source) : source;
+    if (!parsed || parsed.version !== BOARD_ARCHIVE_VERSION) return null;
     const name = typeof parsed.name === 'string' ? parsed.name.trim() : '';
     if (!name) return null;
-    if (!Array.isArray(parsed.flowNodes) || !Array.isArray(parsed.flowNodeClasses)
-        || !Array.isArray(parsed.workflows) || !Array.isArray(parsed.workflowClasses)) {
-        return null;
-    }
+    if (!Array.isArray(parsed.flowNodes) || !Array.isArray(parsed.workflows)) return null;
     const flowNodes: ArchivedFlowNode[] = [];
     for (const raw of parsed.flowNodes) {
         const flowNode = readArchivedFlowNode(raw);
         if (!flowNode) return null;
         flowNodes.push(flowNode);
     }
-    const flowNodeClasses: ArchivedFlowNodeClass[] = [];
-    for (const raw of parsed.flowNodeClasses) {
-        const flowNodeClass = readArchivedClass(raw);
-        if (!flowNodeClass) return null;
-        flowNodeClasses.push(flowNodeClass);
-    }
-    const workflows: ArchivedGrouping[] = [];
+    const workflows: ArchivedWorkflow[] = [];
     for (const raw of parsed.workflows) {
-        const grouping = readArchivedGrouping(raw);
-        if (!grouping) return null;
-        workflows.push(grouping);
-    }
-    const workflowClasses: ArchivedGrouping[] = [];
-    for (const raw of parsed.workflowClasses) {
-        const grouping = readArchivedGrouping(raw);
-        if (!grouping) return null;
-        workflowClasses.push(grouping);
+        const workflow = readArchivedWorkflow(raw);
+        if (!workflow) return null;
+        workflows.push(workflow);
     }
     const heldNodes = new Set(flowNodes.map(flowNode => flowNode.id));
-    const heldClasses = new Set(flowNodeClasses.map(flowNodeClass => flowNodeClass.id));
     const heldWorkflows = new Set(workflows.map(workflow => workflow.id));
-    const heldWorkflowClasses = new Set(workflowClasses.map(workflow => workflow.id));
-    const heldVersions = new Set(flowNodeClasses.flatMap(flowNodeClass =>
-        flowNodeClass.versions.map(version => version.id).filter(id => id !== '')));
     for (const flowNode of flowNodes) {
         flowNode.onSuccess = chainWithin(flowNode.onSuccess, heldNodes);
+        if (flowNode.routes) flowNode.routes = readRoutes(flowNode.routes, flowNode.onSuccess?.flowNodes ?? []);
         if (flowNode.workflow && !heldWorkflows.has(flowNode.workflow)) delete flowNode.workflow;
-        if (flowNode.classVersion && !heldVersions.has(flowNode.classVersion)) {
-            delete flowNode.classVersion;
-        }
-    }
-    for (const flowNodeClass of flowNodeClasses) {
-        const target = flowNodeClass.onSuccess?.flowNode;
-        flowNodeClass.onSuccess = target && !heldClasses.has(target)
-            ? transitionOnly(flowNodeClass.onSuccess)
-            : chainWithin(flowNodeClass.onSuccess, heldClasses);
-        if (flowNodeClass.workflowClass && !heldWorkflowClasses.has(flowNodeClass.workflowClass)) {
-            delete flowNodeClass.workflowClass;
-        }
     }
     return {
         name,
         archived: parsed.archived === true,
-        flowNodes, flowNodeClasses, workflows, workflowClasses,
+        flowNodes, workflows,
     };
 };
 
@@ -245,71 +172,40 @@ const readArchivedFlowNode = (raw: unknown): ArchivedFlowNode | null => {
     const id = text(source.id).trim();
     if (!id) return null;
     const status = readStatus(source.status);
+    const chain = chainOf(source.onSuccess);
+    const type = text(source.type).trim();
     return {
         id,
         title: text(source.title),
-        ...(optional(text(source.type)) ? { type: text(source.type).trim() } : {}),
+        ...(type ? { type } : {}),
         ...tagsOf(source.tags),
         ...(optional(text(source.body)) ? { body: text(source.body) } : {}),
+        ...(source.multiPartTemplate === true ? { multiPartTemplate: true } : {}),
+        ...(typeof source.note === 'string' ? { note: source.note } : {}),
         ...criteriaOf(source.criteria),
         ...complexityOf(source.complexity),
         ...settingsOf(source.settings),
         ...scheduleOf(source),
+        ...readBitbucketEvent(type, source),
+        ...(type === 'limiter' ? readLimiter(source) : {}),
         ...spotOf(source.spot),
+        ...sizeOf(source.size),
         status: status === 'running' || status === 'waiting-refresh' ? 'interrupted' : status,
         ...(source.archived === true ? { archived: true } : {}),
-        ...chainOf(source.onSuccess),
+        ...chain,
+        ...(type === 'exclusive-gateway' ? { routes: readRoutes(source.routes, chain.onSuccess?.flowNodes ?? []) } : {}),
         ...(optional(text(source.workflow)) ? { workflow: text(source.workflow).trim() } : {}),
-        ...(optional(text(source.classVersion))
-            ? { classVersion: text(source.classVersion).trim() } : {}),
     };
 };
 
-const readArchivedClass = (raw: unknown): ArchivedFlowNodeClass | null => {
+const readArchivedWorkflow = (raw: unknown): ArchivedWorkflow | null => {
     const source = asObject(raw);
-    if (!source) return null;
-    const id = text(source.id).trim();
-    if (!id) return null;
-    if (source.versions !== undefined && !Array.isArray(source.versions)) return null;
-    const versions: ArchivedClassVersion[] = [];
-    for (const entry of (Array.isArray(source.versions) ? source.versions : [])) {
-        const held = asObject(entry);
-        if (!held) return null;
-        versions.push({
-            id: text(held.id).trim(),
-            ...(optional(text(held.body)) ? { body: text(held.body) } : {}),
-            ...criteriaOf(held.criteria),
-            ...(held.template === true ? { template: true } : {}),
-            ...(optional(text(held.agent)) ? { agent: text(held.agent).trim() } : {}),
-            published: held.published === true || text(held.status).trim() === 'published',
-        });
-    }
-    const { agent, harness, profileId, model } = readSettings(source.selection);
-    return {
-        id,
-        title: text(source.title),
-        ...(source.instantiable === true ? { instantiable: true } : {}),
-        ...(optional(text(source.type)) ? { type: text(source.type).trim() } : {}),
-        ...tagsOf(source.tags),
-        ...scheduleOf(source),
-        ...spotOf(source.spot),
-        ...chainOf(source.onSuccess),
-        ...(optional(text(source.permission)) ? { permission: text(source.permission).trim() } : {}),
-        ...(optional(text(source.runner)) ? { runner: text(source.runner).trim() } : {}),
-        ...(agent ? { selection: { agent, harness, profileId, model } } : {}),
-        ...(optional(text(source.note)) ? { note: text(source.note) } : {}),
-        ...(optional(text(source.workflowClass))
-            ? { workflowClass: text(source.workflowClass).trim() } : {}),
-        versions,
-    };
-};
-
-const readArchivedGrouping = (raw: unknown): ArchivedGrouping | null => {
-    const source = asObject(raw);
-    if (!source) return null;
-    const id = text(source.id).trim();
-    if (!id) return null;
-    return { id, name: text(source.name) };
+    const id = text(source?.id).trim();
+    if (!source || !id) return null;
+    const { workflowFolder, files } = source;
+    if (workflowFolder !== undefined && typeof workflowFolder !== 'string') return null;
+    if (files !== undefined && (!Array.isArray(files) || files.some(file => typeof file !== 'string'))) return null;
+    return { id, name: text(source.name), ...(workflowFolder ? { workflowFolder } : {}), ...(files?.length ? { files } : {}) };
 };
 
 const tagsOf = (raw: unknown): { tags?: string[] } => {
@@ -359,6 +255,11 @@ const spotOf = (raw: unknown): { spot?: SpotDto } => {
     return { spot: { x: source.x, y: source.y } };
 };
 
+const sizeOf = (raw: unknown): { size?: SizeDto } => {
+    const size = readSize(raw);
+    return size ? { size } : {};
+};
+
 const chainOf = (raw: unknown): { onSuccess?: SuccessDto } => {
     const source = asObject(raw);
     if (!source) return {};
@@ -393,21 +294,13 @@ const chainWithin = (success: SuccessDto | undefined, held: Set<string>): Succes
     };
 };
 
-const transitionOnly = (success: SuccessDto | undefined): SuccessDto | undefined => {
-    if (!success || (!success.mode && !success.compact)) return undefined;
-    return {
-        ...(success.mode ? { mode: success.mode } : {}),
-        ...(success.compact ? { compact: success.compact } : {}),
-    };
-};
-
 export interface BoardImportResult {
     board: BoardSummary;
 
     droppedRefs: number;
 }
 
-/** Order: groupings, classes without chains, class chains, nodes in one call, then class links. */
+/** Create workflows first, then add the connected nodes in one batch. */
 export const importBoardArchive = async (
     client: HybridflowClient, archive: BoardArchive,
 ): Promise<BoardImportResult> => {
@@ -454,57 +347,8 @@ export const importBoardArchive = async (
     const made = await client.createBoard(archive.name);
     const handle = made.board.slug;
     try {
-        for (const grouping of archive.workflowClasses) {
-            await client.createWorkflowClass(handle, { id: grouping.id, name: grouping.name });
-        }
         for (const grouping of archive.workflows) {
-            await client.createWorkflow(handle, { id: grouping.id, name: grouping.name });
-        }
-        const versionOf = new Map<string, string>();
-        const classChains: [string, string][] = [];
-        for (const flowNodeClass of archive.flowNodeClasses) {
-            const [first, ...rest] = flowNodeClass.versions;
-            const created = await client.createFlowNodeClass(handle, {
-                id: flowNodeClass.id,
-                title: flowNodeClass.title,
-                instantiable: flowNodeClass.instantiable,
-                type: flowNodeClass.type,
-                tags: flowNodeClass.tags,
-                body: first?.body,
-                criteria: first?.criteria,
-                template: first?.template,
-                at: flowNodeClass.at,
-                duration: flowNodeClass.duration,
-                spot: flowNodeClass.spot,
-                permission: flowNodeClass.permission,
-                runner: knownRunner(flowNodeClass.runner),
-                selection: knownAgent(flowNodeClass.selection?.agent) ? flowNodeClass.selection : undefined,
-                note: flowNodeClass.note,
-                onSuccess: transitionOnly(flowNodeClass.onSuccess),
-                published: first?.published,
-                workflowClass: flowNodeClass.workflowClass,
-            });
-            if (first?.id && created.versions[0]) {
-                versionOf.set(first.id, created.versions[0].id);
-            }
-            for (const version of rest) {
-                const createdVersion = await client.createClassVersion(handle, flowNodeClass.id, {
-                    body: version.body,
-                    criteria: version.criteria,
-                    template: version.template,
-                });
-                if (version.id) versionOf.set(version.id, createdVersion.id);
-                if (version.published) {
-                    await client.patchClassVersion(handle, flowNodeClass.id, createdVersion.id, {
-                        status: 'published',
-                    });
-                }
-            }
-            const target = flowNodeClass.onSuccess?.flowNode;
-            if (target) classChains.push([flowNodeClass.id, target]);
-        }
-        for (const [from, to] of classChains) {
-            await client.chainFlowNodeClass(handle, from, to);
+            await client.createWorkflow(handle, grouping);
         }
         if (archive.flowNodes.length) {
             await client.createFlowNodes(handle, archive.flowNodes.map(flowNode => ({
@@ -513,25 +357,23 @@ export const importBoardArchive = async (
                 type: flowNode.type,
                 tags: flowNode.tags,
                 body: flowNode.body,
+                multiPartTemplate: flowNode.multiPartTemplate,
+                note: flowNode.note,
                 criteria: flowNode.criteria,
                 complexity: flowNode.complexity,
                 settings: knownSettings(flowNode.settings),
                 at: flowNode.at,
                 duration: flowNode.duration,
+                ...writeBitbucketEvent(flowNode),
+                ...(flowNode.type === 'limiter' ? readLimiter(flowNode) : {}),
                 spot: flowNode.spot,
+                size: flowNode.size,
                 status: flowNode.status,
                 archived: flowNode.archived,
                 onSuccess: flowNode.onSuccess,
+                routes: flowNode.routes,
                 workflow: flowNode.workflow,
             })));
-            for (const flowNode of archive.flowNodes) {
-                const version = flowNode.classVersion
-                    ? versionOf.get(flowNode.classVersion)
-                    : undefined;
-                if (flowNode.classVersion && version) {
-                    await client.patchFlowNode(handle, flowNode.id, { classVersion: version });
-                }
-            }
         }
         if (archive.archived) await client.archiveBoard(handle, true);
         return { board: made.board, droppedRefs };

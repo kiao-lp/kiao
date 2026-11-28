@@ -1,12 +1,14 @@
 import React, { useMemo, useState } from 'react';
+import { IconButton } from '../ui-foundation/toolbar/IconButton';
 import { Alert, Button, Modal, Spin, Switch, Tag } from 'antd';
 import { Tooltip } from '../ui-foundation/feedback/Tooltip';
+import { InProgressFeedback } from '../ui-foundation/feedback/InProgressFeedback';
 import { DeleteOutlined, DownloadOutlined, ReloadOutlined, SettingOutlined } from '@ant-design/icons';
 import { Toolbox, ToolboxComponent } from 'kiao-worker';
 import { PluginCatalogueEntry } from '../extensibility/assembly';
 import { useToolsMenu } from '../dashboard-ui/top-banner/ToolsMenu-ctx';
 import { harnessPanelId } from './panelIds';
-import { useToolbox } from './useToolbox';
+import { useToolbox, type ToolboxRequest } from './useToolbox';
 import { usePlugins } from './usePlugins';
 import { KindIcon } from './itemKinds';
 import { matchesFilter, NO_FILTER, ToolboxFilter, ToolboxFilterValue } from './ToolboxFilter';
@@ -14,10 +16,11 @@ import styles from './Toolbox.module.css';
 
 /** Row order: runtimes, then MCP servers. */
 const KIND_ORDER: Record<ToolboxComponent['kind'], number> = { runtime: 0, mcp: 1 };
+const requestLabels = { install: 'Starting installation…', uninstall: 'Starting removal…', registration: 'Saving registration…' };
 
 /** Configuration panel: installed runtimes, MCP servers, and store plugins in one list. Entries come only from the catalogue. */
 export const ToolboxPanel: React.FC = () => {
-    const { toolbox, loading, job, busy, error, refresh, install, uninstall, setRegistered } = useToolbox();
+    const { toolbox, loading, job, request, busy, error, refresh, install, uninstall, setRegistered } = useToolbox();
     const plugins = usePlugins();
     const [filter, setFilter] = useState<ToolboxFilterValue>(NO_FILTER);
 
@@ -29,10 +32,10 @@ export const ToolboxPanel: React.FC = () => {
         () => plugins.catalogue.filter(e => matchesFilter(filter, 'plugin', e.title, e.description, e.id)),
         [plugins.catalogue, filter]);
 
-    if (loading) {
+    if (loading && !toolbox) {
         return <div className={styles.center}><Spin /></div>;
     }
-    if (error) {
+    if (error && !toolbox) {
         return (
             <div className={styles.panel}>
                 <Alert type="error" showIcon title="The configuration could not be read" description={error} />
@@ -46,9 +49,15 @@ export const ToolboxPanel: React.FC = () => {
         <div className={styles.panel} data-testid="toolbox-panel">
             <div className={styles.header}>
                 <span className={styles.title}>Configuration</span>
-                <Button type="text" size="small" icon={<ReloadOutlined />} aria-label="Re-read" onClick={() => void refresh()} />
+                <IconButton
+                    label="Re-read"
+                    icon={<ReloadOutlined />}
+                    loading={loading} disabled={loading || request !== null} onClick={() => void refresh()}
+                />
             </div>
 
+            {request && <InProgressFeedback label={requestLabels[request.kind]} />}
+            {error && <Alert type="error" showIcon title="The configuration could not be read" description={error} />}
             {!toolbox.enabled && (
                 <Alert
                     type="info"
@@ -71,7 +80,7 @@ export const ToolboxPanel: React.FC = () => {
                 <Alert type="error" showIcon title="The choice could not be saved" description={plugins.error} />
             )}
 
-            {plugins.dirty && (
+            {plugins.dirty && !plugins.saving && (
                 <div className={styles.notice} data-testid="plugins-reload-notice">
                     Saved. The page has to be reloaded for it to take effect.{' '}
                     <Button
@@ -94,6 +103,8 @@ export const ToolboxPanel: React.FC = () => {
                         component={component}
                         toolbox={toolbox}
                         busy={busy}
+                        request={request}
+                        job={job?.state === 'running' ? job : null}
                         onInstall={install}
                         onUninstall={uninstall}
                         onRegister={setRegistered}
@@ -105,7 +116,8 @@ export const ToolboxPanel: React.FC = () => {
                         key={entry.id}
                         entry={entry}
                         checked={plugins.enabled.includes(entry.id)}
-                        busy={plugins.saving}
+                        busy={plugins.saving !== null}
+                        saving={plugins.saving === entry.id}
                         onToggle={plugins.toggle}
                     />
                 ))}
@@ -125,8 +137,9 @@ const PluginRow: React.FC<{
     entry: PluginCatalogueEntry;
     checked: boolean;
     busy: boolean;
+    saving: boolean;
     onToggle: (id: string, on: boolean) => Promise<void>;
-}> = ({ entry, checked, busy, onToggle }) => (
+}> = ({ entry, checked, busy, saving, onToggle }) => (
     <div className={styles.row} data-testid={`plugin-row-${entry.id}`}>
         <div className={styles.rowHead}>
             <KindIcon kind="plugin" />
@@ -135,6 +148,7 @@ const PluginRow: React.FC<{
                 size="small"
                 checked={checked}
                 disabled={busy}
+                loading={saving} aria-busy={saving}
                 aria-label={entry.title}
                 onChange={value => void onToggle(entry.id, value)}
             />
@@ -148,10 +162,12 @@ const ComponentRow: React.FC<{
     component: ToolboxComponent;
     toolbox: Toolbox;
     busy: boolean;
+    request: ToolboxRequest | null;
+    job: Toolbox['job'] | null;
     onInstall: (ids: string[]) => Promise<void>;
     onUninstall: (ids: string[]) => Promise<void>;
     onRegister: (id: string, enabled: boolean) => Promise<void>;
-}> = ({ component, toolbox, busy, onInstall, onUninstall, onRegister }) => {
+}> = ({ component, toolbox, busy, request, job, onInstall, onUninstall, onRegister }) => {
     const [confirming, setConfirming] = useState(false);
     const tools = useToolsMenu();
 
@@ -171,10 +187,13 @@ const ComponentRow: React.FC<{
 
     // Broken rows reinstall; they get no enable switch (service refuses unresponsive servers).
     const broken = component.state === 'missing' || component.state === 'unresponsive';
-    const canInstall = toolbox.enabled && !busy && (component.state === 'available' || broken);
-    const canUninstall = toolbox.enabled && !busy
+    const canInstall = toolbox.enabled && (component.state === 'available' || broken);
+    const canUninstall = toolbox.enabled
         && (component.state === 'installed' || component.state === 'unresponsive')
         && component.channel !== 'bundled' && component.channel !== 'remote';
+    const jobAction = request && request.kind !== 'registration' && request.ids.includes(component.id) ? request.kind
+        : job?.ids.includes(component.id) ? job.op : undefined;
+    const registering = request?.kind === 'registration' && request.id === component.id;
     // Harnesses without an uninstall use the same switch to withdraw from the tab.
     const harness = component.harness;
     const isHarness = Boolean(harness);
@@ -196,23 +215,31 @@ const ComponentRow: React.FC<{
                             size="small"
                             checked={component.registered}
                             disabled={busy}
+                            loading={registering} aria-busy={registering}
                             onChange={value => void onRegister(component.id, value)}
                         />
                     </Tooltip>
                 )}
                 {configuration && tools?.openPanel && (
-                    <Button aria-label={`Configure ${configuration.panel.label}`} type="text" size="small" icon={<SettingOutlined />}
-                        onClick={() => tools.openPanel?.({ ...configuration.panel, id: configuration.id })} />
+                    <IconButton
+                        label={`Configure ${configuration.panel.label}`}
+                        icon={<SettingOutlined />}
+                        onClick={() => tools.openPanel?.({ ...configuration.panel, id: configuration.id })}
+                    />
                 )}
                 {canInstall && (
-                    <Button aria-label={broken ? 'Install it again' : 'Install'} type="text" size="small" icon={<DownloadOutlined />} onClick={startInstall} />
+                    <IconButton
+                        label={broken ? 'Install it again' : 'Install'}
+                        icon={<DownloadOutlined />}
+                        disabled={busy} loading={jobAction === 'install'} aria-busy={jobAction === 'install'} onClick={startInstall}
+                    />
                 )}
                 {canUninstall && (
-                    <Button aria-label="Uninstall"
-                        type="text"
-                        size="small"
+                    <IconButton
+                        label="Uninstall"
                         danger
                         icon={<DeleteOutlined />}
+                        disabled={busy} loading={jobAction === 'uninstall'} aria-busy={jobAction === 'uninstall'}
                         onClick={() => void onUninstall([component.id])}
                     />
                 )}
@@ -234,7 +261,8 @@ const ComponentRow: React.FC<{
                 open={confirming}
                 title={`Install ${component.title}`}
                 okText="Install"
-                onOk={() => { setConfirming(false); void onInstall([component.id]); }}
+                okButtonProps={{ disabled: busy }}
+                onOk={() => { if (!busy) { setConfirming(false); void onInstall([component.id]); } }}
                 onCancel={() => setConfirming(false)}
             >
                 <p>

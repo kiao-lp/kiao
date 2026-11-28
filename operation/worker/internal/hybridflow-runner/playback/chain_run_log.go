@@ -70,7 +70,8 @@ const ChainRunLogKindChain = "chain"
 
 const ChainRunLogKindWait = "wait"
 
-const ChainRunPromptCard = "card"
+// ChainRunPromptFlowNode identifies a prompt from an AI task in the persisted log format.
+const ChainRunPromptFlowNode = "card"
 
 const chainRunPromptResume = "resume"
 
@@ -132,8 +133,8 @@ type chainRunLogLine struct {
 // chainRunLogNote is something the run said or did, in a sentence: every notice it raised, at
 // the level it raised it, and every lifecycle step it took.
 //
-// FlowNode is the card the run reports itself on, which lags by one card where the run has not
-// been positioned yet — a board it could not read, a card gone from under it. The sentence names
+// FlowNode is the flow node the run reports itself on, which lags by one flow node where the run has not
+// been positioned yet — a board it could not read, a flow node gone from under it. The sentence names
 // what the field cannot there.
 type chainRunLogNote struct {
 	chainRunLogLine
@@ -143,7 +144,7 @@ type chainRunLogNote struct {
 	Text     string `json:"text"`
 }
 
-// chainRunLogState is where the run stands after a move: the card, the chat and the state. The
+// chainRunLogState is where the run stands after a move: the flow node, the chat and the state. The
 // skeleton of the file — everything else hangs off the moves.
 type chainRunLogState struct {
 	chainRunLogLine
@@ -159,7 +160,7 @@ type chainRunLogTurn struct {
 	chainRunLogLine
 	FlowNode string `json:"flowNode,omitempty"`
 	Chat     string `json:"chat,omitempty"`
-	// Prompt is what the turn was sent as: card, resume, attach, compact or blocked-fork.
+	// Prompt records the turn source. The value "card" identifies a flow-node prompt.
 	Prompt     string `json:"prompt"`
 	Harness    string `json:"harness,omitempty"`
 	Model      string `json:"model,omitempty"`
@@ -179,9 +180,9 @@ type chainRunLogTurn struct {
 	FaultLimit bool   `json:"faultLimit,omitempty"`
 }
 
-// chainRunLogChain is one handoff: the finished card, what it says comes after it, the folders
+// chainRunLogChain is one handoff: the finished flow node, what it says comes after it, the folders
 // on both sides of the handoff, and which branch the chain took. The folders are the normalised
-// ones the guard compared — "" is the store root — so a mismatch reads as the two values that
+// ones the guard compared — "" is the DCMS root — so a mismatch reads as the two values that
 // differed rather than as the sentence it ended in.
 type chainRunLogChain struct {
 	chainRunLogLine
@@ -189,15 +190,15 @@ type chainRunLogChain struct {
 	Next     string `json:"next,omitempty"`
 	Mode     string `json:"mode,omitempty"`
 	Compact  bool   `json:"compact,omitempty"`
-	// FromFolder is the finished card's, ToFolder the next card's, where there is a next card.
+	// FromFolder is the finished flow node's, ToFolder the next flow node's, where there is a next flow node.
 	FromFolder string `json:"fromFolder,omitempty"`
 	ToFolder   string `json:"toFolder,omitempty"`
-	// From is the chat the handoff was offered, Forked the copy the next card was given, and Chat
-	// the chat the next card goes in — the fork, or its own where nothing was handed on.
+	// From is the chat the handoff was offered, Forked the copy the next flow node was given, and Chat
+	// the chat the next flow node goes in — the fork, or its own where nothing was handed on.
 	From   string `json:"from,omitempty"`
 	Forked string `json:"forked,omitempty"`
 	Chat   string `json:"chat,omitempty"`
-	// Holder is the run already playing the next card, where that is why the chain ends.
+	// Holder is the run already playing the next flow node, where that is why the chain ends.
 	Holder   string `json:"holder,omitempty"`
 	Decision string `json:"decision"`
 }
@@ -321,7 +322,7 @@ func (s *ChainRunLogStore) Finish(id, state, ending string, endedAt time.Time) {
 	})
 }
 
-// restarted marks a run played again from its first card: the start moves, the ending goes, and
+// restarted marks a run played again from its first flow node: the start moves, the ending goes, and
 // the log carries on in the same file.
 func (s *ChainRunLogStore) Restarted(id, rootFlowNode string, startedAt time.Time) {
 	if s == nil || !chainRunIDRe.MatchString(id) {
@@ -337,7 +338,7 @@ func (s *ChainRunLogStore) Restarted(id, rootFlowNode string, startedAt time.Tim
 	s.Append(id, chainRunLogNote{
 		chainRunLogLine: chainRunLogLine{At: now, Kind: ChainRunLogKindNote},
 		FlowNode:        rootFlowNode,
-		Text:            "run restarted from its first card",
+		Text:            "run restarted from its first flow node",
 	})
 }
 
@@ -374,7 +375,7 @@ func (s *ChainRunLogStore) Note(id, flowNodeID, chat, level, text string) {
 	})
 }
 
-// state appends a move: the card, the chat and the state after it.
+// state appends a move: the flow node, the chat and the state after it.
 func (s *ChainRunLogStore) State(id, flowNodeID, chat, state string) {
 	s.Append(id, chainRunLogState{
 		chainRunLogLine: chainRunLogLine{At: protocol.NowConversationTime(), Kind: ChainRunLogKindState},
@@ -407,7 +408,7 @@ func (s *ChainRunLogStore) Turn(id, flowNodeID, chat string, outcome ChainRunTur
 	s.Append(id, rec)
 }
 
-// chain appends one handoff: what the finished card says, the folders on both sides, and which
+// chain appends one handoff: what the finished flow node says, the folders on both sides, and which
 // branch the chain took.
 func (s *ChainRunLogStore) Chain(id, flowNodeID string, decision ChainRunChainDecision) {
 	s.Append(id, chainRunLogChain{
@@ -572,22 +573,22 @@ type ChainRunTurnOutcome struct {
 	Fault      *harnessfaults.TurnFault
 }
 
-// chainRunChainDecision is one handoff, as the log keeps it: the finished card, the next card
+// chainRunChainDecision is one handoff, as the log keeps it: the finished flow node, the next flow node
 // where one was resolved, and which branch the chain took.
 type ChainRunChainDecision struct {
-	// Done is the card just finished, carrying what it says comes after it and the folder it ran
+	// Done is the flow node just finished, carrying what it says comes after it and the folder it ran
 	// in.
 	Done pkgBoards.FlowNode
-	// NextID is the card the chain names — resolved where it is on the board, the raw id where it
-	// is not — and ToFolder that card's folder, where there is one.
+	// NextID is the flow node the chain names — resolved where it is on the board, the raw id where it
+	// is not — and ToFolder that flow node's folder, where there is one.
 	NextID   string
 	ToFolder string
-	// From is the chat the handoff was offered, Forked the copy the next card was given, and Chat
-	// the chat the next card goes in.
+	// From is the chat the handoff was offered, Forked the copy the next flow node was given, and Chat
+	// the chat the next flow node goes in.
 	From   string
 	Forked string
 	Chat   string
-	// Holder is the run already playing the next card, where that is why the chain ends.
+	// Holder is the run already playing the next flow node, where that is why the chain ends.
 	Holder string
 	// Decision is the branch taken: forked, own-chat, or where the chain ended.
 	Decision string
@@ -603,7 +604,7 @@ func (r *ChainRunner) LogNote(run *ChainRun, flowNodeID, chat, level, text strin
 	r.runLogs.Note(run.Id, flowNodeID, chat, level, text)
 }
 
-// logState files a move: the card, the chat and the state after it.
+// logState files a move: the flow node, the chat and the state after it.
 func (r *ChainRunner) LogState(run *ChainRun, flowNodeID, chat, state string) {
 	if r == nil || r.runLogs == nil || run == nil {
 		return
@@ -619,7 +620,7 @@ func (r *ChainRunner) LogTurn(run *ChainRun, flowNodeID, chat string, outcome Ch
 	r.runLogs.Turn(run.Id, flowNodeID, chat, outcome)
 }
 
-// logChain files one handoff: what the finished card says, and which branch the chain took.
+// logChain files one handoff: what the finished flow node says, and which branch the chain took.
 func (r *ChainRunner) LogChain(run *ChainRun, flowNodeID string, decision ChainRunChainDecision) {
 	if r == nil || r.runLogs == nil || run == nil {
 		return

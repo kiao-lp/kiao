@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { Button } from 'antd';
-import { AgentCreationModal } from '../agentic-resources/components/AgentsPanel';
+import { AgentCreationModal } from '../agentic-resources/components/AgentEditorPanel';
 import { useHarnessOptions } from '../useHarnessOptions';
 import { useAgents } from '../Agents-ctx';
 import { useRunners } from '../Runners-ctx';
-import { isLegacyAgent, SettingsChanges, effortsForAgent, FlowNodeSettings } from '../flowNodeSettings';
+import { hasLegacyHarness, SettingsChanges, effortsForSelection, FlowNodeSettings } from '../flowNodeSettings';
 import { hasFolder, isForAgent, settingsHarness, FlowNodeType } from '../flowNodeType';
 import {
     AgentSelect, EffortSelect, FolderInput, PermissionSelect, RunnerSelect, ScheduleInput,
@@ -30,10 +30,10 @@ export const FlowNodeMetaEditor: React.FC<FlowNodeMetaEditorProps> = ({
     const { agents: managed, loading, error } = useAgents();
     const [installing, setInstalling] = useState(false);
     const { runners } = useRunners();
-    const { harnesses: engines, optionsFor } = useHarnessOptions();
-    const own = optionsFor(settingsHarness(settings, managed) || engines[0]?.value || '');
+    const { harnesses, optionsFor } = useHarnessOptions();
+    const own = optionsFor(settingsHarness(settings, managed) || harnesses[0]?.value || '');
     const agent = managed.find(one => one.id === settings.agent);
-    const efforts = effortsForAgent(own, agent, settings.profileId, settings.model);
+    const efforts = effortsForSelection(own, agent, settings.profileId, settings.model);
 
     return (
         <div className={styles.meta} data-testid="flow-node-meta">
@@ -50,7 +50,7 @@ export const FlowNodeMetaEditor: React.FC<FlowNodeMetaEditorProps> = ({
                     <PermissionSelect settings={settings} options={own.permissionModes} onChange={onChange} disabled={readOnly} />
                 </div>
             )}
-            {isForAgent(type) && settings.agent && !agent && !isLegacyAgent(settings) && !loading && !error && <div role="alert">
+            {isForAgent(type) && settings.agent && !agent && !hasLegacyHarness(settings) && !loading && !error && <div role="alert">
                 Missing agent · {settings.agent}. Choose another agent or <Button type="link" disabled={readOnly} onClick={() => setInstalling(true)}>Reinstall agent…</Button>
             </div>}
             <AgentCreationModal open={installing} reinstall onClose={() => setInstalling(false)} />

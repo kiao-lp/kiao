@@ -30,7 +30,7 @@ delegation where it happened — the parent's summary line as the block's own `t
 child thought and did beneath it: the metadata (`subagentId`, `childSessionId`, `role`,
 `objective`, `status`, `result`, `durationMs`, `truncated`) and the child's own `blocks`, in the
 order it produced them, with its nested delegations the same way. Each agent reads its own: the
-shape is the wire's, and what fills it is one engine's transcript of its child. `truncated` is a
+shape is the wire's, and what fills it is the harness's transcript of the delegated work. `truncated` is a
 transcript that is not whole, cut at capture or at the record's own caps on the way to disk — the
 same two budgets the turn's own blocks draw on, spent where the delegation stands.
 
@@ -62,11 +62,11 @@ the prompt that started it, the betweens said into it, the reply that settled it
 `afterBlocks`: how many of the reply's blocks had arrived when it was said. An **assistant** record
 carries when the turn ran (`startedAt`, `finishedAt`, `durationMs`), how long its first block took
 (`firstBlockMs`), why it ended (`endReason`, with `terminal` for a Muse turn's own word beside its
-synthesised exit code), what it cost (`usage`, in the agent's own figures), and everything it parked
+synthesised exit code), what it cost (`usage`, as reported by the harness), and everything it parked
 on (`asks`, each with its outcome and who decided it). A **user** prompt carries what the model was
-actually sent (`composedPrompt`, `systemPrompt`) and — where a board played the turn — the standing
-instructions and the play itself (`instructions`, `playedBy`, `agentRef`, `runId`, `flowNodeId`,
-`board`), which the reply repeats so either record joins to the board without the other.
+actually sent (`composedPrompt`, `systemPrompt`). Both records carry the captured agent reference
+(`playedBy`, `agentRef`, `agentVersion`) when present. A turn played from a board also records
+its standing instructions and run context (`instructions`, `runId`, `flowNodeId`, `board`).
 
 A **user** record carries one field of its own, `attachments`: the `HarnessAttachmentDto`s the prompt
 was sent with, in the order they were attached. It is recorded rather than derived from the ids,
@@ -80,20 +80,21 @@ Every refusal is one `error` frame, and a client branches on `code` rather than 
 |---|---|
 | `unknown_conversation` | No such conversation, or it was deleted meanwhile. |
 | `conversation_busy` | A turn is already running in it; a second prompt never replaces one. |
-| `bad_folder` | The folder no longer exists, is a file, or escapes the store root. |
+| `bad_folder` | The folder no longer exists, is a file, or escapes the DCMS root. |
 | `unknown_permission_mode` | A mode this service cannot drive over the socket. |
-| `unknown_harness` | The conversation is bound to an agent this deployment no longer offers. Its session belongs to that engine and cannot be moved, so the way on is to fork it onto another agent. |
-| `mode_unsupported` | The agent's harness does not support the requested mode. [Harnesses](/operation/worker/PROTOCOL/harnesses.md#harnesses) |
+| `unknown_harness` | The conversation's harness is unavailable on this deployment. Fork with a published agent on an available harness to continue from the transcript in a new native session. |
+| `mode_unsupported` | The selected harness does not support the requested mode. [Harness options](/operation/worker/PROTOCOL/harnesses.md#harnesses) |
 | `agent_package_required` | Select a published agent when forking this conversation. |
 | `agent_package_unavailable` | The runner could not prepare the captured agent publication. The error describes the package failure. |
 | `bypass_disabled` | `bypassPermissions` was asked for — on the frame, or by the conversation it would be inherited from — on a service that does not allow it. |
 | `too_many_turns` | The concurrent-turn cap was reached. |
 | `bad_attachment` | An attachment the prompt named is gone or was never uploaded, or the message carries more than ten. The turn is refused rather than run without the file. |
-| `spawn_failed` | The agent process could not be started, or the prompt could not be recorded. |
+| `bad_response_token_limit` | The response token limit is neither empty nor a positive decimal string of at most 22 digits. |
+| `spawn_failed` | The harness process could not be started, or the prompt could not be recorded. |
 | `not_permitted` | The caller does not own the running turn they tried to act on. |
-| `no_running_turn` | A `between` reached no turn: there was none, or its pipe had closed in the moment it took to send. Nothing was said to the agent, so the message is still the sender's — it goes back to the box, and the conversation is idle enough to take it as a prompt. |
+| `no_running_turn` | A `between` reached an idle conversation or a turn whose input pipe had closed. The message returns to the composer and can start a new turn. |
 | `cli_error` | The CLI emitted an `error` event mid-turn. |
-| `not_signed_in` | The agent refused for want of credentials — a turn that never ran because the host is signed out. Not a mid-turn complaint: the panel answers it with the sign-in the Usage tab offers. |
+| `not_signed_in` | The harness refused to start the turn because it needs credentials. The Usage tab offers sign-in when supported. |
 
 An `error` reaches **every** subscriber of the conversation, not only the tab that caused it: the
 conversation is shared, and leaving the others showing a turn that never started would be worse than
@@ -122,5 +123,5 @@ The turn's end settles the roster on both sides of the socket, without a further
 is still open is marked finished-and-`abandoned`, in the service's own word. The hub settles the
 turn it holds, so a resync replays the wait as over; a connected tab settles the turn it renders,
 on `done`, `stopped` and any refusal nothing was spawned for. A roster event for a turn that has
-ended is then a straggler, and is dropped like any other. An agent that tracks no background work
+ended is then a straggler, and is dropped like any other. A harness that tracks no background work
 sends no roster events, and the roster stays empty.

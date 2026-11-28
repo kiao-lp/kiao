@@ -75,17 +75,25 @@ machine.
 |---|---|---|---|
 | GET | `/hybridflow-runner/conversations` | `archived=true` to include archived ones | `HarnessConversationDto[]`, newest `updatedAt` first |
 | POST | `/hybridflow-runner/conversations` | `CreateConversationRequestDto` | `201` + `HarnessConversationDto` |
-| GET | `/hybridflow-runner/conversations/{id}` | — | `HarnessConversationDetailDto` — the summary plus the whole transcript |
+| GET | `/hybridflow-runner/conversations/{id}` | — | `HarnessConversationDetailDto` with the summary, transcript and storage locations |
 | PATCH | `/hybridflow-runner/conversations/{id}` | `PatchConversationRequestDto` | `HarnessConversationDto` |
 | DELETE | `/hybridflow-runner/conversations/{id}` | — | `204`; the running turn is stopped first |
 | POST | `/hybridflow-runner/conversations/{id}/fork` | `HarnessForkRequestDto` (`fromMessageId?`, `agentId?`, `harness?`, `profileId?`, `model?`) | `201` + `HarnessConversationDto` — a copy carrying on from a point in this one |
+
+`locations` gives paths on the worker host for the conversation directory, metadata, transcript,
+turn traces and shared attachment storage. The working directory is included when it resolves.
+The transcript and traces are created on first use. `sessionId` carries the native resume
+reference, such as a session ID or Pi’s session file path.
 
 `POST /hybridflow-runner/conversations` requires `agentId` and accepts `harness`, `profileId`, `model`,
 `folder`, `title`, `effort`, `permissionMode` and `thinking`. The worker checks the harness
 against the latest publication and the local runtime. An explicit `model` selects a catalogue
 model for this conversation. With the field omitted, the worker uses the publication's model
 or resolves the harness default. `profileId` selects a Pi profile on that worker. `folder` is the CLI’s working directory
-relative to the store root. `""` selects the root.
+relative to the DCMS root. `""` selects that directory.
+
+When `permissionMode` is omitted, the worker picks the first mode the harness offers and the
+deployment allows, checking `bypassPermissions`, then `manualLive`, then `manual`.
 
 The response includes `agentVersion`, which captures the selected publication and its effective
 harness, model, effort and profile. Its `version` is the APM release string, such as `"1.2.3"`.
@@ -167,7 +175,7 @@ and uninteresting until something is wrong. See
 
 Status mapping, all through `core.WriteError`: a malformed id → `400` (it is a path segment, so its shape
 is the traversal boundary and it never reaches `filepath.Join`), an unknown one → `404`; a folder
-outside the store root → `400`, one that is gone → `404`, one that is a file → `400`; a malformed
+outside the DCMS root → `400`, one that is gone → `404`, one that is a file → `400`; a malformed
 body, an unknown `permissionMode`, or a `permissionMode` of `bypassPermissions` on a service that has
 withdrawn it → `400`; the 500-conversation cap → `409`; a fork asked for while a turn is running in
 the conversation → `409`; a fork's `fromMessageId` naming no message of that transcript → `404`. **The creation-time folder check is a

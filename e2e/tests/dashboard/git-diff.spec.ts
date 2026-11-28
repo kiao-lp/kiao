@@ -19,10 +19,10 @@ let folder: string;
 test.beforeEach(async ({ page, request }) => {
     const response = await request.get(`${workerApi()}/storeInfo`);
     expect(response.ok()).toBeTruthy();
-    const { rootPath } = await response.json();
-    expect(rootPath).toMatch(/\/kiao-e2e-/);
-    const repo = mkdtempSync(join(rootPath, 'git-diff-'));
-    folder = repo.slice(rootPath.length + 1);
+    const { rootPath: dcmsRoot } = await response.json();
+    expect(dcmsRoot).toMatch(/\/kiao-e2e-/);
+    const repo = mkdtempSync(join(dcmsRoot, 'git-diff-'));
+    folder = repo.slice(dcmsRoot.length + 1);
     const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, stdio: 'pipe' });
     git('init', '--quiet');
     writeFileSync(join(repo, 'compare.txt'), original);

@@ -10,7 +10,7 @@ const runnerSourceEnv = "env"
 
 const runnerSourceFile = "file"
 
-// With no identity, unpinned cards may play but pinned cards are refused.
+// With no identity, unpinned flow nodes may play but pinned flow nodes are refused.
 const runnerSourceNone = "none"
 
 type runnerIdentityDto struct {

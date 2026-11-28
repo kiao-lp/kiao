@@ -72,7 +72,7 @@ describe('pasting portable text files', () => {
         expect(client.discardStaging).toHaveBeenCalledWith('.staging/clipboard');
     });
 
-    it('pastes into the store root', async () => {
+    it('pastes into the DCMS root', async () => {
         const client = clientOf();
         client.listFiles.mockResolvedValue([]);
         await pasteTextFiles(client as unknown as WorkerClient, files, '', []);

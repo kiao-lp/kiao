@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { Space, Button, Dropdown } from 'antd';
+import { Space, Dropdown } from 'antd';
 import { CodeOutlined, EyeOutlined, AudioOutlined, AppstoreAddOutlined, ExportOutlined } from '@ant-design/icons';
-import { ZoomControl } from '@kiao-dashboard-core';
+import { IconButton, ZoomControl } from '@kiao-dashboard-core';
 import type { MarkdownEditorToolbarControlProps } from './useMarkdownEditorControls';
 import { InsertMenu } from './InsertMenu';
 import { SyncScrollToggle } from './SyncScrollToggle';
@@ -58,45 +58,32 @@ export const MarkdownEditorToolbar: React.FC<MarkdownEditorToolbarProps> = ({
                             />
                         )}
                     >
-                        <Button aria-label="Insert"
-                            type="text"
-                            size="small"
-                            icon={<AppstoreAddOutlined />}
-                        />
+                        <IconButton label="Insert" icon={<AppstoreAddOutlined />} />
                     </Dropdown>
                 </>
             )}
-            <Button aria-label={isCodeMirror ? "Switch to Voice Editor" : "Switch to CodeMirror Editor"}
-                type="text"
-                size="small"
+            <IconButton
+                label={isCodeMirror ? "Switch to Voice Editor" : "Switch to CodeMirror Editor"}
                 icon={<AudioOutlined />}
                 style={{ color: !isCodeMirror ? 'var(--link)' : undefined, opacity: !isCodeMirror ? 1 : 0.5 }}
                 onClick={() => setEditorMode(isCodeMirror ? 'voice' : 'codemirror')}
             />
-            <Button
-                type="text"
-                size="small"
-                icon={<ExportOutlined />}
-                aria-label="Export"
-                onClick={() => setExportOpen(true)}
-            />
+            <IconButton label="Export" icon={<ExportOutlined />} onClick={() => setExportOpen(true)} />
             <ExportModal
                 open={exportOpen}
                 onClose={() => setExportOpen(false)}
                 onExportPdf={theme => editorRef.current?.downloadPdf(theme)}
                 onExportDocx={theme => editorRef.current?.downloadDocx(theme) ?? Promise.resolve()}
             />
-            <Button aria-label={showSource ? "Hide Editor" : "Show Editor"}
-                type="text"
-                size="small"
+            <IconButton
+                label={showSource ? "Hide Editor" : "Show Editor"}
                 icon={<CodeOutlined />}
                 disabled={showSource && !showPreview}
                 style={{ color: showSource ? 'var(--link)' : undefined, opacity: showSource ? 1 : 0.5 }}
                 onClick={() => setShowSource(!showSource)}
             />
-            <Button aria-label={showPreview ? "Hide Preview" : "Show Preview"}
-                type="text"
-                size="small"
+            <IconButton
+                label={showPreview ? "Hide Preview" : "Show Preview"}
                 icon={<EyeOutlined />}
                 disabled={showPreview && !showSource}
                 style={{ color: showPreview ? 'var(--link)' : undefined, opacity: showPreview ? 1 : 0.5 }}

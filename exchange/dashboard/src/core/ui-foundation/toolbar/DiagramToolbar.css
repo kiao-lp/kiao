@@ -1,0 +1,135 @@
+.diagram-toolbar,
+.diagram-size-picker {
+    color: var(--text);
+    background: var(--bg);
+}
+
+.diagram-toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    flex: none;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 8px;
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--border);
+}
+
+.diagram-toolbar-group {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.diagram-toolbar-group + .diagram-toolbar-group {
+    border-inline-start: 1px solid var(--border);
+    padding-inline-start: 8px;
+}
+
+.diagram-toolbar-btn,
+.diagram-size-preset {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+}
+
+.diagram-toolbar-btn:hover:not(:disabled),
+.diagram-size-preset:hover {
+    background: var(--state-pointed-bg);
+    color: var(--text);
+}
+
+.diagram-toolbar-btn[aria-pressed="true"],
+.diagram-size-preset[aria-pressed="true"] {
+    background: var(--state-selected-bg);
+    color: var(--link);
+}
+
+.diagram-toolbar-btn:focus-visible,
+.diagram-size-picker button:focus-visible {
+    outline: 2px solid var(--link);
+    outline-offset: -2px;
+}
+
+.diagram-size-label {
+    width: auto;
+    padding: 0 8px;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.diagram-size-picker {
+    display: grid;
+    width: 180px;
+    padding: 4px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+}
+
+.diagram-size-preset {
+    width: 100%;
+    justify-content: flex-start;
+    padding: 0 8px;
+    font-size: 12px;
+}
+
+.diagram-size-custom {
+    display: grid;
+    gap: 6px;
+    margin-top: 4px;
+    padding: 6px 4px 2px;
+    border-top: 1px solid var(--border);
+}
+
+.diagram-size-fields {
+    display: flex;
+    gap: 6px;
+}
+
+.diagram-size-fields label {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    padding: 2px 4px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 11px;
+}
+
+.diagram-size-fields input {
+    width: 100%;
+    min-width: 0;
+    color: inherit;
+    background: transparent;
+    border: 0;
+    font: inherit;
+}
+
+.diagram-size-custom button {
+    padding: 4px;
+    border: 0;
+    border-radius: 4px;
+    background: var(--state-selected-bg);
+    color: var(--text);
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.diagram-toolbar-btn:disabled,
+.diagram-size-custom button:disabled {
+    opacity: 0.5;
+    cursor: default;
+}

@@ -312,7 +312,7 @@ func (s *Service) HandleSearch(w http.ResponseWriter, r *http.Request) {
 }
 
 // HandleFileOptimizations reports what the store under `path` is carrying that it need not be: the
-// files stored more than once, and the biggest ones. `path` defaults to the store root.
+// files stored more than once, and the biggest ones. `path` defaults to the DCMS root.
 //
 // One walk answers both, and it reads the candidates it has to read to be sure — see optimize.go.
 // It is therefore a slow endpoint by design, asked for by a person who opened a panel, and never on
@@ -347,13 +347,12 @@ func (s *Service) HandleDeduplicate(w http.ResponseWriter, r *http.Request) {
 	httpkit.WriteJSON(w, http.StatusOK, result)
 }
 
-// HandleDiskUsage reports filesystem space figures for the storage root.
+// HandleDiskUsage reports filesystem space figures for the DCMS root.
 func (s *Service) HandleDiskUsage(w http.ResponseWriter, r *http.Request) {
 	httpkit.WriteJSON(w, http.StatusOK, s.files.DiskUsage())
 }
 
-// HandleStoreInfo reports where the store lives on the host, so a client can turn a root-relative
-// path into one the machine running the service understands.
+// HandleStoreInfo reports the absolute host path of the DCMS root for local tools.
 func (s *Service) HandleStoreInfo(w http.ResponseWriter, r *http.Request) {
 	httpkit.WriteJSON(w, http.StatusOK, s.files.StoreInfo())
 }

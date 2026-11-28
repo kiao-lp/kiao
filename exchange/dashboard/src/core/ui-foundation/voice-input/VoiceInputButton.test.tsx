@@ -3,6 +3,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, fireEvent, render, screen } from 'src/test/render';
 import { VoiceInputProvider } from './VoiceInputContext';
 import { VoiceInputButton } from './VoiceInputButton';
+import { VoiceInput } from './VoiceInput';
+import { VoiceTextArea } from './VoiceTextArea';
 
 /** The dictation, as the browser would report it, without a browser. */
 const speech = vi.hoisted(() => ({
@@ -39,13 +41,20 @@ beforeEach(() => {
 
 const button = () => screen.getByRole('button', { name: 'Voice Input' });
 
-const dictate = (onChange: (next: string) => void, value = '') => {
+const startDictation = async (mic = button()) => {
+    await act(async () => {
+        fireEvent.click(mic);
+        speech.listening = true;
+    });
+};
+
+const dictate = async (onChange: (next: string) => void, value = '') => {
     const view = render(
         <VoiceInputProvider language="en-US">
             <VoiceInputButton value={value} onChange={onChange} />
         </VoiceInputProvider>,
     );
-    fireEvent.click(button());
+    await startDictation();
     return view;
 };
 
@@ -80,27 +89,18 @@ describe('VoiceInputButton', () => {
     });
 
     it('starts listening in the chosen language, and stops when pressed again', async () => {
-        const { rerender } = dictate(() => {});
+        await dictate(() => {});
         expect(speech.startListening).toHaveBeenCalledWith({ continuous: true, language: 'en-US' });
-        expect(button()).toHaveAttribute('aria-pressed', 'false');
-
-        speech.listening = true;
-        rerender(
-            <VoiceInputProvider language="en-US">
-                <VoiceInputButton value="" onChange={() => {}} />
-            </VoiceInputProvider>,
-        );
         expect(button()).toHaveAttribute('aria-pressed', 'true');
 
         await act(async () => { fireEvent.click(button()); });
-        expect(speech.stopListening).toHaveBeenCalled();
+        expect(speech.stopListening).toHaveBeenCalledTimes(1);
     });
 
-    it('writes what was said onto what the box already holds', () => {
+    it('writes what was said onto what the box already holds', async () => {
         const onChange = vi.fn();
-        const { rerender } = dictate(onChange, 'Hello');
+        const { rerender } = await dictate(onChange, 'Hello');
         speech.transcript = 'there';
-        speech.listening = true;
         rerender(
             <VoiceInputProvider language="en-US">
                 <VoiceInputButton value="Hello" onChange={onChange} />
@@ -110,8 +110,54 @@ describe('VoiceInputButton', () => {
     });
 
     it('leaves the box its caret and its focus', () => {
-        dictate(() => {});
+        render(
+            <VoiceInputProvider language="en-US">
+                <VoiceInputButton onChange={() => {}} />
+            </VoiceInputProvider>,
+        );
         expect(fireEvent.mouseDown(button())).toBe(false);
         expect(fireEvent.mouseUp(button())).toBe(false);
+    });
+
+    it('keeps dictating when another field unmounts and stops when its field becomes read-only', async () => {
+        const onChange = vi.fn();
+        const form = (includeOther: boolean, readOnly = false) => (
+            <VoiceInputProvider language="en-US">
+                <VoiceInput aria-label="Name" value="Hello" onChange={onChange} readOnly={readOnly} />
+                {includeOther && <VoiceTextArea aria-label="Notes" />}
+            </VoiceInputProvider>
+        );
+        const { rerender } = render(form(true));
+        const [mic, other] = screen.getAllByRole('button', { name: 'Voice Input' });
+        await startDictation(mic);
+
+        speech.transcript = 'there';
+        rerender(form(true));
+        expect(onChange).toHaveBeenCalledTimes(1);
+        expect(other).toBeDisabled();
+        rerender(form(false));
+        expect(speech.stopListening).not.toHaveBeenCalled();
+        expect(onChange).toHaveBeenCalledTimes(1);
+        rerender(form(false, true));
+        expect(speech.stopListening).toHaveBeenCalledTimes(1);
+        expect(screen.queryByRole('button', { name: 'Voice Input' })).toBeNull();
+    });
+
+    it.each([VoiceInput, VoiceTextArea])('adapts dictation to the field change handler', async Field => {
+        const onChange = vi.fn();
+        const form = () => (
+            <VoiceInputProvider language="en-US">
+                <Field aria-label="Text" defaultValue="Hello" onChange={onChange} />
+            </VoiceInputProvider>
+        );
+        const { rerender } = render(form());
+        await startDictation();
+        speech.transcript = 'comma world';
+        rerender(form());
+        expect(screen.getByRole('textbox', { name: 'Text' })).toHaveValue('Hello, world');
+        expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({
+            target: { value: 'Hello, world' },
+            currentTarget: { value: 'Hello, world' },
+        }));
     });
 });

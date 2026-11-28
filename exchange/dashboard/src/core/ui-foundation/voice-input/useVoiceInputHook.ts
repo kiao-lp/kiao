@@ -1,82 +1,80 @@
 import { useEffect, useRef, useState } from 'react';
 import SpeechRecognition, { useSpeechRecognition } from 'react-speech-recognition';
+import { useVoiceInput } from './VoiceInputContext';
 import { formatSpokenText } from './formatSpokenText';
 
-export const useVoiceInputHook = (
-    onChange?: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => void,
-    value?: any,
-    language: string = 'en-US',
-    /** A disabled or read-only box takes no dictation, so it offers no microphone either. */
-    enabled: boolean = true,
-) => {
-    const {
-        transcript,
-        listening,
-        resetTranscript,
-        browserSupportsSpeechRecognition,
-        isMicrophoneAvailable
-    } = useSpeechRecognition();
+interface Dictation {
+    base: string;
+    language: string;
+    starting: boolean;
+    cancelled?: boolean;
+}
 
+// The browser recognizer is global, but only the field that started it receives the transcript.
+let activeDictation: Dictation | undefined;
+
+function stopDictation(dictation: Dictation) {
+    dictation.cancelled = true;
+    if (dictation.starting) return;
+    activeDictation = undefined;
+    void SpeechRecognition.stopListening();
+}
+
+export function useVoiceInputHook(
+    value: string | undefined,
+    onChange: (next: string) => void,
+    enabled: boolean,
+) {
+    const { language } = useVoiceInput();
+    const { transcript, listening, resetTranscript, browserSupportsSpeechRecognition, isMicrophoneAvailable } =
+        useSpeechRecognition();
     const showMic = enabled && browserSupportsSpeechRecognition && isMicrophoneAvailable;
-
-    // Dictation delivers to the latest callback without making it a trigger: a caller's handler is
-    // a new function every render, and re-firing it would write the same words again.
-    const deliver = useRef(onChange);
-    deliver.current = onChange;
-
-    const [baseValue, setBaseValue] = useState<string>('');
-    const [hasStartedListening, setHasStartedListening] = useState(false);
+    const request = useRef<Dictation>();
+    const [dictation, setDictation] = useState<Dictation>();
+    const field = useRef({ value, onChange });
+    field.current = { value, onChange };
 
     const toggleListening = async () => {
-        if (listening) {
-            await SpeechRecognition.stopListening();
-            setHasStartedListening(false);
-        } else {
-            setBaseValue(String(value || ''));
-            setHasStartedListening(true);
-            resetTranscript();
-            try {
-                await SpeechRecognition.startListening({ continuous: true, language });
-            } catch {
-                setHasStartedListening(false);
-            }
+        if (activeDictation) {
+            if (request.current === activeDictation) stopDictation(activeDictation);
+            return;
         }
+
+        const next: Dictation = { base: value ?? '', language, starting: true };
+        request.current = activeDictation = next;
+        resetTranscript();
+        try {
+            await SpeechRecognition.startListening({ continuous: true, language });
+        } catch {
+            activeDictation = undefined;
+            return;
+        }
+        next.starting = false;
+        if (next.cancelled) stopDictation(next);
+        else setDictation(next);
     };
 
     useEffect(() => {
-        if (!listening || !hasStartedListening) return;
-        const rawNewValue = baseValue + (baseValue && transcript ? ' ' : '') + transcript;
-        // Apply spoken punctuation formatting for French and English
-        let newValue = rawNewValue;
-        if (language.startsWith('fr')) {
-            newValue = formatSpokenText(rawNewValue, 'fr');
-        } else if (language.startsWith('en')) {
-            newValue = formatSpokenText(rawNewValue, 'en');
+        if (!dictation || dictation !== activeDictation) return;
+        if (!listening) {
+            activeDictation = undefined;
+            return;
         }
+        if (!showMic || !transcript) return;
 
-        // What the box already says needs no second writing, and no second write behind it.
-        if (newValue === String(value ?? '')) return;
+        const raw = dictation.base ? `${dictation.base} ${transcript}` : transcript;
+        const locale = dictation.language.slice(0, 2);
+        const next = locale === 'fr' || locale === 'en' ? formatSpokenText(raw, locale) : raw;
+        if (next !== field.current.value) field.current.onChange(next);
+    }, [dictation, listening, showMic, transcript]);
 
-        if (deliver.current) {
-            const event = {
-                target: { value: newValue },
-                currentTarget: { value: newValue }
-            } as React.ChangeEvent<HTMLInputElement>;
-
-            deliver.current(event);
-        }
-    }, [transcript, listening, hasStartedListening, baseValue, language]);
-
-    // Cleanup: stop listening on unmount
     useEffect(() => {
+        if (!showMic) return;
         return () => {
-            SpeechRecognition.stopListening();
+            if (activeDictation && activeDictation === request.current) stopDictation(activeDictation);
         };
-    }, []);
+    }, [showMic]);
 
-    return {
-        showMic,
-        listening,
-        toggleListening
-    };
-};
+    const ownsDictation = activeDictation !== undefined && activeDictation === request.current;
+    return { showMic, listening: listening && ownsDictation, busy: listening && !ownsDictation, toggleListening };
+}

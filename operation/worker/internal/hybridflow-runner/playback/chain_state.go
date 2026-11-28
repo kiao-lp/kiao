@@ -2,6 +2,7 @@ package playback
 
 import (
 	"context"
+	"encoding/json"
 	"kiao/worker/internal/core/access"
 	pkgBoards "kiao/worker/internal/hybridflow-runner/boards"
 	runstate "kiao/worker/internal/hybridflow-runner/playback/state"
@@ -9,25 +10,30 @@ import (
 	"time"
 )
 
-// A card turn is running or being prepared.
+// A flow node turn is running or being prepared.
 const ChainRunStatePlaying = "playing"
 
-// The completed AI card is compacting its conversation before handover.
+// An exclusive arrival is waiting for a flow node held by another local run.
+const ChainRunStateQueued = "queued"
+
+// The completed AI flow node is compacting its conversation before handover.
 const chainRunStateCompacting = "compacting"
 
-// A transient failure holds the card until retryAt, then resends its prompt.
+// A transient failure holds the flow node until retryAt, then resends its prompt.
 const ChainRunStateWaiting = "waiting"
 
-// A usage limit holds the card until retryAt, then resumes its interrupted turn.
+// A usage limit holds the flow node until retryAt, then resumes its interrupted turn.
 const ChainRunStateRefreshing = "refreshing"
 
 // A Scheduler holds until its duration or datetime elapses.
 const ChainRunStateScheduled = "scheduled"
 
+const ChainRunStatePolling = "polling"
+
 // Stop was requested; the current turn is allowed to settle.
 const chainRunStateStopping = "stopping"
 
-// An interrupted turn keeps its card and chat available for Resume.
+// An interrupted turn keeps its flow node and chat available for Resume.
 const ChainRunStateSuspended = "suspended"
 
 // An ended run stays in the registry for Restart or Forget.
@@ -45,16 +51,22 @@ type ChainRun struct {
 
 	// RootFlowNodeID is the restart point.
 	RootFlowNodeID string
-	// trail records completed cards in order, including a forked branch's ancestors.
+	// afterPredecessor identifies a run started by the submission of a Human task.
+	afterPredecessor bool
+	// input retains the current activation's output across an AI task's suspension.
+	input *json.RawMessage
+	// trail records completed flow nodes in order, including a forked branch's ancestors.
 	trail []string
-	// chain combines the trail, current card and forecast, refreshed after board operations.
+	// chain combines the trail, current flow node and forecast, refreshed after board operations.
 	chain []runstate.HarnessChainRunFlowNodeDto
 
-	// flowNodeID is the card being played or compacted after completion.
+	// flowNodeID is the flow node being played or compacted after completion.
 	FlowNodeID string
-	// Chat is empty before conversation creation and on cards without a turn.
-	Chat      string
-	State     string
+	// Chat is empty before conversation creation and on flow nodes without a turn.
+	Chat  string
+	State string
+	// The active AI task's workflow and authored assignments survive turn resumption.
+	workflow  taskWorkflow
 	retryAt   time.Time
 	startedAt time.Time
 	// documentAt invalidates clients' board copies after a write.
@@ -76,7 +88,7 @@ type ChainRun struct {
 	// Resume and Restart wait for it before reusing this run's mutable state.
 	Done chan struct{}
 
-	// wake interrupts waits while allowing the held card to be marked on exit.
+	// wake interrupts waits while allowing the held flow node to be marked on exit.
 	// Only wakeMu protects the signal. When both locks are needed, Mu comes first.
 	wakeMu sync.Mutex
 	woken  bool
@@ -180,20 +192,21 @@ func (r *ChainRunner) say(run *ChainRun, level, text string) {
 	})
 }
 
-// setState publishes the card, chat and state together. A concurrent Stop keeps playing
+// setState publishes the flow node, chat and state together. A concurrent Stop keeps playing
 // visible as stopping; an abandoned run cannot change state here.
 func (r *ChainRunner) setState(run *ChainRun, flowNodeID, chat, state string) {
 	r.Mu.Lock()
 	moved := !run.gone
 	if moved {
+		if run.FlowNodeID != flowNodeID {
+			r.flowNodeReleasedLocked()
+		}
 		run.FlowNodeID, run.Chat = flowNodeID, chat
 		run.State = state
 		if state != ChainRunStateWaiting && state != ChainRunStateRefreshing {
 			run.retryAt = time.Time{}
 		}
-		if run.stopping && state == ChainRunStatePlaying {
-			// Stop was pressed while this turn was being set up: the card says so rather than showing
-			// a spinner that is about to end.
+		if run.stopping && (state == ChainRunStatePlaying || state == ChainRunStatePolling) {
 			run.State = chainRunStateStopping
 		}
 		markChain(run)
@@ -227,9 +240,12 @@ func (r *ChainRunner) end(run *ChainRun, reason string) {
 	moved := run.State != ChainRunStateEnded
 	if moved {
 		run.State = ChainRunStateEnded
+		r.flowNodeReleasedLocked()
 		run.endedAt = time.Now()
 		run.retryAt = time.Time{}
 		run.stopping = false
+		run.workflow = taskWorkflow{}
+		run.input = nil
 		if reason != "" {
 			run.ending = reason
 		}
@@ -253,18 +269,17 @@ const chainRunStopped = "Stopped."
 // suspend keeps the run where it stopped, so that saying something in its chat picks it back up.
 func (r *ChainRunner) suspend(run *ChainRun, flowNodeID, chat string) {
 	r.Mu.Lock()
-	held := !run.gone
-	if held {
-		run.FlowNodeID, run.Chat = flowNodeID, chat
-		run.State = ChainRunStateSuspended
-		run.stopping = false
-		run.retryAt = time.Time{}
-		markChain(run)
-	}
-	r.Mu.Unlock()
-	if !held {
+	if run.gone || run.ended {
+		r.Mu.Unlock()
+		r.end(run, chainRunStopped)
 		return
 	}
+	run.FlowNodeID, run.Chat = flowNodeID, chat
+	run.State = ChainRunStateSuspended
+	run.stopping = false
+	run.retryAt = time.Time{}
+	markChain(run)
+	r.Mu.Unlock()
 	r.announce(nil)
 	r.LogState(run, flowNodeID, chat, ChainRunStateSuspended)
 	// A conversation deleted under the run cannot be resumed into, and a suspended run pointing at one
@@ -316,7 +331,7 @@ func (r *ChainRunner) walked(run *ChainRun, flowNodeID string) {
 	markChain(run)
 }
 
-// holderOf reads the name of a card's live run under Mu.
+// holderOf reads the name of a flow node's live run under Mu.
 func (r *ChainRunner) holderOf(handle, flowNodeID string) string {
 	r.Mu.Lock()
 	defer r.Mu.Unlock()
@@ -331,11 +346,4 @@ func (r *ChainRunner) stopping(run *ChainRun) bool {
 	r.Mu.Lock()
 	defer r.Mu.Unlock()
 	return run.gone || run.stopping
-}
-
-// ended distinguishes Stop or abandonment from a resumable chat interruption.
-func (r *ChainRunner) ended(run *ChainRun) bool {
-	r.Mu.Lock()
-	defer r.Mu.Unlock()
-	return run.gone || run.ended
 }

@@ -14,7 +14,7 @@ import (
 func piTestSetup(t *testing.T, binary string) (*runnerconfig.Config, *picli.PiProfiles, *pkgConversations.ConversationStore, pkgConversations.ConversationMeta) {
 	t.Helper()
 	root := t.TempDir()
-	cfg := &runnerconfig.Config{Config: &coreconfig.Config{RootPath: root, StatePath: filepath.Join(root, ".kiao-config"), AuthMode: "debug"}, BypassEnabled: true, MaxTurns: 4}
+	cfg := &runnerconfig.Config{Config: &coreconfig.Config{DCMSRoot: root, StatePath: filepath.Join(root, ".kiao-config"), AuthMode: "debug"}, BypassEnabled: true, MaxTurns: 4}
 	if binary == "" {
 		var err error
 		binary, err = filepath.Abs("../harnesses/pi/testdata/fake-pi.mjs")
@@ -23,7 +23,7 @@ func piTestSetup(t *testing.T, binary string) (*runnerconfig.Config, *picli.PiPr
 		}
 	}
 	profiles := picli.NewPiProfiles(cfg)
-	doc := harnessapi.PiProfilesDocument{Version: 1, DefaultPiProfileID: "work", Installations: []equipment.HarnessInstallation{{ID: "reference", Engine: harnessapi.HarnessPi, Version: equipment.PiVersion, Path: binary, Protocol: equipment.PiRPCProtocol, External: true}}, Profiles: []harnessapi.PiProfile{{ID: "work", Name: "Work", InstallationID: "reference", DefaultModel: "openai/shared-model", DefaultEffort: "off", Connections: []harnessapi.PiConnection{{Provider: "openai", API: "openai-completions", BaseURL: "http://127.0.0.1:1/v1", Models: []harnessapi.PiModel{{ID: "shared-model", Reasoning: true, Input: []string{"text", "image"}, ContextWindow: 10000, MaxTokens: 1024}}}}}}}
+	doc := harnessapi.PiProfilesDocument{Version: 1, DefaultPiProfileID: "work", Installations: []equipment.HarnessInstallation{{ID: "reference", Harness: harnessapi.HarnessPi, Version: equipment.PiVersion, Path: binary, Protocol: equipment.PiRPCProtocol, External: true}}, Profiles: []harnessapi.PiProfile{{ID: "work", Name: "Work", InstallationID: "reference", DefaultModel: "openai/shared-model", DefaultEffort: "off", Connections: []harnessapi.PiConnection{{Provider: "openai", API: "openai-completions", BaseURL: "http://127.0.0.1:1/v1", Models: []harnessapi.PiModel{{ID: "shared-model", Reasoning: true, Input: []string{"text", "image"}, ContextWindow: 10000, MaxTokens: 1024}}}}}}}
 	if err := profiles.WriteProfiles(doc); err != nil {
 		t.Fatal(err)
 	}

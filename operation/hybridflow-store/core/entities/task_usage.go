@@ -8,16 +8,15 @@ import (
 // TaskUsage is an immutable report: corrections append rows; replays are idempotent.
 // Cache and reasoning counts are parts of input/output, never added on top.
 // Harness mappings are approximate and documented beside the table in the schema.
-// Reports do not bump card revisions or emit change events. Totals are summed on read
-// per card, board, or class through the card's class version.
+// Reports are summed on read and do not bump flow node revisions or emit change events.
 type TaskUsage struct {
 	// ID is reporter-generated and reused on replay to prevent double counting.
 	ID string
-	// FlowNodeID must name an AI card.
+	// FlowNodeID must name an AI flow node.
 	FlowNodeID string
 	// ReportedAt is the turn end on the reporter's clock, or arrival if unspecified.
 	ReportedAt time.Time
-	RunID string
+	RunID      string
 	// Model is the harness slug; empty means unknown.
 	Model            string
 	InputTokens      int64

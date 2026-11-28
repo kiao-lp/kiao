@@ -18,7 +18,8 @@ The Bookmarks panel keeps a flat, ordered list in `kiao-user-config/bookmarks.js
 ]
 ```
 
-Each entry has a title, link and Markdown note. This ordinary store file versions with the documents. Refresh flushes pending writes before rereading. The reader accepts JSON only.
+Each entry has a title, a DCMS link or web URL, and a Markdown note. This JSON file versions
+with the documents. Refresh flushes pending writes before rereading.
 
 ## What it claims
 
@@ -31,7 +32,7 @@ the list and pending edits when navigation replaces a document's layout.
 | File | Role |
 | --- | --- |
 | `index.tsx` | Manifest, tab and provider |
-| `bookmarksFile.ts` | Parsing, serialization and store links |
+| `bookmarksFile.ts` | Parsing, serialization and DCMS link matching |
 | `Bookmarks-ctx.tsx` | List and debounced persistence |
 | `BookmarksPanel.tsx` | Star, reorder controls and expandable notes |
 

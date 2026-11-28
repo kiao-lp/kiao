@@ -84,7 +84,7 @@ describe('useDuplicateFiles', () => {
         });
     });
 
-    it('leaves the store root alone rather than copying the whole store', async () => {
+    it('leaves the DCMS root alone rather than copying the whole store', async () => {
         const { result } = renderHook(() => useDuplicateFiles());
         await act(async () => { await result.current(['']); });
 

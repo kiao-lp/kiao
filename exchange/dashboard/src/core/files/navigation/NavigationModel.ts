@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { parentPath } from '../service';
 import { useFileBrowsingPersistenceContext } from '../core/FileBrowsingPersistence-ctx';
-import { storeLinkOf } from 'kiao-worker/utils';
+import { dcmsLinkOf } from 'kiao-worker/utils';
 import { resolveInternalLink } from '../../navigation/internal-links';
 
 export interface NavigationModelApi {
@@ -15,7 +15,7 @@ export interface NavigationModelApi {
 
 /** Converts a store path to a browser URL. */
 const makeHref = (path: string) =>
-    resolveInternalLink(storeLinkOf(path));
+    resolveInternalLink(dcmsLinkOf(path));
 
 export const useNavigation = (): NavigationModelApi => {
     const navigate = useNavigate();

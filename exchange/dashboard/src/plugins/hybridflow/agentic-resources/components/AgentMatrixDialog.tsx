@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react';
-import { Alert, Button, Checkbox, Modal, Spin, message } from 'antd';
+import { Alert, Button, Checkbox, Modal, message } from 'antd';
+import { AsyncList } from '@kiao-dashboard-core';
 import type { HarnessOptionsEntry, HarnessProfileOffer } from 'kiao-worker';
 import type { AgentSelection } from '../../flowNodeSettings';
 import type { AgentDto } from '../types';
@@ -43,6 +44,7 @@ const accepts = (definition: AgentDto | NonNullable<AgentDto['published']>, { ha
 interface Props {
     title: string;
     confirmLabel?: string;
+    pendingLabel?: string;
     initial?: AgentSelection;
     allowDraft?: boolean;
     requireCommit?: boolean;
@@ -56,7 +58,7 @@ interface Props {
 }
 
 export const AgentMatrixDialog: React.FC<Props> = ({
-    title, confirmLabel, initial, allowDraft, requireCommit, agents, agentsLoading, error,
+    title, confirmLabel, pendingLabel = 'Applying agent selection…', initial, allowDraft, requireCommit, agents, agentsLoading, error,
     harnesses, harnessesLoading, onCancel, onConfirm,
 }) => {
     const [selection, setSelection] = useState(initial);
@@ -67,6 +69,7 @@ export const AgentMatrixDialog: React.FC<Props> = ({
     const superseded = new Set(published.flatMap(agent => agent.published?.supersedes ?? []));
     const rows = (useDraft ? agents : published).filter(agent => !agent.archived && !superseded.has(agent.id));
     const columns = columnsOf(harnesses);
+    const hasOptions = rows.length > 0 && columns.length > 0;
     const loading = agentsLoading || harnessesLoading;
     const definition = (row: AgentDto) => useDraft ? row : row.published;
     const choiceOf = (row: AgentDto, column: Column): AgentChoice => ({
@@ -100,7 +103,8 @@ export const AgentMatrixDialog: React.FC<Props> = ({
 
     return (
         <Modal open title={title} width="min(1120px, calc(100vw - 32px))"
-            okText={confirmLabel} confirmLoading={busy} okButtonProps={{ disabled: !selected || loading }}
+            okText={confirmLabel} confirmLoading={busy}
+            okButtonProps={{ disabled: busy || !selected || loading, 'aria-label': confirmLabel, 'aria-busy': busy }}
             cancelButtonProps={{ disabled: busy }} closable={!busy}
             footer={confirmLabel ? undefined : null}
             onCancel={() => { if (!submitting.current) onCancel(); }}
@@ -109,12 +113,12 @@ export const AgentMatrixDialog: React.FC<Props> = ({
                 <Checkbox className={styles.draft} checked={useDraft} disabled={busy}
                     onChange={event => setUseDraft(event.target.checked)}>Use local draft</Checkbox>
             )}
-            {error && <Alert type="error" title={error} />}
-            {loading ? <div className={styles.status}><Spin /></div> : rows.length === 0 ? (
-                <Alert type="info" title={useDraft ? 'Create or import an agent in Agents.' : 'Publish an agent in Agents.'} />
-            ) : columns.length === 0 ? (
-                <Alert type="info" title="Enable a harness with active models or configure a Pi profile on this worker." />
-            ) : (
+            {hasOptions && error && <Alert type="error" showIcon title={error} />}
+            {busy && <div className={styles.status}><span role="status">{pendingLabel}</span></div>}
+            <AsyncList loading={loading} loadingLabel="Loading agent and model options" error={!hasOptions && error}
+                empty={!rows.length
+                    ? (useDraft ? 'Create or import an agent in Agents.' : 'Publish an agent in Agents.')
+                    : !columns.length && 'Enable a harness with active models or configure a Pi profile on this worker.'}>
                 <div className={styles.scroll} tabIndex={0} aria-label="Agent and harness matrix">
                     <table className={styles.matrix}>
                         <thead>
@@ -140,16 +144,18 @@ export const AgentMatrixDialog: React.FC<Props> = ({
                                             const choice = choiceOf(row, column);
                                             const enabled = config && (!useDraft || !row.draftError) && accepts(config, column);
                                             const pressed = selectedRow === row && selectedColumn === column;
+                                            const submittingChoice = busy && pressed && !confirmLabel;
                                             const label = column.model || column.profile
                                                 ? 'Select'
                                                 : config?.model || column.harness.defaultModel || 'Select';
                                             return (
                                                 <td key={columnKey(column)}>
                                                     {enabled ? (
-                                                        <Button block disabled={busy}
+                                                        <Button block disabled={busy} loading={submittingChoice}
                                                             type={pressed ? 'primary' : 'default'}
                                                             aria-label={`${name} · ${column.label}`}
                                                             aria-pressed={pressed}
+                                                            aria-busy={submittingChoice}
                                                             onClick={() => {
                                                                 setSelection(choice);
                                                                 if (!confirmLabel) void submit(choice);
@@ -166,7 +172,7 @@ export const AgentMatrixDialog: React.FC<Props> = ({
                         </tbody>
                     </table>
                 </div>
-            )}
+            </AsyncList>
         </Modal>
     );
 };

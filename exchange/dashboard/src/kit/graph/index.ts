@@ -9,8 +9,7 @@ export { renderGraphToSvgString } from './lib/render-svg-string';
 // Components.
 export { GraphSvgRenderer, computeGraphContentBounds, getNormalizedPositions } from './components/GraphSvgRenderer';
 export type { GraphSvgRendererProps } from './components/GraphSvgRenderer';
-export { GraphToolbar } from './components/GraphToolbar';
-export type { GraphToolbarProps, GraphView } from './components/GraphToolbar';
+export type { DiagramView as GraphView } from '@kiao-dashboard-core';
 export { GraphEditor } from './components/GraphEditor';
 export type { GraphEditorProps, GraphViewState } from './components/GraphEditor';
 export { GraphCodeEditor } from './components/GraphCodeEditor';

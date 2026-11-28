@@ -17,7 +17,7 @@ import { test, expect, workerApi, Locator, Page, resetViewState } from '../../ha
 const TIMEOUT = 15000;
 
 const TEMPLATE_PATH = 'templates/Document.temp.md';
-/** A file at the store root: the tree shows it with only the root branch open. */
+/** A file at the DCMS root: the tree shows it with only the root branch open. */
 const DROPPED = 'welcome.md';
 
 const SELECTORS = {
@@ -25,7 +25,7 @@ const SELECTORS = {
 };
 
 /**
- * The arrangement this spec needs: the navigation tree down the left column with the store root
+ * The arrangement this spec needs: the navigation tree down the left column with the DCMS root
  * open, so the dropped file's row is on screen.
  *
  * Seeded rather than clicked. The arrangement is a document, and writing it is exact.
@@ -85,7 +85,7 @@ test.describe('a template variable typed file', () => {
 
         await dragFromTree(page, DROPPED, field);
 
-        // The path as a document of the store names it: from the root, with a leading slash.
+        // The file variable substitutes a raw DCMS link.
         await expect(field).toHaveValue(`/${DROPPED}`);
 
         // And the same drop answers the second expression, which asked only for the name.

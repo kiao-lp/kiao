@@ -40,12 +40,6 @@ const copyChild = (id: string): ContextMenuItemDescriptor => {
     return parent.children!.find(child => child.id === id)!;
 };
 
-/**
- * "Copy relative path" copies the link form: from the store root, with the leading slash that
- * tells a reference apart from a document-relative one (`storeLinkOf`, kiao-worker/utils.ts). A
- * path copied here is pasted into a document, so without the slash it would read against the
- * document holding it instead of naming the file.
- */
 describe('copy-as submenu', () => {
     beforeEach(() => { vi.clearAllMocks(); });
 
@@ -57,26 +51,30 @@ describe('copy-as submenu', () => {
         expect(parent.children!.map(child => child.id)).toEqual([
             'copy-text-files',
             'copy-markdown-link',
-            'copy-relative-path',
+            'copy-dcms-link',
             'copy-absolute-path',
         ]);
         expect(items.find(i => i.id === 'copy')).toBeDefined();
     });
 
-    it('copies the path from the store root, with the leading slash', async () => {
-        await copyChild('copy-relative-path').execute!(ctxOf(['units/abc/cadre.md']));
+    it('labels the command and copies a DCMS link', async () => {
+        const action = copyChild('copy-dcms-link');
+        expect(action.label).toBe('Copy DCMS link');
+        await action.execute!(ctxOf(['units/abc/cadre.md']));
 
         expect(clipboard.setClipboard).toHaveBeenCalledWith('/units/abc/cadre.md');
+        expect(message.success).toHaveBeenCalledWith('DCMS link copied!');
     });
 
-    it('copies one link per line for a multi-selection', async () => {
-        await copyChild('copy-relative-path').execute!(ctxOf(['units/abc/cadre.md', 'docs/note.md']));
+    it('copies one DCMS link per line for a multi-selection', async () => {
+        await copyChild('copy-dcms-link').execute!(ctxOf(['units/abc/cadre.md', 'docs/note.md']));
 
         expect(clipboard.setClipboard).toHaveBeenCalledWith('/units/abc/cadre.md\n/docs/note.md');
+        expect(message.success).toHaveBeenCalledWith('2 DCMS links copied!');
     });
 
-    it('leaves a path already written as a link as it stands', async () => {
-        await copyChild('copy-relative-path').execute!(ctxOf(['/units/abc/cadre.md']));
+    it('preserves a selection already expressed as a DCMS link', async () => {
+        await copyChild('copy-dcms-link').execute!(ctxOf(['/units/abc/cadre.md']));
 
         expect(clipboard.setClipboard).toHaveBeenCalledWith('/units/abc/cadre.md');
     });

@@ -124,6 +124,8 @@ func translate(err error, what string) error {
 		switch pgErr.ConstraintName {
 		case "board_name_key":
 			return entities.ErrNameTaken
+		case "folder_name_key":
+			return entities.Conflictf("a folder with that name already exists")
 		case "agent_name_key":
 			return entities.ErrAgentNameTaken
 		case "runner_name_key":
@@ -131,12 +133,17 @@ func translate(err error, what string) error {
 		case "board_slug_key":
 			return entities.Conflictf("that board handle is taken")
 		case "flow_node_tag_word_key":
-			return entities.Invalidf("a card wears each tag once")
+			return entities.Invalidf("a flow node wears each tag once")
+		case "flow_node_role_id_unique":
+			return entities.Conflictf("a role with that ID already exists on this board")
 		default:
 			return entities.Conflictf("%s already exists (%s)", what, pgErr.ConstraintName)
 		}
 	case codeForeignKeyViolation:
-		// A chain onto a card that has gone, a task for a card that is not there: all of them are
+		if pgErr.ConstraintName == "board_folder_fk" {
+			return entities.NotFoundf("board folder")
+		}
+		// A chain onto a flow node that has gone, a task for a flow node that is not there: all of them are
 		// the caller naming something absent.
 		return entities.NotFoundf("%s names something this store does not hold (%s)", what, pgErr.ConstraintName)
 	case codeCheckViolation:

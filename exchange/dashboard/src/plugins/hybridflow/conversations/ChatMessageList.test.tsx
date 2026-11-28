@@ -19,12 +19,11 @@ const show = (
     messages: ChatMessage[],
     folder = 'units',
     onFork?: (message: ChatMessage) => void,
-    conversationId: string | null = null,
 ) =>
     render(
         <ChatMessageList
             messages={messages} stick={stick} folder={folder}
-            conversationId={conversationId} onFork={onFork}
+            conversationId={null} onFork={onFork}
         />,
         { workerClient: workerClient as any },
     );
@@ -261,7 +260,7 @@ describe('ChatMessageList — copying a message as markdown', () => {
         show([{ id: 'm-user', role: 'user', content: typed }]);
 
         expect(await copy()).toBe(typed);
-        await waitFor(() => expect(document.querySelector('.anticon-check')).toBeTruthy());
+        expect(screen.getByText('Copied')).toHaveAttribute('aria-live', 'polite');
     });
 
     it('puts a reply on the clipboard as its prose in order, without the reasoning and tool calls between', async () => {
@@ -323,33 +322,6 @@ describe('ChatMessageList — forking from a message', () => {
         show([prompt()]);
 
         expect(forkButtons()).toHaveLength(0);
-    });
-});
-
-describe('ChatMessageList — where the conversation is kept', () => {
-    const storageLine = () => document.querySelector('.chat-conversation-storage');
-
-    it('heads the transcript with the storage path of the conversation', () => {
-        const { container } = show(
-            [{ id: 'm-user', role: 'user', content: 'Hello' }],
-            'units', undefined, 'conv-1',
-        );
-
-        const line = storageLine();
-        expect(line).toHaveTextContent('.kiao-config/conversations/conv-1');
-        expect(container.querySelector('.chat-messages-area')!.firstElementChild).toBe(line);
-    });
-
-    it('heads the empty chat too, where the id is all there is yet', () => {
-        show([], 'units', undefined, 'conv-1');
-
-        expect(storageLine()).toHaveTextContent('.kiao-config/conversations/conv-1');
-    });
-
-    it('names no storage where no conversation is selected', () => {
-        show([{ id: 'm-user', role: 'user', content: 'Hello' }]);
-
-        expect(storageLine()).toBeNull();
     });
 });
 

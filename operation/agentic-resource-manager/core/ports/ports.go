@@ -17,6 +17,10 @@ type AgentRepository interface {
 	FindAgent(ctx context.Context, id string) (*entities.Agent, error)
 	PatchAgent(ctx context.Context, id string, patch entities.AgentPatch, expected *int64, actor string) (*entities.Agent, error)
 	PublishAgent(ctx context.Context, id string, expected *int64, at time.Time, actor, confirmation string, bump entities.ReleaseBump) (*entities.Agent, error)
+	// Remote fetches the configured remote and counts its commits missing from the working tree.
+	Remote(ctx context.Context, id string) (*entities.AgentRemote, error)
+	// PullAgent fast-forwards the working tree to its remote branch.
+	PullAgent(ctx context.Context, id string) (*entities.Agent, error)
 	AgentVersions(ctx context.Context, id string) ([]entities.AgentVersion, error)
 	// DeleteAgent requires the current repository confirmation.
 	DeleteAgent(ctx context.Context, id string, confirmation string, actor string) error

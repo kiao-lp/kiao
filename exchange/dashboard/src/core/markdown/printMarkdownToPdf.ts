@@ -112,7 +112,7 @@ export async function printMarkdownToPdf(contentElement: HTMLElement, options: P
     const katexStyles = collectKatexStyles();
 
     const clone = contentElement.cloneNode(true) as HTMLElement;
-    clone.querySelectorAll('button, [class*="toolbar" i], [class*="Toolbar"], .code-copy-btn, .copy-html-btn').forEach(el => el.remove());
+    clone.querySelectorAll('button, [class*="toolbar" i], [class*="Toolbar"], .code-block-actions, .copy-html-btn').forEach(el => el.remove());
 
     clone.querySelectorAll('.archdia-viewer-container').forEach(el => {
         el.classList.add('archdia-theme-light');

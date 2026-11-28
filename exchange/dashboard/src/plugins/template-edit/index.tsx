@@ -15,9 +15,8 @@ import iconImg from './template-icon.svg';
 import { TemplatePersistenceProvider } from './TemplatePersistence-ctx';
 import { TemplateStatusBar, TemplateEditMode } from './TemplateStatusBar';
 import { useTemplatePersistenceContext } from './TemplatePersistence-ctx';
-import { TemplateCollectionV0 } from '@kiao-dashboard-kit/template-lang';
+import { TEMPLATE_EXTENSION, TemplateCollectionV0 } from '@kiao-dashboard-kit/template-lang';
 import { TemplateCreationPlugin } from './TemplateCreationPlugin';
-import { TEMPLATE_EXTENSION } from './instantiationTarget';
 
 const TemplateEditor = lazyComponent(() => import('./TemplateEditor').then(m => ({ default: m.TemplateEditor })));
 const TemplateEmbed = lazyComponent(() => import('./components/TemplateEmbed').then(m => ({ default: m.TemplateEmbed })));

@@ -31,7 +31,7 @@ export interface ViewStateFile {
     global: Record<string, ViewStateScope | unknown>;
     /** Keyed by folder path, e.g. the file browser's per-folder view mode. */
     folders: Record<string, ViewStateScope>;
-    /** Keyed by store-relative file path. */
+    /** Keyed by file path relative to the DCMS root. */
     files: Record<string, FileViewState>;
 }
 

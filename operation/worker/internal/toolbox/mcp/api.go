@@ -1,10 +1,12 @@
 package mcp
 
 import (
+	"fmt"
 	"kiao/worker/internal/core/equipment"
 	"kiao/worker/internal/core/filesystem"
 	toolcatalog "kiao/worker/internal/toolbox/catalog"
 	"os"
+	"os/exec"
 	"strings"
 )
 
@@ -16,42 +18,60 @@ import (
 // was never staged — is left out rather than named: a turn spawned against a command that does not
 // exist gets a server that fails to start, on the CLI's own stderr, which is not where anyone looks.
 func (s *Registry) MCPServers() []equipment.MCPServer {
+	servers, _ := s.MCPBindings()
+	return servers
+}
+
+func (s *Registry) MCPBindings() ([]equipment.MCPServer, []equipment.MCPDiagnostic) {
 	var servers []equipment.MCPServer
+	var diagnostics []equipment.MCPDiagnostic
 	for _, id := range s.ledger.EnabledServers() {
 		comp, ok := s.catalog.Get(id)
 		if !ok || comp.Kind != toolcatalog.KindMCP {
 			continue
 		}
-		server, ok := s.ServerFor(comp)
-		if !ok {
+		server, err := s.resolveServer(comp)
+		if err != nil {
+			diagnostics = append(diagnostics, equipment.MCPDiagnostic{Server: comp.Server, Stage: "runtime", Message: err.Error()})
 			continue
 		}
 		servers = append(servers, server)
 	}
-	return servers
+	return servers, diagnostics
 }
 
-// serverFor resolves one component to the declaration a turn is handed, or answers false when it
-// cannot be run here.
 func (s *Registry) ServerFor(comp toolcatalog.Component) (equipment.MCPServer, bool) {
+	server, err := s.resolveServer(comp)
+	return server, err == nil
+}
+
+func (s *Registry) resolveServer(comp toolcatalog.Component) (equipment.MCPServer, error) {
 	recipe, ok := comp.RecipeFor(s.cfg.Platform())
 	if !ok {
-		return equipment.MCPServer{}, false
+		return equipment.MCPServer{}, fmt.Errorf("no installation recipe for this runner")
 	}
 
 	switch recipe.Channel {
 	case toolcatalog.ChannelBundled:
 		server, ok := s.bundled[recipe.Package]
 		if !ok {
-			return equipment.MCPServer{}, false
+			return equipment.MCPServer{}, fmt.Errorf("MCP bundle does not provide %s", recipe.Package)
+		}
+		if len(server.Args) > 0 && !filesystem.FileExists(server.Args[0]) {
+			return equipment.MCPServer{}, fmt.Errorf("MCP bundle is missing %s", server.Args[0])
+		}
+		command, err := exec.LookPath(server.Command)
+		if err != nil {
+			return equipment.MCPServer{}, fmt.Errorf("command %q is unavailable on the runner: %w", server.Command, err)
 		}
 		server.Name = comp.Server
-		return server, true
+		server.Command = command
+		return server, nil
 
 	case toolcatalog.ChannelRemote:
 		token, ok := FirstSetEnv(comp.RequiresEnv)
 		if len(comp.RequiresEnv) > 0 && !ok {
-			return equipment.MCPServer{}, false
+			return equipment.MCPServer{}, fmt.Errorf("set one of %s on the runner", strings.Join(comp.RequiresEnv, ", "))
 		}
 		server := equipment.MCPServer{
 			Name: comp.Server,
@@ -64,12 +84,15 @@ func (s *Registry) ServerFor(comp toolcatalog.Component) (equipment.MCPServer, b
 			// the per-turn kiao-mcp token already uses.
 			server.Headers = map[string]string{"Authorization": "Bearer ${" + token + "}"}
 		}
-		return server, true
+		return server, nil
 
 	default:
 		entry, ok := s.ledger.Get(comp.ID)
-		if !ok || !entry.Installed || entry.Command == "" || !filesystem.FileExists(entry.Command) {
-			return equipment.MCPServer{}, false
+		if !ok || !entry.Installed || entry.Command == "" {
+			return equipment.MCPServer{}, fmt.Errorf("install %s on the runner", comp.ID)
+		}
+		if !filesystem.FileExists(entry.Command) {
+			return equipment.MCPServer{}, fmt.Errorf("command is missing: %s", entry.Command)
 		}
 		server := equipment.MCPServer{
 			Name:    comp.Server,
@@ -85,7 +108,7 @@ func (s *Registry) ServerFor(comp toolcatalog.Component) (equipment.MCPServer, b
 				server.Env[k] = s.cfg.ExpandTokens(v)
 			}
 		}
-		return server, true
+		return server, nil
 	}
 }
 

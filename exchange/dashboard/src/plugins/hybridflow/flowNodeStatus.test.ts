@@ -32,8 +32,9 @@ describe('reading where a flow node stands', () => {
 });
 
 describe('what may be played', () => {
-    it('plays a ready flow node', () => {
+    it('plays ready and done flow nodes', () => {
         expect(canPlay('ready')).toBe(true);
+        expect(canPlay('done')).toBe(true);
     });
 
     it('leaves every other flow node alone', () => {
@@ -43,14 +44,13 @@ describe('what may be played', () => {
         expect(canPlay('running')).toBe(false);
         expect(canPlay('waiting-refresh')).toBe(false);
         expect(canPlay('interrupted')).toBe(false);
-        expect(canPlay('done')).toBe(false);
         expect(canPlay('error')).toBe(false);
     });
 
-    it('offers work on a human task that is to do or in progress', () => {
+    it('offers work on a human task that is to do, in progress or done', () => {
         expect(canWorkOn('todo')).toBe(true);
         expect(canWorkOn('running')).toBe(true);
         expect(canWorkOn('ready')).toBe(false);
-        expect(canWorkOn('done')).toBe(false);
+        expect(canWorkOn('done')).toBe(true);
     });
 });

@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { Button, Dropdown, theme } from 'antd';
+import { IconButton } from '@kiao-dashboard-core';
+import { Dropdown, theme } from 'antd';
 import { OrderedListOutlined } from '@ant-design/icons';
 import { markdownHeadings, type MarkdownHeading } from './tableOfContents';
 
@@ -83,10 +84,8 @@ export const TableOfContentsMenu: React.FC<TableOfContentsMenuProps> = ({ value,
                 </div>
             )}
         >
-            <Button
-                aria-label="Table of Contents"
-                type="text"
-                size="small"
+            <IconButton
+                label="Table of Contents"
                 icon={<OrderedListOutlined />}
                 disabled={headings.length === 0}
                 style={{ opacity: headings.length === 0 ? 0.5 : 1 }}

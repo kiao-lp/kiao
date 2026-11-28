@@ -21,7 +21,7 @@ context and echoes it as `X-Request-Id`; `httpkit.TraceMiddleware` logs one stru
 text with per-subsystem `component=` loggers, to stdout (journald under systemd).
 
 **Graceful shutdown** (`app/main.go`). On `SIGINT`/`SIGTERM` (systemd stop) the service stops accepting
-connections, stops running agent turns, and drains in-flight requests within a 20 s grace
+connections, stops active turns, and drains in-flight requests within a 20 s grace
 window. It sets `ReadHeaderTimeout` and `IdleTimeout` but **no** `ReadTimeout`/`WriteTimeout` —
 those would abort large up/downloads and the long-lived `/ws/hybridflow-runner` socket, which are legitimate.
 

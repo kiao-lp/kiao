@@ -15,9 +15,9 @@ import (
 // surface (`--permission-prompt-tool stdio`): in manual it is what makes the CLI ask instead of
 // auto-denying, and in bypass — where nothing is asked about tool calls — it is what keeps
 // AskUserQuestion on the model's tool list, since a CLI with nowhere to ask does not offer it. It
-// It also pins the two flags a working directory below the store root rests on: `--setting-sources`,
+// It also pins the two flags a working directory below the DCMS root rests on: `--setting-sources`,
 // without which a `.claude/settings.json` pulled into the store would run hooks as the service user,
-// and `--add-dir` for the store root, which is what keeps the rest of the store reachable from a
+// and `--add-dir` for the DCMS root, which is what keeps the rest of the store reachable from a
 // turn scoped to one folder of it.
 func TestClaudeArgs(t *testing.T) {
 	joined := func(args []string) string { return strings.Join(args, " ") }
@@ -130,10 +130,10 @@ func TestClaudeArgs(t *testing.T) {
 	}
 
 	if rootless := joined(claudeArgs(run(runnerconfig.PermissionModeBypass))); strings.Contains(rootless, "--add-dir") {
-		t.Errorf("args = %q, an unresolvable store root must omit the flag entirely", rootless)
+		t.Errorf("args = %q, an unresolvable DCMS root must omit the flag entirely", rootless)
 	}
 	withRoot := run(runnerconfig.PermissionModeBypass)
-	withRoot.storeRoot = "/store"
+	withRoot.dcmsRoot = "/store"
 	if got := joined(claudeArgs(withRoot)); !strings.Contains(got, "--add-dir /store") {
 		t.Errorf("args = %q, want the whole store reachable from a turn scoped to one folder", got)
 	}
@@ -163,14 +163,14 @@ func TestPermissionInputSummary(t *testing.T) {
 // prompt rather than added to the prompt text so that it is stated once per turn instead of once per
 // message, and so that it stays out of the transcript the user reads back.
 func TestClaudeArgsCarriesBriefing(t *testing.T) {
-	args := claudeArgs(claudeRun{model: "opus", effort: "high", permissionMode: runnerconfig.PermissionModeManual, storeRoot: "/srv/store"})
+	args := claudeArgs(claudeRun{model: "opus", effort: "high", permissionMode: runnerconfig.PermissionModeManual, dcmsRoot: "/srv/store"})
 
 	for i, arg := range args {
 		if arg != "--append-system-prompt" {
 			continue
 		}
 		if i+1 >= len(args) || args[i+1] != briefing.HarnessBriefing("/srv/store") {
-			t.Fatalf("--append-system-prompt = %q, want the briefing for this store root", args[i+1:])
+			t.Fatalf("--append-system-prompt = %q, want the briefing for this DCMS root", args[i+1:])
 		}
 		return
 	}
@@ -181,7 +181,7 @@ func TestClaudeArgsCarriesBriefing(t *testing.T) {
 // under the briefing.
 func TestClaudeArgsAppendsStandingInstructions(t *testing.T) {
 	args := claudeArgs(claudeRun{model: "opus", effort: "high", permissionMode: runnerconfig.PermissionModeManual,
-		storeRoot: "/srv/store", instructions: "Be terse."})
+		dcmsRoot: "/srv/store", instructions: "Be terse."})
 
 	for i, arg := range args {
 		if arg != "--append-system-prompt" {

@@ -4,18 +4,18 @@ document:
   role: PRIMARY_SOURCE
 ---
 
-# Editing cards
+# Editing flow nodes
 
 [Board guide](../README.md)
 
 ## Editing
 
-A click opens the Node panel. It edits through `FlowNodeEditing-ctx` and writes individual
-fields. `FlowNodeControls` provides the controls, arranged vertically in the panel.
+Click a card to open its flow node in the **Flow node** panel. `FlowNodeEditing-ctx` writes
+individual fields and `FlowNodeControls` provides the controls, arranged vertically in the panel.
 Editing requires no Apply step.
 
 The board tracks openings with `openingId`, so reopening the same node still updates the
-panel. A click selects the node and reveals the panel.
+panel. A click selects the card and reveals the panel.
 
 ### Creating and typing
 
@@ -24,7 +24,7 @@ Canvas creation uses the selected kind, opens an unnamed node and requests title
 steal focus. An AI task asks for its agent before creation.
 Effort and folder remain unset; see [settings](settings.md).
 
-For tasks, the Node panel has **Spec**, **Options** and **Result** tabs to the left of the
+For tasks, the **Flow node** panel has **Spec**, **Options** and **Result** tabs to the left of the
 status menu, template menu and Archive. The status symbol opens the list of states and stays
 available on every tab. Spec shows the title, folder, description, output schema and success criteria
 in that order. The description is a plain text box, dictated into with the microphone beside the
@@ -44,18 +44,18 @@ it to other values' choices. A **Note** edits Markdown displayed directly on the
 
 ### Files and images
 
-Dropping a store file into the task description inserts a store-root Markdown link at the
-caret. Pasting an image saves it to the chosen store folder (the board's folder by
-default) and inserts a store-root image link at the caret, on a block of its own. The preview and
-[runner](playing-flow-nodes.md) resolve those links to the stored image; the turn receives its
-actual path.
+Dropping a document into the task description inserts a Markdown link with a DCMS link as
+its destination. Pasting an image saves it to the chosen folder (the board's folder by
+default) and inserts an image on its own line with a DCMS link as the source. The preview and
+runner resolve the image, and the turn receives its absolute path on the worker.
+[Playing flow nodes](playing-flow-nodes.md)
 
 The toolbar offers the [template menu](flow-node-templates.md). Instantiation changes
 the description through the same write path.
 
 ### Panel lifetime
 
-Selecting a node shows it in the Node panel; the panel's draft outlives a hidden toolbar tab.
+Selecting a card opens its flow node in the **Flow node** panel; the panel's draft outlives a hidden toolbar tab.
 Covered template forms stay mounted. There is no mask or focus trap; the file tree
 and chat panels remain usable.
 
@@ -75,8 +75,8 @@ live node on the board uses. See [clipboard and archive](clipboard-and-archive.m
 Ctrl-click (Cmd-click on macOS) toggles a mark. Escape clears marks; a plain click starts again
 with one card. Marking does not open another editor or discard its draft.
 
-**A gesture on a marked node targets the visible marked set; a gesture on an unmarked node
-targets that node only.** This applies to drag, Delete, Copy, Cut, Move and Archive. Menus state
+**A gesture on a marked card targets the visible marked set. An unmarked card targets its own
+flow node.** This applies to drag, Delete, Copy, Cut, Move and Archive. Menus state
 the affected count. Clone always targets one node.
 
 Filtered-out nodes never participate, even if marked. Batch insertion and removal use one
@@ -94,7 +94,10 @@ receive chain links at their old positions.
 | Human | Title, tags and status, with a person marker |
 | Shutdown | Thick event circle with power symbol, no outgoing knob |
 | Scheduler | Clock event, wait label and direct Play/Stop when eligible; title stays editable in the panel |
-| Gateway | Plus diamond and branch count |
+| Bitbucket PR Status | Pull request event with target status and direct Play/Stop when eligible |
+| Bitbucket Commit Status | Commit event with target build status and direct Play/Stop when eligible |
+| Parallel gateway | Plus diamond and branch count |
+| Exclusive gateway | Cross diamond and ordered routes in the panel |
 | Note | Rendered Markdown |
 | Value | Title with database symbol |
 

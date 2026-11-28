@@ -8,7 +8,7 @@ import (
 	"kiao/hybridflow-store/adapters/httpapi"
 )
 
-func TestNoteAndValueCardsOverHTTP(t *testing.T) {
+func TestNoteAndValueFlowNodesOverHTTP(t *testing.T) {
 	handler, _ := serve(t)
 	call(t, handler, "POST", "/boards", `{"name":"Major"}`)
 	w := call(t, handler, "POST", "/boards/major/flow-nodes",

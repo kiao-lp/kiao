@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// ErrAgentUnknown allows legacy engine/model fallback; other lookup errors stop play.
+// ErrAgentUnknown allows legacy harness/model fallback; other lookup errors stop play.
 var ErrAgentUnknown = errors.New("unknown agent")
 
 type AgentResolver interface {
@@ -50,10 +50,10 @@ func (agent *ManagedAgent) ActivePublication() (*ManagedAgentVersion, error) {
 	return agent.Published, nil
 }
 
-// ErrRunnerUnknown makes pinned-card refusals identify the missing runner by id.
+// ErrRunnerUnknown makes refusals for pinned flow nodes identify the missing runner by id.
 var ErrRunnerUnknown = errors.New("unknown runner")
 
-// Without a resolver, pinned-card refusals use ids rather than runner names.
+// Without a resolver, refusals for pinned flow nodes use ids rather than runner names.
 type RunnerResolver interface {
 	Runner(id string) (*ManagedRunner, error)
 }

@@ -51,10 +51,45 @@ placeholder-like text in a received string stays data. Missing input or a missin
 the task as an error before spending a turn. Only outputs from completed, visible predecessors
 are read. A task played directly can use its predecessor's last successful output.
 
-Schedulers pass their predecessor's output through. A Gateway with one predecessor passes
-that value through; a join exposes an array of predecessor outputs in board order, with `null`
-for a branch with no export. A successor can read `{{input.0.message}}`. An entirely untyped
-join has no input. Every outgoing branch receives the Gateway's stored output.
+A Scheduler or Bitbucket status event takes its predecessor's output when it starts waiting
+and forwards that value on success. An exclusive gateway takes the output from the predecessor
+that activated it and forwards that value to the selected successor. A direct Play on the gateway
+uses the most recently completed predecessor. A limiter forwards its input to the selected successor.
+
+A parallel gateway with one predecessor forwards that value unchanged. A join produces an
+output when at least one predecessor has exported a value. Each outgoing branch receives the
+same array of predecessor outputs in board order, with `null` for a branch with no export.
+A successor can read `{{input.0.message}}`.
+
+## Roles
+
+The store keeps a Role flow node's title, board-local `roleId`, optional `description` and ordered `people` text lines.
+The flow node has its own stable UUID. PostgreSQL allows one active Role flow node per nonempty role ID
+on each board. The runner resolves `{{role.ID}}` from the current board snapshot in the same
+pass as input and workflow references, joining people with a comma and a space. Exclusive
+gateways bind the same strings to the CEL `role` map. Dashboard uses the same lookup on the
+canvas and in the task panels.
+
+## Workflow values
+
+The workflow group owns a shared JSON object. The runner reads the group from the flow node's
+membership and adds the workflow's current `id` and `name` as read-only fields. The runner
+inserts workflow values into an AI task's prompt only through placeholders. For example,
+`{{currentWorkflow.message}}` inserts one field and `{{currentWorkflow}}` inserts the whole
+object. Both `currentWokflow` and `currentWorkflow` resolve in the same pass as `input`.
+Dashboard resolves workflow placeholders in the Human task's Work panel. Exclusive gateways
+bind the object in CEL.
+
+A `currentWokflow.<field>` fence in the AI task description stages a value that its prompt can
+use immediately. Fences in the final assistant message add or overwrite staged fields. The
+runner sends the merged field updates and the workflow ID with the completion. The store
+atomically merges them with the workflow's existing values and records the flow node's status and
+output. The transaction checks the flow node's claim and workflow membership.
+
+Concurrent completions can update different fields in the same workflow. The later committed
+update wins for a shared field. The worker's spool queues the workflow update with the
+completion and makes it visible in its cached board during an outage. Each workflow starts
+with an empty set of shared task values and keeps them across plays.
 
 Dashboard edits `outputType` in both task editors and displays the last exported JSON. The
 description on the board keeps its placeholders; interpolation changes only the sent prompt.

@@ -1,0 +1,20 @@
+.surface {
+    position: relative;
+    color: var(--text);
+    cursor: pointer;
+    user-select: none;
+    --card-surface-fill: var(--diagram-box-fill);
+}
+
+.surface:hover {
+    --card-surface-fill: var(--state-pointed-bg);
+}
+
+.surface[data-selected] {
+    --card-surface-fill: var(--state-selected-bg);
+}
+
+.surface:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}

@@ -10,22 +10,21 @@ Diagrams render. A fenced code block tagged mermaid or plantuml is drawn as the 
 describes, as is one tagged archdia, graph or svg. Reach for one where a diagram carries a structure
 better than a paragraph does, and not otherwise.
 
-Links to the store open in place. Refer to a file of the store as a markdown link whose destination
-is that file's path from the store root, with a leading slash — [cadre.md](/units/abc/cadre.md) —
-and the reader opens it in the CMS in one click. Percent-encode a space in the path, or the
-destination ends at it. A file outside the store has no such link: name it as plain text.`
+Use a DCMS link as the Markdown destination for a document or folder in DCMS. It starts with a
+single slash and resolves from the DCMS root. For example, [cadre.md](/units/abc/cadre.md) opens
+the document in place. Percent-encode spaces as %20. Use plain text for paths outside DCMS.`
 
-// harnessBriefing anchors store links to this deployment; omit the anchor if unresolved.
-func HarnessBriefing(storeRoot string) string {
-	return HarnessBriefingWith(storeRoot, "")
+// HarnessBriefing shows how to derive a DCMS link from the worker's absolute path.
+func HarnessBriefing(dcmsRoot string) string {
+	return HarnessBriefingWith(dcmsRoot, "")
 }
 
 // Put the shared surface briefing before the managed agent's standing instructions.
-func HarnessBriefingWith(storeRoot, instructions string) string {
+func HarnessBriefingWith(dcmsRoot, instructions string) string {
 	briefing := renderingBriefing
-	if root := strings.TrimSpace(storeRoot); root != "" {
-		briefing += "\n\nThe store root is " + root + ", so the file you read at " +
-			root + "/units/abc/cadre.md is linked as /units/abc/cadre.md."
+	if root := strings.TrimSpace(dcmsRoot); root != "" {
+		briefing += "\n\nThe DCMS root is " + root + ", so the file you read at " +
+			root + "/units/abc/cadre.md has the DCMS link /units/abc/cadre.md."
 	}
 	if orders := strings.TrimSpace(instructions); orders != "" {
 		briefing += "\n\n" + orders

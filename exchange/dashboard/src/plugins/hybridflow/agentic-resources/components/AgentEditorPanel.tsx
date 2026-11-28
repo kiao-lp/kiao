@@ -1,20 +1,19 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AutoComplete, Button, Input, Select, message } from 'antd';
-import { Tooltip } from '@kiao-dashboard-core';
+import { Alert, AutoComplete, Button, ConfigProvider, Input, Modal, Select, message } from 'antd';
+import { CommitInput, FormField, FormFields, InProgressFeedback, Tooltip } from '@kiao-dashboard-core';
 import { useHarnessOptions } from '../../useHarnessOptions';
 import { useResourceClient } from '../Client-ctx';
-import type { AgentDependencyKind, AgentPatchDto, AgentVersionDto, NewAgentDto } from '../types';
+import type { AgentDependencyKind, AgentDto, AgentPatchDto, AgentRemoteDto, AgentVersionDto, NewAgentDto } from '../types';
 import type { ReleaseBump } from '../release';
 import { useAgents } from '../Agents-ctx';
+import { useDraftWriter } from '../../useDraftWriter';
 import { AgentDependenciesField } from './AgentDependenciesField';
-import { PublishButtons } from './PublishButtons';
+import { AgentMCPDiagnostics } from './AgentMCPDiagnostics';
 import { confirmAgentPush } from './confirmAgentPush';
-import styles from './AgentEditorPanel.module.css';
+import { ResourceEditor, useResourceOperations } from './ResourceEditor';
+import styles from './ResourceEditor.module.css';
 
-/** Panel id for the agent editor. */
-export const AGENT_EDITOR_PANEL_ID = 'agent-editor';
-
-export const HARNESS_HELP = 'The execution engine; it must be available on the runner.';
+export const HARNESS_HELP = 'Runs turns and provides model and permission options. Must be available on the runner.';
 
 export const INSTRUCTIONS_HELP = 'Standing instructions included with every turn.';
 
@@ -29,7 +28,7 @@ const FALLBACK_HARNESSES = [
 ];
 
 /** Harnesses and models offered by the local runner. */
-export const useAgentCatalogue = () => {
+export const useAgentHarnessOptions = () => {
     const { harnesses: offered, optionsFor } = useHarnessOptions();
     return useMemo(() => {
         const harnesses = [...offered.map(entry => ({ value: entry.value, label: entry.label })),
@@ -46,10 +45,10 @@ export const useAgentCatalogue = () => {
 
 /** Agent editor panel. */
 export const AgentEditorPanel: React.FC<{ agentId: string }> = ({ agentId }) => {
-    const { agents, error, reload, patch, publish } = useAgents();
+    const { agents, error, reload, patch, publish, pull } = useAgents();
     const client = useResourceClient();
     const agent = agents.find(one => one.id === agentId) ?? null;
-    const { harnesses, modelsFor, profilesFor, needsProfile, harnessLabelOf } = useAgentCatalogue();
+    const { harnesses, modelsFor, profilesFor, needsProfile, harnessLabelOf } = useAgentHarnessOptions();
 
     const [name, setName] = useState(agent?.name ?? '');
     const [model, setModel] = useState(agent?.model ?? '');
@@ -58,22 +57,18 @@ export const AgentEditorPanel: React.FC<{ agentId: string }> = ({ agentId }) => 
     const [versions, setVersions] = useState<AgentVersionDto[]>([]);
     const [selectedVersion, setSelectedVersion] = useState('draft');
     const [checkingPublication, setCheckingPublication] = useState(true);
-    const [publishingBump, setPublishingBump] = useState<ReleaseBump | null>(null);
-    const publishing = publishingBump !== null;
-    const [savingDependency, setSavingDependency] = useState<AgentDependencyKind | null>(null);
+    const [checkingRemote, setCheckingRemote] = useState(true);
+    const [remote, setRemote] = useState<AgentRemoteDto | null>(null);
+    const [dependencyRevision, setDependencyRevision] = useState(0);
     const [localDependencies, setLocalDependencies] = useState({ skills: false, mcp: false });
     const updateLocalDependencies = useCallback((kind: AgentDependencyKind, hasLocal: boolean) => {
         setLocalDependencies(current => current[kind] === hasLocal ? current : { ...current, [kind]: hasLocal });
     }, []);
-    const writing = useRef<Promise<boolean> | null>(null);
-    const pending = useRef<AgentPatchDto>({});
-    const timer = useRef<ReturnType<typeof setTimeout>>();
-    const flushPending = useRef<() => Promise<boolean>>(async () => true);
-    useEffect(() => {
-        const flush = () => { void flushPending.current(); };
-        window.addEventListener('beforeunload', flush);
-        return () => { window.removeEventListener('beforeunload', flush); flush(); };
-    }, []);
+    const writer = useDraftWriter<AgentPatchDto>(change => patch(agentId, change), cause => {
+        message.error(`The agent could not be changed: ${cause instanceof Error ? cause.message : cause}`);
+    });
+    const operations = useResourceOperations(writer.flush);
+    const { busy } = operations;
     useEffect(() => {
         let current = true;
         void reload().then(() => { if (current) setCheckingPublication(false); });
@@ -85,17 +80,49 @@ export const AgentEditorPanel: React.FC<{ agentId: string }> = ({ agentId }) => 
             .catch(cause => { if (current) message.error(String(cause)); });
         return () => { current = false; };
     }, [client, agentId, agent?.published?.version]);
+    const remoteRead = useRef(0);
+    const remotePending = useRef(false);
+    const readRemote = useCallback(async (reset = false) => {
+        if (!client) {
+            setCheckingRemote(false);
+            return;
+        }
+        const read = ++remoteRead.current;
+        remotePending.current = true;
+        if (reset) setRemote(null);
+        setCheckingRemote(true);
+        try {
+            const state = await client.agentRemote(agentId);
+            if (read === remoteRead.current) setRemote(state);
+        } catch (cause) {
+            if (read === remoteRead.current) setRemote({ hasRemote: false, behind: 0, problem: cause instanceof Error ? cause.message : String(cause) });
+        } finally {
+            if (read === remoteRead.current) {
+                remotePending.current = false;
+                setCheckingRemote(false);
+            }
+        }
+    }, [client, agentId]);
     useEffect(() => {
-        if (!('name' in pending.current)) setName(agent?.name ?? '');
+        void readRemote();
+        const timer = setInterval(() => { if (!remotePending.current) void readRemote(); }, 30000);
+        return () => {
+            clearInterval(timer);
+            remoteRead.current++;
+            remotePending.current = false;
+        };
+    }, [readRemote]);
+    useEffect(() => {
+        if (!writer.hasPending('name')) setName(agent?.name ?? '');
     }, [agent?.name]);
     useEffect(() => {
-        if (!('model' in pending.current)) setModel(agent?.model ?? '');
+        if (!writer.hasPending('model')) setModel(agent?.model ?? '');
     }, [agent?.model]);
     useEffect(() => {
-        if (!('description' in pending.current)) setDescription(agent?.description ?? '');
+        if (!writer.hasPending('description')) setDescription(agent?.description ?? '');
     }, [agent?.description]);
     useEffect(() => {
-        if (!('instructions' in pending.current)) setInstructions(agent?.instructions ?? '');
+        if (!writer.hasPending('instructions')) setInstructions(agent?.instructions ?? '');
     }, [agent?.instructions]);
 
     const offered = useMemo(() => {
@@ -108,77 +135,46 @@ export const AgentEditorPanel: React.FC<{ agentId: string }> = ({ agentId }) => 
         return <div className={styles.hint}>That agent is gone from the store.</div>;
     }
 
-    const commit = async (change: AgentPatchDto, revert: () => void) => {
-        for (const key of Object.keys(change) as (keyof AgentPatchDto)[]) delete pending.current[key];
-        if (Object.keys(pending.current).length === 0) clearTimeout(timer.current);
-        const saving = Promise.resolve(writing.current).then(async () => {
-            try {
-                await patch(agent.id, change);
-                return true;
-            } catch (cause) {
-                message.error(`The agent could not be changed: ${cause instanceof Error ? cause.message : cause}`);
-                revert();
-                return false;
-            }
-        });
-        writing.current = saving;
-        try {
-            return await saving;
-        } finally {
-            if (writing.current === saving) writing.current = null;
-        }
-    };
-
-    flushPending.current = async () => {
-        clearTimeout(timer.current);
-        const change = pending.current;
-        pending.current = {};
-        return Object.keys(change).length === 0 ? (writing.current ?? true) : commit(change, () => {});
-    };
-    const schedule = (change: AgentPatchDto) => {
-        pending.current = { ...pending.current, ...change };
-        clearTimeout(timer.current);
-        timer.current = setTimeout(() => { void flushPending.current(); }, 1000);
-    };
-
     const hasLocalDependencies = localDependencies.skills || localDependencies.mcp;
+    const draftDisabled = !!agent.draftError || busy;
     const canPublish = !checkingPublication && !error && agent.hasUnpublishedChanges && !!agent.version && !agent.draftError
-        && selectedVersion === 'draft' && !publishing && !savingDependency && !hasLocalDependencies;
-
-    const publishDraft = async (bump: ReleaseBump) => {
-        if (!canPublish) return;
-        setPublishingBump(bump);
-        try {
-            if (await flushPending.current()) await confirmAgentPush(confirmation => publish(agent.id, bump, confirmation));
-        } catch (cause) {
-            message.error(`The agent could not be published: ${cause instanceof Error ? cause.message : cause}`);
-        } finally {
-            setPublishingBump(null);
-        }
-    };
+        && selectedVersion === 'draft' && !hasLocalDependencies;
+    const canPull = selectedVersion === 'draft' && !!remote?.hasRemote && remote.behind > 0;
+    const waitingForRemote = checkingRemote && !canPull;
+    let pullStatus: string | undefined;
+    if (selectedVersion === 'draft' && !busy) {
+        if (waitingForRemote) pullStatus = 'Checking Git remote…';
+        else if (remote?.problem) pullStatus = remote.problem;
+        else if (!remote?.hasRemote) pullStatus = 'No Git remote configured.';
+        else if (remote.behind === 0) pullStatus = 'No remote changes to pull.';
+    }
+    const publishDraft = (bump: ReleaseBump) => confirmAgentPush(confirmation => publish(agentId, bump, confirmation))
+        .finally(() => { void readRemote(true); });
+    const pullDraft = () => pull(agentId).finally(() => { void readRemote(true); });
 
     const historical = versions.find(version => version.version === selectedVersion);
+    const canDiagnose = historical ? !!historical.commit : !agent.draftError;
 
-    const commitName = () => {
-        const wanted = name.trim();
+    const commitName = (value: string) => {
+        const wanted = value.trim();
         if (!wanted || wanted === agent.name) {
+            writer.discard('name');
             setName(agent.name);
             return;
         }
-        void commit({ name: wanted }, () => setName(agent.name));
+        void writer.commit({ name: wanted }, () => setName(agent.name));
     };
 
     return (
-        <div className={styles.editor} data-testid="agent-editor">
-            <div className={styles.row}>
-                <Select aria-label="Agent version" value={selectedVersion} onChange={setSelectedVersion} disabled={!!savingDependency || publishing}
-                    options={[{ value: 'draft', label: agent.published?.version ? 'Draft' : 'Unpublished draft' },
-                        ...versions.flatMap(({ version }) => version ? [{ value: version, label: `Published v${version}` }] : [])]} />
-                <PublishButtons version={agent.version} disabled={!canPublish} publishing={publishingBump}
-                    onPublish={bump => void publishDraft(bump)} />
-            </div>
-            <p className={styles.meta}>{agent.repository}</p>
-            {agent.draftError && <p role="alert">Repair the APM source in Agentic resources: {agent.draftError}</p>}
+        <ResourceEditor kind="agent" repository={agent.repository} version={agent.version} operations={operations}
+            onPublish={canPublish ? publishDraft : undefined} onPull={canPull ? pullDraft : undefined}
+            checkingRemote={selectedVersion === 'draft' && !busy && waitingForRemote}
+            versionPicker={<Select aria-label="Agent version" value={selectedVersion} onChange={setSelectedVersion} disabled={busy}
+                options={[{ value: 'draft', label: agent.published?.version ? 'Draft' : 'Unpublished draft' },
+                    ...versions.flatMap(({ version }) => version ? [{ value: version, label: `Published v${version}` }] : [])]} />}>
+            {pullStatus && <span role="status" className={styles.meta}>{pullStatus}</span>}
+            {selectedVersion === 'draft' && checkingPublication && <InProgressFeedback label="Checking for publishable changes…" />}
+            {agent.draftError && <Alert type="error" title="Repair the APM source in Agentic resources (legacy)" description={agent.draftError} />}
             {selectedVersion === 'draft' && hasLocalDependencies && <p role="status">Turn off Local for all checked dependencies before publishing.</p>}
             {historical ? <div data-testid="agent-publication">
                 <p>{historical.name} · {(historical.harnesses ?? [historical.harness]).map(harnessLabelOf).join(', ')}
@@ -189,121 +185,120 @@ export const AgentEditorPanel: React.FC<{ agentId: string }> = ({ agentId }) => 
                 <p>Published {new Date(historical.publishedAt).toLocaleString()}</p>
                 <p style={{ whiteSpace: 'pre-wrap' }}>{historical.description}</p>
                 <pre style={{ whiteSpace: 'pre-wrap' }}>{historical.instructions}</pre>
-            </div> : <fieldset className={styles.draft} disabled={!!agent.draftError || publishing}>
-            <div className={styles.field}>
-                <span className={styles.label}>Name</span>
-                <Input
+            </div> : <FormFields disabled={draftDisabled}>
+            <FormField label="Name">
+                <CommitInput
+                    size="middle"
                     value={name}
                     aria-label="Agent name"
                     data-testid="agent-name"
-                    onChange={event => { setName(event.target.value); if (event.target.value.trim()) schedule({ name: event.target.value.trim() }); }}
-                    onBlur={commitName}
-                    onPressEnter={commitName}
+                    onDraftChange={value => {
+                        setName(value);
+                        const wanted = value.trim();
+                        if (wanted) writer.schedule({ name: wanted });
+                        else writer.discard('name');
+                    }}
+                    onCommit={commitName}
                 />
-            </div>
-            <div className={styles.field}>
-                <span className={styles.label}>Description</span>
+            </FormField>
+            <FormField label="Description">
                 <Input.TextArea
                     value={description}
                     placeholder="When to choose this agent…"
                     autoSize={{ minRows: 3, maxRows: 12 }}
-                    onChange={event => { setDescription(event.target.value); schedule({ description: event.target.value.trim() }); }}
+                    onChange={event => { setDescription(event.target.value); writer.schedule({ description: event.target.value.trim() }); }}
                     onBlur={() => {
                         const wanted = description.trim();
                         if (wanted === (agent.description ?? '')) return;
-                        void commit({ description: wanted },
+                        void writer.commit({ description: wanted },
                             () => setDescription(agent.description ?? ''));
                     }}
                     aria-label="Agent description"
                     data-testid="agent-description"
                 />
-            </div>
-            <div className={styles.field}>
-                <Tooltip title={INSTRUCTIONS_HELP}>
-                    <span className={styles.label}>Standing instructions</span>
-                </Tooltip>
+            </FormField>
+            <FormField label={<Tooltip title={INSTRUCTIONS_HELP}><span>Standing instructions</span></Tooltip>}>
                 <Input.TextArea
                     value={instructions}
                     placeholder="Standing instructions…"
                     autoSize={{ minRows: 4, maxRows: 16 }}
-                    onChange={event => { setInstructions(event.target.value); schedule({ instructions: event.target.value.trim() }); }}
+                    onChange={event => { setInstructions(event.target.value); writer.schedule({ instructions: event.target.value.trim() }); }}
                     onBlur={() => {
                         const wanted = instructions.trim();
                         if (wanted === (agent.instructions ?? '')) return;
-                        void commit({ instructions: wanted },
+                        void writer.commit({ instructions: wanted },
                             () => setInstructions(agent.instructions ?? ''));
                     }}
                     aria-label="Standing instructions"
                     data-testid="agent-instructions"
                 />
-            </div>
+            </FormField>
             {agent.harnesses?.length ? (
-                <div className={styles.field}>
-                    <span className={styles.label}>Supported harnesses</span>
+                <FormField label="Supported harnesses">
                     <span>{agent.harnesses.map(harnessLabelOf).join(', ')}</span>
-                </div>
+                </FormField>
             ) : <>
-            {needsProfile(agent.harness) && <div className={styles.field}>
-                <span className={styles.label}>Execution profile</span>
-                <AutoComplete aria-label="Agent profile" disabled={publishing} value={agent.profileId ?? ''}
+            {needsProfile(agent.harness) && <FormField label="Execution profile">
+                <AutoComplete aria-label="Agent profile" disabled={draftDisabled} value={agent.profileId ?? ''}
                     placeholder="Profile id or configured Pi default"
                     options={profilesFor(agent.harness).map(one => ({value:one.id,label:`${one.name} · ${one.id}`}))}
-                    onChange={profileId => void commit({profileId},() => {})} />
+                    onChange={profileId => void writer.commit({ profileId })} />
                 <span>{profilesFor(agent.harness).find(one => one.id === agent.profileId)?.message
                     ?? (agent.profileId && !profilesFor(agent.harness).some(one => one.id === agent.profileId) ? 'Profile unavailable on this runner; reference preserved.' : '')}</span>
-            </div>}
+            </FormField>}
             <div className={styles.row}>
-                <div className={`${styles.field} ${styles.grow}`}>
-                    <Tooltip title={HARNESS_HELP}>
-                        <span className={styles.label}>Harness</span>
-                    </Tooltip>
+                <FormField className={styles.grow} label={<Tooltip title={HARNESS_HELP}><span>Harness</span></Tooltip>}>
                     <Select
-                        disabled={publishing}
+                        disabled={draftDisabled}
                         value={agent.harness}
                         options={offered}
-                        onChange={harness => void commit({ harness }, () => { /* drawn from the agent */ })}
+                        onChange={harness => void writer.commit({ harness })}
                         aria-label="Harness"
                         data-testid="agent-harness"
                         popupMatchSelectWidth={false}
                     />
-                </div>
-                <div className={`${styles.field} ${styles.grow}`}>
-                    <span className={styles.label}>Model</span>
+                </FormField>
+                <FormField className={styles.grow} label="Model">
                     <AutoComplete
-                        disabled={publishing}
+                        disabled={draftDisabled}
                         value={model}
                         options={modelsFor(agent.harness,agent.profileId)}
                         placeholder="Default model"
-                        onChange={value => { setModel(value); schedule({ model: value.trim() }); }}
+                        onChange={value => { setModel(value); writer.schedule({ model: value.trim() }); }}
                         onBlur={() => {
                             const wanted = model.trim();
                             if (wanted === (agent.model ?? '')) return;
-                            void commit({ model: wanted }, () => setModel(agent.model ?? ''));
+                            void writer.commit({ model: wanted }, () => setModel(agent.model ?? ''));
                         }}
                         aria-label="Model"
                         data-testid="agent-model"
                     />
-                </div>
+                </FormField>
             </div>
             </>}
-            <div className={styles.field}>
-                <span className={styles.label}>Default effort</span>
+            <FormField label="Default effort">
                 <Input value={agent.effort ?? ''} aria-label="Agent effort"
-                    onChange={event => void commit({ effort: event.target.value }, () => {})} />
-            </div>
+                    onChange={event => void writer.commit({ effort: event.target.value })} />
+            </FormField>
             {client && (['skills', 'mcp'] as const).map(kind => <AgentDependenciesField key={kind} agentId={agentId} client={client}
-                kind={kind} disabled={!!agent.draftError || publishing} saving={savingDependency} setSaving={setSavingDependency}
-                updateLocalDependencies={updateLocalDependencies} />)}
+                kind={kind} disabled={draftDisabled} runChange={change => { void operations.run('dependencies', change); }}
+                updateLocalDependencies={updateLocalDependencies} onChanged={() => setDependencyRevision(revision => revision + 1)} />)}
             <span aria-label="The id nodes name" className={styles.id}>{agent.id}</span>
-            </fieldset>}
-        </div>
+            </FormFields>}
+            {canDiagnose && <AgentMCPDiagnostics key={`${agentId}/${historical?.commit ?? 'draft'}`}
+                agentId={agentId} commit={historical?.commit} dependencyRevision={dependencyRevision} />}
+        </ResourceEditor>
     );
 };
 
 /** New-agent form panel. */
-export const AgentCreatorPanel: React.FC<{ reinstall?: boolean; onClose: () => void; onCreated?: (agent: import('../types').AgentDto) => void }> = ({ reinstall, onClose, onCreated }) => {
-    const { create } = useAgents();
-    const { harnesses, modelsFor, profilesFor, needsProfile } = useAgentCatalogue();
+const AgentCreatorPanel: React.FC<{
+    reinstall?: boolean;
+    saving: boolean;
+    onClose: () => void;
+    onSubmit: (draft: NewAgentDto) => Promise<void>;
+}> = ({ reinstall, saving, onClose, onSubmit }) => {
+    const { harnesses, modelsFor, profilesFor, needsProfile } = useAgentHarnessOptions();
     const [name, setName] = useState('');
     const [harness, setHarness] = useState(harnesses[0]?.value ?? '');
     const [model, setModel] = useState('');
@@ -311,8 +306,8 @@ export const AgentCreatorPanel: React.FC<{ reinstall?: boolean; onClose: () => v
     const [profileId,setProfileId]=useState('');
     const [description, setDescription] = useState('');
     const [instructions, setInstructions] = useState('');
-    const [saving, setSaving] = useState(false);
     const [repository, setRepository] = useState('');
+    const [error, setError] = useState('');
 
     const gitRepository = repository.trim();
     const draft: NewAgentDto = {
@@ -324,16 +319,13 @@ export const AgentCreatorPanel: React.FC<{ reinstall?: boolean; onClose: () => v
 
     const createAgent = () => {
         if (!canSubmit) return;
-        setSaving(true);
-        void create(draft)
-            .then(agent => { onClose(); onCreated?.(agent); })
-            .catch(cause => message.error(
-                `The agent could not be ${reinstall ? 'reinstalled' : 'created'}: ${cause instanceof Error ? cause.message : cause}`))
-            .finally(() => setSaving(false));
+        setError('');
+        void onSubmit(draft).catch(cause => setError(cause instanceof Error ? cause.message : String(cause)));
     };
 
     return (
         <div className={styles.editor} data-testid="agent-creator">
+            {error && <Alert type="error" title={error} />}
             <div className={styles.field}>
                 <span className={styles.label}>Git repository URL or path</span>
                 <Input autoFocus value={repository} aria-label="Git repository URL or path" placeholder="https://github.com/owner/agent.git"
@@ -384,11 +376,11 @@ export const AgentCreatorPanel: React.FC<{ reinstall?: boolean; onClose: () => v
                         data-testid="new-agent-model"
                     />
                 </div>
-            </div>
-            <div className={styles.field}>
-                <span className={styles.label}>Default effort</span>
-                <Input value={effort} aria-label="New agent effort"
-                    onChange={event => setEffort(event.target.value)} />
+                <div className={`${styles.field} ${styles.grow}`}>
+                    <span className={styles.label}>Default effort</span>
+                    <Input value={effort} aria-label="New agent effort"
+                        onChange={event => setEffort(event.target.value)} />
+                </div>
             </div>
             <div className={styles.field}>
                 <span className={styles.label}>Description</span>
@@ -416,11 +408,43 @@ export const AgentCreatorPanel: React.FC<{ reinstall?: boolean; onClose: () => v
             <div className={styles.actions}>
                 <Button onClick={onClose}>Cancel</Button>
                 <Button type="primary" onClick={createAgent}
-                    disabled={!canSubmit}
+                    disabled={!canSubmit} loading={saving} aria-busy={saving}
                     data-testid="create-agent">
                     {reinstall ? 'Reinstall' : 'Create'}
                 </Button>
             </div>
         </div>
+    );
+};
+
+export const AgentCreationModal: React.FC<{ open: boolean; reinstall?: boolean; onClose: () => void; onCreated?: (agent: AgentDto) => void }> = ({ open, reinstall, onClose, onCreated }) => {
+    const { create } = useAgents();
+    const { componentDisabled } = ConfigProvider.useConfig();
+    const [saving, setSaving] = useState(false);
+    const submitting = useRef(false);
+
+    const submit = async (draft: NewAgentDto) => {
+        if (submitting.current) return;
+        submitting.current = true;
+        setSaving(true);
+        try {
+            const agent = await create(draft);
+            onClose();
+            onCreated?.(agent);
+        } finally {
+            submitting.current = false;
+            setSaving(false);
+        }
+    };
+
+    const dismiss = () => { if (!submitting.current) onClose(); };
+
+    return (
+        <Modal title={reinstall ? 'Reinstall agent' : 'New agent'} width={reinstall ? undefined : 720}
+            open={open} onCancel={dismiss} closable={!saving} footer={null} destroyOnHidden>
+            <ConfigProvider componentDisabled={saving || componentDisabled}>
+                <AgentCreatorPanel reinstall={reinstall} saving={saving} onClose={dismiss} onSubmit={submit} />
+            </ConfigProvider>
+        </Modal>
     );
 };

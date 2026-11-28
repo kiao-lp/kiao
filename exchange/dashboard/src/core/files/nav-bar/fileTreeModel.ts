@@ -1,6 +1,6 @@
 import { FileDto, parentPath } from 'src/core/files/service';
 
-/** Store root path. Parent of top-level entries. */
+/** DCMS root path. Parent of top-level entries. */
 export const ROOT = '';
 
 /** Synthetic root entry. Listings have no root entry. */

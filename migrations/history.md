@@ -1,3 +1,9 @@
+---
+document:
+  status: DRAFT
+  role: PRIMARY_SOURCE
+---
+
 # Maintained knowledge from retired base migrations
 
 These are authoring contracts and source examples, not an upgrade runner. The original scripts are
@@ -56,8 +62,8 @@ bookmark, and a file without bookmarks did not create JSON. Schema-shape transfo
 
 ## Rewrite links in their own context
 
-`lib/link-fix.js` retains worker's leading-slash token boundary rules, raw/encoded spellings and
-child suffixes. For a move `docs/id` → `docs/A title`:
+`lib/link-fix.js` matches DCMS links at token boundaries, with raw and percent-encoded spellings
+and child suffixes. A move from `docs/id` to `docs/A title` has these effects.
 
 | Before | After |
 | --- | --- |
@@ -79,7 +85,7 @@ The [legacy parser](examples/tasks-to-workflow.js) keeps headings inside fences 
 recognizes only flat YAML metadata immediately below a task heading, preserves unknown blocks,
 retains meaningful column preambles and sorts numbered columns naturally. UUIDs gave columns/cards
 identity independent of their labels. V006 filled only missing agent fields; an unfamiliar explicit
-agent was retained. V009 made only a task's `settings.folder` store-absolute, leaving prose alone.
+agent was retained. V009 converted only a task's `settings.folder` to a DCMS link.
 V010 flattened nested cards into a top-level list and attached column IDs without dropping existing
 top-level cards. V013 renamed keys in place (`tasks` → `flowNodes`, `onSuccess.task` →
 `onSuccess.flowNode`) and changed the known template directory/placeholders without reformatting

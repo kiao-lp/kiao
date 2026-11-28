@@ -1,5 +1,3 @@
-/** Accepts only the first store entry. Leaves non-store drags to the browser and stops accepted drops from reaching parent panels. */
-
 import type React from 'react';
 import { useState } from 'react';
 import { DraggedFile, holdsDraggedFiles, readDraggedFiles } from './dragPaths';
@@ -15,7 +13,12 @@ export interface FileDrop {
     dropProps: FileDropProps;
 }
 
-export const useFileDrop = (onFile: (file: DraggedFile) => void): FileDrop => {
+/** Accepts only the first entry when the field holds a single path. */
+export const useFileDrop = (onFile: (file: DraggedFile) => void): FileDrop =>
+    useFilesDrop(([file]) => onFile(file));
+
+/** Leaves non-store drags to the browser and keeps accepted drops inside the target. */
+export const useFilesDrop = (onFiles: (files: DraggedFile[]) => void): FileDrop => {
     const [dropping, setDropping] = useState(false);
 
     return {
@@ -31,11 +34,11 @@ export const useFileDrop = (onFile: (file: DraggedFile) => void): FileDrop => {
             onDragLeave: () => setDropping(false),
             onDrop: event => {
                 setDropping(false);
-                const [dropped] = readDraggedFiles(event.dataTransfer);
-                if (!dropped) return;
+                const files = readDraggedFiles(event.dataTransfer);
+                if (!files.length) return;
                 event.preventDefault();
                 event.stopPropagation();
-                onFile(dropped);
+                onFiles(files);
             },
         },
     };

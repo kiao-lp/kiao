@@ -60,8 +60,8 @@ than rebuilding it, so running two of them in a row never pays for the same work
 
 The published Git checkout includes the pinned `mcp-kiao` source under `vendor/mcp-kiao/`.
 `reference/kiao-mcp` resolves to this copy in the published checkout and to the independent
-source repository in the development checkout. The image seeds dependency repositories
-available locally under `agentic-resources/` at the commits in `agentic-resources.json`.
+source repository in the development checkout. The image seeds dependency repositories at the
+commits in `agentic-resources.json`, using the declared remotes and local Git bundles.
 See [dependency repository delivery](../docs/solution-design/agentic-resources.md#dependency-repository-delivery).
 
 The **Dashboard bundle** is deliberately not shared. Its `VITE_*` values are baked in at build time
@@ -164,8 +164,8 @@ no image is pushed.
 
 ## Postfixes (function)
 
-- `-start-kiao.sh`: start kiao locally — the worker, Dashboard and the boards — over a store root
-  taken from `KIAO_WORKER_ROOT_PATH` or asked for.
+- `-start-kiao.sh`: start kiao locally with the worker, Dashboard and the boards. Set
+  `KIAO_WORKER_DCMS_ROOT` to select the DCMS root, or use the startup prompt.
 
 - `-test-e2e.sh`: runs the end-to-end tests — a thin call to `e2e/bin/run-tests.sh`, which is
   where the suite's own arguments, its budget and its summary are documented. It reaps a previous
@@ -178,7 +178,7 @@ no image is pushed.
 - `-build-kiao-image.sh`: builds the single-container kiao image (Dashboard SPA +
   worker + hybridflow-store + PostgreSQL + PlantUML server) used to run the e2e suite
   on Windows with Docker, and to run KIAO there, with no server behind it. It ships neither a
-  development toolchain nor an agent CLI: a JDK, a `claude`, a `codex` and anything else of
+  development toolchain nor a harness CLI: a JDK, a `claude`, a `codex` and anything else of
   that kind is installed into a container from the configuration panel and kept on a volume, so
   the image stays what it is. `--preinstall claude-cli` bakes one in anyway. See
   docs/user-manual/deep-dive/kiao-docker.md.

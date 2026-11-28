@@ -50,19 +50,6 @@ describe('getArchDiaStyleString (browser styles)', () => {
         }
     });
 
-    it('contains toolbar styles', () => {
-        const css = getArchDiaStyleString();
-        expect(css).toContain('.archdia-toolbar');
-        expect(css).toContain('.archdia-toolbar-btn');
-    });
-
-    it('repaints the toolbar where the diagram went light', () => {
-        const css = getArchDiaStyleString();
-        expect(css).toContain('.archdia-theme-light .archdia-toolbar');
-        expect(css).toContain('.archdia-theme-light .archdia-toolbar-btn');
-        expect(css).toContain('.archdia-theme-light .archdia-toolbar-size-menu');
-    });
-
     it('contains drag-and-drop styles', () => {
         const css = getArchDiaStyleString();
         expect(css).toContain('.archdia-draggable');
@@ -88,7 +75,7 @@ describe('getArchDiaStyleString (browser styles)', () => {
     it('lights up only what an editor was given something to do with', () => {
         const interactive = ['archdia-draggable', 'archdia-editable', 'archdia-relation-bendable'];
         const hoverRules = getArchDiaStyleString().match(/[^\n{}]*:hover[^\n{}]*\{/g) ?? [];
-        const diagramHovers = hoverRules.filter(r => r.includes('.archdia-') && !r.includes('toolbar'));
+        const diagramHovers = hoverRules.filter(r => r.includes('.archdia-'));
 
         expect(diagramHovers.length).toBeGreaterThan(0);
         for (const rule of diagramHovers) {
@@ -138,9 +125,10 @@ describe('getArchDiaExportStyleString (standalone SVG)', () => {
         }
     });
 
-    it('does NOT contain toolbar styles', () => {
+    it('keeps browser controls out of the SVG export', () => {
         const css = getArchDiaExportStyleString(ARCHDIA_DARK);
-        expect(css).not.toContain('.archdia-toolbar');
+        expect(css).not.toContain('.diagram-toolbar');
+        expect(css).not.toContain('.archdia-canvas');
     });
 
     it('does NOT contain light theme block', () => {

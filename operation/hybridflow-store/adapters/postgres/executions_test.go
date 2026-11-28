@@ -18,7 +18,7 @@ import (
 
 func TestExecutionAPIRecordsSharedAgentPublication(t *testing.T) {
 	pool, boards, nodes, boardStore, _ := wireUsage(t)
-	id := aiUsageCard(t, boards, nodes, "Shared agent")
+	id := aiUsageNode(t, boards, nodes, "Shared agent")
 	handler := httpapi.New(httpapi.Options{
 		Executions: services.NewExecutions(NewExecutionStore(pool), boardStore),
 	}).Handler(auth.New(auth.Options{Mode: "debug"}), nil)
@@ -66,7 +66,7 @@ func TestExecutionAPIRecordsSharedAgentPublication(t *testing.T) {
 
 func TestExecutionProvenanceIsImmutableAndReplayIsIdempotent(t *testing.T) {
 	pool, boards, nodes, _, _ := wireUsage(t)
-	id := aiUsageCard(t, boards, nodes, "Execution")
+	id := aiUsageNode(t, boards, nodes, "Execution")
 	store := NewExecutionStore(pool)
 	ctx := context.Background()
 	execution := entities.TaskExecution{

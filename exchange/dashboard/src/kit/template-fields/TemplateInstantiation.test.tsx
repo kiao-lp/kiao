@@ -26,7 +26,6 @@ import { globalTemplateStore, TemplateInstantiation } from './index';
 
 const TEMPLATE = {
     name: 'Greeting',
-    index: '',
     rootTemplate: { id: 'root', textTemplate: '# Hello ${who:text}!' },
     subTemplates: [],
 };

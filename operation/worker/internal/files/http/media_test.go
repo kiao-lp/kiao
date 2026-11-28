@@ -33,7 +33,7 @@ func TestSegmentFiles(t *testing.T) {
 		t.Errorf("spans = %v, want %v", spans, want)
 	}
 
-	// A video at the root of the store has its segments at the root too.
+	// A video at the DCMS root has its segments at the root too.
 	files, _, _ = media.SegmentFiles("clip.mp4", []media.SegmentDto{{Name: "Intro", ToMs: 700}})
 	if want := []string{"Intro.mkv"}; !reflect.DeepEqual(files, want) {
 		t.Errorf("files = %v, want %v", files, want)

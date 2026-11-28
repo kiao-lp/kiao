@@ -226,11 +226,11 @@ const choose = (label: string, option: string) => {
 
 /** Points the panel at a flow node of a board holding it and the others. */
 const showing = (held: ReturnType<typeof flowNode>, ...others: ReturnType<typeof flowNode>[]) => {
-    board.content = { flowNodes: [held, ...others] };
+    board.content = { flowNodes: [held, ...others], workflows: [] };
     board.selectedFlowNode = { flowNode: held, index: 0 };
 };
 
-/** Another card, which a chain may name wherever it sits. */
+/** A second flow node, which a chain may name wherever it sits. */
 const other = (id: string, title: string) => ({ ...flowNode(title, ''), id });
 
 beforeEach(() => {
@@ -367,7 +367,7 @@ describe('FlowNodePanel — which flow node it is showing', () => {
     });
 
 
-    it('draws no description on a card that is no task', () => {
+    it('draws no description for a flow node without a task', () => {
         showing({ ...flowNode('And off', 'lead'), type: 'shutdown' } as any);
         render(<Faces />);
         expect(screen.getByTestId('flow-node-title')).toHaveValue('And off');
@@ -598,6 +598,22 @@ describe('FlowNodePanel — writing the flow node', () => {
 
             expect(crosshair()).toBeDisabled();
         });
+
+        it('resolves an input-based folder without changing the saved reference', () => {
+            const folder = '{{input.folder}}';
+            const task = flowNode('Review', '', { folder });
+            const predecessor = {
+                ...other('previous', 'Prepare'), status: 'done', output: { folder: '/exchange' },
+                onSuccess: { ...noSuccess(), flowNode: task.id },
+            };
+            showing(task, predecessor);
+            render(<Faces />);
+            expect(screen.getByLabelText('Working directory')).toHaveValue(folder);
+            expect(crosshair()).toBeEnabled();
+            const reference = '{{currentWorkflow.folder}}';
+            fireEvent.change(screen.getByLabelText('Working directory'), { target: { value: reference } });
+            expect(board.editFlowNode).toHaveBeenCalledWith(FLOW_NODE_ID, { settings: { folder: reference } });
+        });
     });
 });
 
@@ -609,7 +625,7 @@ describe('FlowNodePanel — the image pasted into a flow node', () => {
         expect(paste.onPasteCapture).toHaveBeenCalled();
     });
 
-    it('offers the board’s own folder as where the image belongs, and links it from the store root', () => {
+    it('offers the board’s own folder as where the image belongs, and links it from the DCMS root', () => {
         render(<Faces />);
         expect(paste.folder).toBe('boards/major');
         expect(paste.documentName).toBe('major');
@@ -651,11 +667,12 @@ describe('FlowNodePanel — the image pasted into a flow node', () => {
 describe('FlowNodePanel — the template the flow node is written from', () => {
     beforeEach(() => { templateFolder.answers = true; });
 
-    it('offers the store’s templates, the one the card’s type names picked', async () => {
+    it('offers the store’s templates, the one the flow node’s type names picked', async () => {
         render(<Faces />);
         const button = screen.getByRole('button', { name: 'Instantiate template' });
         const archive = screen.getByRole('button', { name: 'Archive node' });
-        expect(button.parentElement).toBe(archive.parentElement);
+        const header = archive.closest(`.${styles.panelHeader}`);
+        expect(header).toContainElement(button);
         expect(button.compareDocumentPosition(archive) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
         expect(screen.queryByRole('combobox', { name: 'Template' })).toBeNull();
 
@@ -666,7 +683,7 @@ describe('FlowNodePanel — the template the flow node is written from', () => {
         expect(board.editFlowNode).not.toHaveBeenCalled();
     });
 
-    it('opens a card that is already Claude’s on the AI template', async () => {
+    it('opens a Claude AI task on the AI template', async () => {
         showing(flowNode('Write the plan', 'lead', { model: 'opus' }));
         render(<Faces />);
 
@@ -726,7 +743,7 @@ describe('FlowNodePanel — what comes after the flow node', () => {
         showing(flowNode('Write the plan', 'lead', { model: 'opus' }), other('flow-node-2', 'Ship it'));
     });
 
-    it('offers the board’s other cards, and not the flow node itself', () => {
+    it('offers the board’s other flow nodes, and not the flow node itself', () => {
         renderOptions();
         fireEvent.mouseDown(document.querySelector('.ant-select[aria-label="On success"] .ant-select-content')!);
 
@@ -776,7 +793,7 @@ describe('FlowNodePanel — what comes after the flow node', () => {
         });
     });
 
-    // The compaction is a box of its own because it answers its own question: a card may shorten
+    // The compaction is a box of its own because it answers its own question: an AI task may shorten
     it('writes the compaction beside whatever the mode says', () => {
         showing(
             {
@@ -812,7 +829,7 @@ describe('FlowNodePanel — what comes after the flow node', () => {
         });
     });
 
-    it('names the flow node that comes next whoever plays the card', () => {
+    it('names the flow node that comes next whoever plays the node', () => {
         showing(flowNode('Write the plan', 'lead'), other('flow-node-2', 'Ship it'));
         renderOptions();
 
@@ -898,8 +915,9 @@ describe('FlowNodePanel — the state a play writes onto the flow node', () => {
         const button = screen.getByRole('button', { name: 'Status' });
         const templates = screen.getByRole('button', { name: 'Instantiate template' });
         expect(button).toHaveAttribute('data-status', 'error');
-        expect(button.parentElement).toBe(templates.parentElement);
-        expect(button.nextElementSibling).toBe(templates);
+        const header = button.closest(`.${styles.panelHeader}`);
+        expect(header).toContainElement(templates);
+        expect(button.compareDocumentPosition(templates) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
         expect(button.closest('.ant-tabs-nav')).not.toBeNull();
         fireEvent.click(button);
         const menu = await screen.findByRole('menu');

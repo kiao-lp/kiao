@@ -37,7 +37,7 @@ afterEach(() => {
     }
 });
 
-const Harness: React.FC<{ messages: number }> = ({ messages }) => {
+const ScrollFixture: React.FC<{ messages: number }> = ({ messages }) => {
     const stick = useStickToBottom(messages);
     return (
         <>
@@ -52,7 +52,7 @@ const Harness: React.FC<{ messages: number }> = ({ messages }) => {
 const transcript = () => screen.getByTestId('transcript');
 
 /** A conversation on screen: mounted with its transcript already in it, as the pane does. */
-const open = () => render(<Harness messages={1} />);
+const open = () => render(<ScrollFixture messages={1} />);
 
 /** The reader moving the pane themselves — which is the only thing that stops the following. */
 const readerScrollsTo = (top: number) => {
@@ -63,7 +63,7 @@ const readerScrollsTo = (top: number) => {
 /** A message arrives: the transcript grows, and the pane decides whether to move. */
 const newMessage = (view: ReturnType<typeof open>, grownTo: number) => {
     contentHeight = grownTo;
-    view.rerender(<Harness messages={2} />);
+    view.rerender(<ScrollFixture messages={2} />);
 };
 
 describe('useStickToBottom', () => {

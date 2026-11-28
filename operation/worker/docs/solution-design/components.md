@@ -63,9 +63,9 @@ flowchart TD
     Playback -. implements .-> Observer
 ```
 
-The execution engine owns turn reservations, live state, permissions, questions, event application
-and settling. Its harness registry is injected. It does not import concrete engines, `net/http` or
-Gorilla WebSocket.
+`turns.Engine` owns turn reservations, live state, permissions, questions, event application
+and settlement. It calls harness drivers through an injected registry. The HTTP adapter
+handles transport.
 
 `turns/events` owns connection contracts and subscription routing. It shares the engine's mutex
 so job lookup and subscription updates retain one lock order. The HTTP adapter owns the actual

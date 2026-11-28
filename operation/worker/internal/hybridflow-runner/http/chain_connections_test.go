@@ -62,7 +62,7 @@ func TestChainRefusesInvalidConnectionsBeforeStarting(t *testing.T) {
 				t.Fatal("an invalid chain started a run")
 			}
 			if rt.board().FlowNode("first").Status != "" {
-				t.Fatal("an invalid chain changed its first card")
+				t.Fatal("an invalid chain changed its first flow node")
 			}
 		})
 	}
@@ -77,6 +77,22 @@ func TestChainChecksDownstreamShutdownSuccessors(t *testing.T) {
 	_, err := rt.runner.Play(access.Identity{User: "tester"}, rt.handle, "first", "Invalid shutdown")
 	if err == nil || !strings.Contains(err.Error(), "cannot have a successor") {
 		t.Fatalf("play = %v", err)
+	}
+	if len(rt.runner.Snapshots()) != 0 {
+		t.Fatal("an invalid chain started a run")
+	}
+}
+
+func TestChainRefusesStartWithAPredecessor(t *testing.T) {
+	rt := newRunnerTest(t, `{"flowNodes":[
+		{"id":"wait","title":"Wait","type":"scheduler","duration":"1ms","onSuccess":{"flowNode":"start"}},
+		{"id":"start","title":"Start","type":"start"}
+	]}`)
+	for _, id := range []string{"start", "wait"} {
+		_, err := rt.runner.Play(access.Identity{User: "tester"}, rt.handle, id, "Invalid entry")
+		if err == nil || !strings.Contains(err.Error(), `flow node "Start" cannot have a predecessor`) {
+			t.Errorf("play %s = %v, want the invalid link named", id, err)
+		}
 	}
 	if len(rt.runner.Snapshots()) != 0 {
 		t.Fatal("an invalid chain started a run")

@@ -22,7 +22,7 @@ const openDiagramEditor = async (page: import('../harness').Page, index: number)
     await page.locator('.code-edit-btn').nth(index).click();
 
     const dialog = page.getByRole('dialog', { name: 'Edit diagram' });
-    await expect(dialog.locator('.archdia-toolbar')).toBeVisible({ timeout: TIMEOUT });
+    await expect(dialog.getByRole('group', { name: 'Diagram controls' })).toBeVisible({ timeout: TIMEOUT });
     return dialog;
 };
 
@@ -33,7 +33,7 @@ test('edits the diagram that was clicked and writes it back into the markdown', 
     // Drawn as a picture in the document: the artboard and its instruments are
     // the editor's, and the dialog is where they belong.
     await expect(page.locator('.archdia-svg')).toHaveCount(2, { timeout: TIMEOUT });
-    await expect(page.locator('.archdia-toolbar')).toHaveCount(0);
+    await expect(page.getByRole('group', { name: 'Diagram controls' })).toHaveCount(0);
 
     // The block offers what the other diagram blocks offer — copy source, copy
     // image — plus the edit button.
@@ -48,8 +48,8 @@ test('edits the diagram that was clicked and writes it back into the markdown', 
 
     // Change the diagram size — a toolbar action whose result is visible in the
     // block's LAYOUT section once written back.
-    await dialog.locator('.archdia-toolbar-size-label').click();
-    await dialog.locator('.archdia-toolbar-size-option', { hasText: 'Large (1280×960)' }).click();
+    await dialog.getByRole('button', { name: 'Diagram size' }).click();
+    await page.getByRole('button', { name: 'Large (1280×960)' }).click();
 
     await dialog.getByRole('button', { name: 'Apply' }).click();
     await expect(dialog).toBeHidden({ timeout: TIMEOUT });
@@ -85,8 +85,16 @@ test('leaves the document untouched when the dialog is cancelled', async ({ page
     const before = await (await request.get(fileUrl(FILE))).text();
 
     const dialog = await openDiagramEditor(page, 0);
-    await dialog.locator('.archdia-toolbar-size-label').click();
-    await dialog.locator('.archdia-toolbar-size-option', { hasText: 'Wide (1600×900)' }).click();
+    const size = dialog.getByRole('button', { name: 'Diagram size' });
+    await size.click();
+    const width = page.getByRole('spinbutton', { name: 'Width' });
+    await width.fill('1200');
+    await width.press('Escape');
+    await expect(size).toBeFocused();
+    await expect(size).toHaveAttribute('aria-expanded', 'false');
+    await size.click();
+    await expect(width).toHaveValue('640');
+    await page.getByRole('button', { name: 'Wide (1600×900)' }).click();
     await dialog.getByRole('button', { name: 'Cancel' }).click();
     await expect(dialog).toBeHidden({ timeout: TIMEOUT });
 
@@ -108,7 +116,7 @@ const openBlockEditor = async (page: import('../harness').Page, index: number) =
     await page.locator('.code-edit-btn').nth(index).click();
 
     const dialog = page.getByRole('dialog', { name: 'Edit diagram' });
-    await expect(dialog.locator('.archdia-toolbar')).toBeVisible({ timeout: TIMEOUT });
+    await expect(dialog.getByRole('group', { name: 'Diagram controls' })).toBeVisible({ timeout: TIMEOUT });
     return dialog;
 };
 

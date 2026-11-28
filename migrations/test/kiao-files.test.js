@@ -20,6 +20,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
+const { execFileSync } = require('node:child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -46,6 +47,27 @@ function write(file, content = '{}') {
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, content, 'utf8');
 }
+
+test('migrations leave the configured state and its installed packages out of the walk', (t) => {
+    const root = newStore();
+    t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+    const note = '---\nstatus: DRAFT\nrole: PRIMARY_SOURCE\n---\n# Note\n';
+    const state = path.join(root, 'instance', 'private');
+    const alias = path.join(root, 'state-alias');
+    const installed = path.join(state, 'agentic-packages', 'release', 'deployment', 'note.md');
+    const document = path.join(root, 'instance', 'note.md');
+    write(path.join(root, KIAO_FILES_NAME), '');
+    write(installed, note);
+    write(document, note);
+    fs.symlinkSync(state, alias, 'dir');
+
+    execFileSync(process.execPath, [path.join(__dirname, '../V019__document-metadata.js'), root], {
+        env: { ...process.env, KIAO_WORKER_STATE_PATH: alias },
+    });
+
+    assert.strictEqual(fs.readFileSync(installed, 'utf8'), note);
+    assert.match(fs.readFileSync(document, 'utf8'), /^---\ndocument:/);
+});
 
 test('the grammar matches the shared corpus, case for case', () => {
     const corpus = require('./kiao-files-corpus.json');

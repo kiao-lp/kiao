@@ -1,37 +1,16 @@
-import React, { useEffect } from 'react';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import React from 'react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { RenameModal } from './RenameModal-cmp';
 import { RenameTargetProvider, useRenameTarget } from '../selection/RenameTarget-ctx';
 import { PluginListProvider } from 'src/core/extensibility/PluginList-ctx';
 import { FileBasedPlugin, FileTypeConfig } from 'src/core/extensibility/FileBasedPlugin';
 import { FileDto } from 'src/core/files/service';
+import { VoiceInputProvider } from '../../ui-foundation/voice-input/VoiceInputContext';
 
 vi.mock('react-router-dom', () => ({
     useNavigate: () => vi.fn(),
 }));
-
-vi.mock('../../ui-foundation/voice-input', () => ({
-    VoiceInput: ({ onPressEnter: _onPressEnter, ...rest }: any) => <input {...rest} />,
-}));
-
-vi.mock('antd', async (importOriginal) => {
-    const actual = await importOriginal<typeof import('antd')>();
-    return {
-        ...actual,
-        Modal: ({ open, afterOpenChange, children }: any) => {
-            useEffect(() => {
-                if (open) {
-                    // Deferred like the real modal's open animation, so the input
-                    // already holds the target name when focus/selection runs.
-                    const timer = setTimeout(() => afterOpenChange?.(true), 0);
-                    return () => clearTimeout(timer);
-                }
-            }, [open, afterOpenChange]);
-            return open ? <div data-testid="rename-modal">{children}</div> : null;
-        },
-    };
-});
 
 vi.mock('./FileBrowsingPersistence-ctx', () => ({
     useFileBrowsingPersistenceContext: () => ({ currentFile: null, currentPath: '/' }),
@@ -80,10 +59,12 @@ const Trigger: React.FC<{ path: string }> = ({ path }) => {
 
 const renderModal = (path: string) => render(
     <PluginListProvider plugins={[mindmapPlugin, tasksPlugin, markdownPlugin]}>
-        <RenameTargetProvider>
-            <RenameModal />
-            <Trigger path={path} />
-        </RenameTargetProvider>
+        <VoiceInputProvider>
+            <RenameTargetProvider>
+                <RenameModal />
+                <Trigger path={path} />
+            </RenameTargetProvider>
+        </VoiceInputProvider>
     </PluginListProvider>,
 );
 
@@ -94,11 +75,8 @@ const inputSelection = () => {
 
 const openRename = async (path: string) => {
     renderModal(path);
-    await act(async () => {
-        screen.getByRole('button', { name: 'rename' }).click();
-        // Let the modal's deferred focus/selection callback run.
-        await new Promise(resolve => setTimeout(resolve, 20));
-    });
+    fireEvent.click(screen.getByRole('button', { name: 'rename' }));
+    await waitFor(() => expect(screen.getByTestId('rename-input')).toHaveFocus());
 };
 
 describe('RenameModal initial selection', () => {

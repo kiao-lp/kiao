@@ -25,10 +25,7 @@ type Service struct {
 // Start requires RunMigrations to have completed before serving the store.
 func Start(cfg *fileconfig.Config) (*Service, error) {
 	// Keep the state directory inaccessible to file browsing, renames and deletion.
-	storage := &filesystem.Storage{
-		Root:     cfg.RootPath,
-		StateDir: filesystem.RelativeStateDir(cfg.RootPath, cfg.StatePath),
-	}
+	storage := filesystem.NewStorage(cfg.DCMSRoot, cfg.StatePath)
 	linkFix := refactor.NewLinkFixerWithWorkers(storage, cfg.LinkFixExtensions, cfg.LinkFixWorkers)
 
 	// Re-read after validation to catch manifest changes between the two reads.

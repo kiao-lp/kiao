@@ -21,6 +21,9 @@ Selected resolved settings are logged at startup without credentials, and a hand
 values are validated before the service binds its port — a bad value aborts start-up with an
 ERROR line naming every problem rather than failing later at request time.
 
+The worker uses the first non-empty value of `KIAO_WORKER_DCMS_ROOT` and its compatibility
+alias `KIAO_WORKER_ROOT_PATH`. The table gives the standalone defaults.
+
 **The harness settings are namespaced**, and the split is what a setting *is*:
 `KIAO_WORKER_HYBRIDFLOW_RUNNER_<SETTING>` for what the deployment says about every harness — the bypass
 gate, the turn cap, one policy and one turn registry whichever CLI runs — and
@@ -34,8 +37,8 @@ whether that means a default, an omitted flag or a disabled feature.
 | Env var | Default | Notes |
 | --- | --- | --- |
 | `SERVER_PORT` | `8080` | Listen port (prod: `18080`). |
-| `KIAO_WORKER_ROOT_PATH` | `/tmp` | Document store root; any directory is supported. **Validated:** must be an existing directory. |
-| `KIAO_WORKER_STATE_PATH` | `<root>/.kiao-config` | [Operational state](./state.md), with per-store isolation by default; may be placed outside the root. **Validated:** must be absolute — the default is made absolute from the root, so only a hand-configured relative value is refused, rather than writing state at the working directory. |
+| `KIAO_WORKER_DCMS_ROOT` | `/tmp` | [DCMS root](../../../../docs/architecture/data/dcms-concept-catalog.md). Must be an existing directory. |
+| `KIAO_WORKER_STATE_PATH` | `<dcms-root>/.kiao-config` | [Operational state](./state.md). The worker resolves the default to an absolute path. An explicit path must be absolute and can be outside the DCMS root. |
 | `KIAO_KEYCLOAK_ISSUER_URI` | *(blank)* | JWT issuer validated on every request — the deployment's own Keycloak realm. **Validated:** required (non-empty) in `prod` auth mode. |
 | `KIAO_KEYCLOAK_JWK_SET_URI` | *(blank)* | JWKS used to verify RS256 signatures. **Validated:** required (non-empty) in `prod` auth mode. |
 | `KIAO_GIT_USER_NAME` / `KIAO_GIT_USER_EMAIL` | `Kiao Dashboard` / `dashboard@localhost` | Identity for Source-Control commits. |
@@ -55,7 +58,7 @@ whether that means a default, an omitted flag or a disabled feature.
 | `KIAO_WORKER_HYBRIDFLOW_RUNNER_MAX_TURNS` | `4` | Concurrent harness turns across every conversation. **Validated:** at least 1. |
 | `KIAO_WORKER_HYBRIDFLOW_RUNNER_CLAUDE_SETTING_SOURCES` | `user` | Passed as `--setting-sources`; an explicit empty value omits the flag. The default keeps a `.claude/settings.json` arriving in the store through `git pull` from installing hooks that run as the service user — `--print` loads project settings with no prompt of any kind. **Validated:** every element is `user`, `project` or `local`. |
 | `KIAO_WORKER_ACTIONS_PATH` | *(blank)* | The file-action manifest; blank disables the feature. **Validated:** must parse and declare well-formed actions. |
-| `KIAO_WORKER_SHUTDOWN_COMMAND` | *(blank)* | What turns the machine off when a board's **Shutdown card** is played. Split on spaces and run without a shell. Blank — every deployment but `kiao`, which sets `systemctl poweroff` — is a service that cannot, and the card is then played and marked `error`. |
+| `KIAO_WORKER_SHUTDOWN_COMMAND` | *(blank)* | What turns the machine off when a board's **Shutdown flow node** is played. Split on spaces and run without a shell. Blank — every deployment but `kiao`, which sets `systemctl poweroff` — is a service that cannot, and the flow node is then played and marked `error`. |
 | `KIAO_WORKER_MCP_PATH` | *(blank)* | The staged `kiao-mcp` bundle whose servers a turn may be handed. Blank means those rows of the configuration panel read *unavailable*. **Validated:** must be absolute, and every entrypoint it names must be readable. |
 | `KIAO_WORKER_HYBRIDFLOW_RUNNER_CLAUDE_ENABLED` | `true` | The deployment's veto on Claude. It is a veto and not an offer: a harness is in the tab when this is on, its CLI is on the `PATH`, and the configuration panel has not switched its row off — all three asked per request, which is what makes installing a CLI take effect on the next page rather than at the next restart. |
 | `KIAO_WORKER_HYBRIDFLOW_RUNNER_CODEX_ENABLED` | `true` | The same for Codex, and separate from Claude's because "disable Codex" and "disable Claude" are two decisions. Codex publishes `bypassPermissions` alone, so a deployment with `HYBRIDFLOW_RUNNER_BYPASS_ENABLED=false` offers it no runnable mode at all. |

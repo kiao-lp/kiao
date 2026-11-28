@@ -32,7 +32,7 @@ through `core/files/service/ui`'s provider.
 - **Secured:** OIDC authority comes from `VITE_OIDC_AUTHORITY`, with a loopback fallback, and
   client ID `dashboard`. Fetch and metadata headers read the current bearer token from a ref.
 - **No security:** `VITE_NO_SECURITY === 'true'` skips `AuthProvider` and creates a client without
-  token headers. Local scripts, packaged kiao and the e2e harness use this path.
+  token headers. Local scripts, packaged kiao and the end-to-end test stack use this path.
 
 [Session recovery](../../sessionRecovery.ts) tries silent renewal, then hidden
 iframe authentication, then accepts a still-valid current token. Only exhausted recovery causes

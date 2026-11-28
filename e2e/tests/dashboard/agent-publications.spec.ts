@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { appendFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test, expect, resetViewState, showMarkdownEditor, workerApi } from '../harness';
@@ -28,7 +28,7 @@ test('runs an unpublished agent and confirms a push with a local dependency', as
 
         await page.goto('works');
         await page.locator('.cms-top-banner .anticon-more').click();
-        await page.getByRole('menuitem', { name: /Agents…$/ }).click();
+        await page.getByRole('menuitem', { name: /Agentic resources…$/ }).click();
         const row = page.getByTestId('agent-card').filter({ hasText: name });
         await row.getByTestId('edit-agent').click();
         const editor = page.getByTestId('agent-editor');
@@ -42,6 +42,9 @@ test('runs an unpublished agent and confirms a push with a local dependency', as
         await skill.fill('review-checklist');
         await page.locator('.ant-select-dropdown:visible').getByText('review-checklist', { exact: true }).click();
         await expect(editor.getByRole('button', { name: 'Unlink review-checklist' })).toBeVisible();
+        const diagnostics = editor.getByRole('region', { name: 'MCP diagnostics' });
+        await expect(diagnostics.getByText('package-proof · Unavailable')).toBeVisible();
+        await expect(diagnostics.getByText(/server sent invalid JSON-RPC/)).toBeVisible();
 
         const right = page.getByTestId('tool-bar-side-right');
         if (await right.count() === 0) await page.getByTestId('bar-toggle-right').click();
@@ -52,17 +55,17 @@ test('runs an unpublished agent and confirms a push with a local dependency', as
         const [chat] = await Promise.all([
             page.waitForResponse(response => response.request().method() === 'POST'
                 && new URL(response.url()).pathname.endsWith('/hybridflow-runner/conversations')),
-            dialog.getByRole('button', { name: `${name} · Claude Code` }).click(),
+            dialog.getByRole('button', { name: `${name} · Claude Code / haiku`, exact: true }).click(),
         ]);
         expect(chat.status(), await chat.text()).toBe(201);
         const conversation = await chat.json();
         chatId = conversation.id;
         expect(conversation.agentVersion).toMatchObject({ agentId, draftId: expect.any(String), instructions: 'Draft instructions.' });
         expect(conversation.agentVersion.commit).toBeUndefined();
-        await expect(page.getByTestId('conversation-agent-version')).toContainText('Local draft');
+        await expect(page.getByTestId('conversation-details').locator('summary')).toContainText('Local draft');
         await expect(page.locator('.chat-textarea')).toBeEnabled();
 
-        const publish = editor.getByRole('button', { name: 'Publish major v1.0.0' });
+        const publish = editor.getByRole('button', { name: 'Publish v1.0.0' });
         const warning = page.getByRole('dialog').filter({ hasText: 'Push an agent that requires Kiao?' });
         await publish.click();
         await expect(warning).toContainText('mcp-package-proof');
@@ -76,6 +79,10 @@ test('runs an unpublished agent and confirms a push with a local dependency', as
         expect(git(repository, 'tag', '--list')).toBe('v1.0.0');
         expect(git(repository, 'ls-tree', '-r', '--name-only', 'HEAD', '--', '.agents/skills', '.claude/skills')).toBe('');
         expect(git(repository, 'show', 'HEAD:apm.lock.yaml')).toContain('review-checklist/SKILL.md');
+        await editor.locator('.ant-select').filter({ has: page.getByRole('combobox', { name: 'Agent version', exact: true }) }).click();
+        await page.locator('.ant-select-dropdown:visible').getByText('Published v1.0.0', { exact: true }).click();
+        await expect(editor.getByTestId('agent-publication')).toBeVisible();
+        await expect(diagnostics.getByText('package-proof · Unavailable')).toBeVisible();
     } finally {
         if (chatId) await request.delete(`${conversations}/${chatId}`);
         if (agentId) await removeTestAgent(request, agentId);
@@ -105,26 +112,29 @@ test('publishes an agent edited from DCMS and confirms deletion of its clone', a
         await expect.poll(async () => (await api(`/agents/${agent.id}`)).instructions, { timeout: 15000 }).toBe('First published orders.');
 
         await page.goto('works');
-        await page.locator('.cms-top-banner .anticon-more').click();
-        await page.getByRole('menuitem', { name: /Agents…$/ }).click();
+        await expect(page.getByTestId('browser-item-works/alpha')).toBeVisible();
+        await page.getByRole('button', { name: 'Tools', exact: true }).click();
+        const catalogue = page.getByRole('menuitem', { name: /Agentic resources…$/ });
+        await expect(catalogue).toBeVisible();
+        await catalogue.click();
         const row = page.getByTestId('agent-card').filter({ hasText: name });
         await expect(row).toContainText('Unpublished');
         await row.getByTestId('edit-agent').click();
         const editor = page.getByTestId('agent-editor');
-        await expect(editor.getByRole('button', { name: 'Publish minor v0.1.0' })).toBeEnabled();
-        await expect(editor.getByRole('button', { name: 'Publish patch v0.0.1' })).toBeEnabled();
-        await editor.getByRole('button', { name: 'Publish major v1.0.0' }).click();
+        await expect(editor.getByRole('button', { name: 'Publish v0.1.0' })).toBeEnabled();
+        await expect(editor.getByRole('button', { name: 'Publish v0.0.1' })).toBeEnabled();
+        await editor.getByRole('button', { name: 'Publish v1.0.0' }).click();
         await expect(row).toContainText('Published v1.0.0', { timeout: 30000 });
-        await expect(editor.getByRole('button', { name: 'Publish patch v1.0.1' })).toBeDisabled();
+        await expect(editor.getByRole('button', { name: 'Publish v1.0.1' })).toBeDisabled();
         expect((await request.post(`${endpoint()}/agents/${agent.id}/publish`)).status()).toBe(409);
         await editor.getByTestId('agent-instructions').fill('Second published orders.');
         await expect.poll(async () => (await api(`/agents/${agent.id}`)).instructions).toBe('Second published orders.');
         expect((await api(`/agents/${agent.id}`)).published.instructions).toBe('First published orders.');
-        await editor.getByRole('button', { name: 'Publish patch v1.0.1' }).click();
+        await editor.getByRole('button', { name: 'Publish v1.0.1' }).click();
         await expect(row).toContainText('Published v1.0.1', { timeout: 30000 });
         await editor.getByTestId('agent-instructions').fill('Third published orders.');
         await expect.poll(async () => (await api(`/agents/${agent.id}`)).instructions).toBe('Third published orders.');
-        await editor.getByRole('button', { name: 'Publish minor v1.1.0' }).click();
+        await editor.getByRole('button', { name: 'Publish v1.1.0' }).click();
         await expect(row).toContainText('Published v1.1.0', { timeout: 30000 });
         const versions = (await api(`/agents/${agent.id}/versions`)).versions;
         expect(versions.map((one: any) => [one.version, one.instructions])).toEqual([
@@ -152,25 +162,120 @@ test('publishes an agent edited from DCMS and confirms deletion of its clone', a
     }
 });
 
-test('publishes a skill and an MCP module from their APM versions', async ({ page }) => {
+test('pulls remote commits into an agent draft and reports a refused pull', async ({ page, request }) => {
+    test.setTimeout(120000);
+    const scratch = mkdtempSync(join(tmpdir(), 'kiao-pull-agent-'));
+    const repository = join(scratch, 'agent-pull.git');
+    const peer = join(scratch, 'peer');
+    const git = (dir: string, ...args: string[]) => execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8' }).trim();
+    const endpoint = `${workerApi()}/agentic-resources-api`;
+    const name = `Pull ${crypto.randomUUID()}`;
+    let agentId: string | undefined;
+    try {
+        git(scratch, 'init', '--bare', '-b', 'main', repository);
+        const created = await request.post(`${endpoint}/agents`, {
+            data: { repository, name, harness: 'codex', model: 'test-model', effort: 'high' },
+        });
+        expect(created.ok(), await created.text()).toBe(true);
+        const agent = await created.json();
+        agentId = agent.id;
+        const agentUrl = `${endpoint}/agents/${agentId}`;
+        const definition = `.apm/agents/${agent.project}.agent.md`;
+
+        await page.goto('works');
+        await page.locator('.cms-top-banner .anticon-more').click();
+        await page.getByRole('menuitem', { name: /Agentic resources…$/ }).click();
+        const row = page.getByTestId('agent-card').filter({ hasText: name });
+        const edit = row.getByTestId('edit-agent');
+        await edit.click();
+        const editor = page.getByTestId('agent-editor');
+        const close = page.getByTestId('central-panel-agent-editor-close');
+        const pull = editor.getByRole('button', { name: 'Pull', exact: true });
+        await expect(pull).toBeDisabled();
+
+        git(scratch, 'clone', repository, peer);
+        git(peer, 'config', 'user.name', 'KIAO E2E');
+        git(peer, 'config', 'user.email', 'kiao@example.com');
+        appendFileSync(join(peer, definition), 'Pulled instructions.\n');
+        git(peer, 'commit', '--all', '-m', 'feat: add pulled instructions');
+        git(peer, 'push', 'origin', 'HEAD');
+
+        await close.click();
+        await edit.click();
+        await expect(pull).toBeEnabled({ timeout: 15000 });
+        await pull.click();
+        await expect(editor.getByTestId('agent-instructions')).toHaveValue(/Pulled instructions\./, { timeout: 30000 });
+        await expect(pull).toBeDisabled();
+
+        const local = await request.patch(agentUrl, { data: { instructions: 'Uncommitted local instructions.' } });
+        expect(local.ok(), await local.text()).toBe(true);
+        appendFileSync(join(peer, definition), 'Remote-only change.\n');
+        git(peer, 'commit', '--all', '-m', 'feat: change pulled instructions');
+        git(peer, 'push', 'origin', 'HEAD');
+
+        await close.click();
+        await edit.click();
+        await expect(pull).toBeEnabled({ timeout: 15000 });
+        await pull.click();
+        const report = editor.getByRole('alert').filter({ hasText: 'The agent could not be pulled' });
+        await expect(report).toContainText('would overwrite local changes', { timeout: 30000 });
+    } finally {
+        if (agentId) await removeTestAgent(request, agentId);
+        rmSync(scratch, { recursive: true, force: true });
+    }
+});
+
+test('filters, edits and publishes skills and MCP modules', async ({ page, request }) => {
     await page.goto('works');
     await page.locator('.cms-top-banner .anticon-more').click();
     await page.getByRole('menuitem', { name: /Agentic resources…$/ }).click();
-    const resource = page.getByRole('combobox', { name: 'Agentic resource', exact: true });
-    const source = page.getByRole('textbox', { name: 'Resource source' });
+    const catalogue = page.getByTestId('agentic-resources-panel');
+    await expect(catalogue.getByRole('tab', { name: 'Agents', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await expect(catalogue.getByTestId('skill-card')).toHaveCount(0);
+    await expect(catalogue.getByTestId('mcp-card')).toHaveCount(0);
     const cases = [
-        { name: 'skill-review-checklist', action: 'Publish minor', version: '1.1.0' },
-        { name: 'mcp-package-proof', action: 'Publish major', version: '2.0.0' },
+        { kind: 'skill', tab: 'Skills', label: 'skill', name: 'skill-review-checklist', version: '1.1.0',
+            path: 'SKILL.md', edit: 'Review the release notes.', description: 'Review a change against its requirements.' },
+        { kind: 'mcp', tab: 'MCP', label: 'MCP', name: 'mcp-package-proof', version: '2.0.0',
+            path: 'apm.yml', edit: 'description: MCP configuration for publication tests.', description: 'MCP configuration for agent package tests.' },
     ];
-    for (const { name, action, version } of cases) {
-        await resource.click();
-        await page.locator('.ant-select-dropdown:visible').getByText(`${name} · v1.0.0`, { exact: true }).click();
+    const resourceFile = (name: string, path: string) =>
+        `${workerApi()}/agentic-resources-api/agentic-resources/${name}/file?path=${path}`;
+    for (const { kind, tab, label, name, version, path, edit, description } of cases) {
+        await catalogue.getByRole('tab', { name: tab, exact: true }).click();
+        const row = catalogue.getByTestId(`${kind}-card`).filter({ hasText: name });
+        await expect(row).toContainText('Unpublished');
+        await expect(catalogue.getByTestId(`${kind === 'skill' ? 'mcp' : 'skill'}-card`)).toHaveCount(0);
+        await row.getByRole('button', { name: `Show description of ${name}` }).click();
+        await expect(row.getByTestId(`${kind}-description-text`)).toHaveText(description);
+        await row.getByRole('button', { name: `Edit ${name}`, exact: true }).click();
+        const editor = page.getByRole('dialog', { name: `Edit ${label} “${name}”`, exact: true });
+        const source = editor.getByRole('textbox', { name: 'Resource source' });
         await expect(source).toBeEnabled();
-        await page.getByRole('button', { name: action, exact: true }).click();
-        await expect(source).toBeEnabled();
-        await expect(source).toHaveValue(new RegExp(`version: ['"]?${version.replaceAll('.', '\\.')}`));
-        await expect(page.getByText(`${name} · v${version}`, { exact: true })).toBeVisible();
+        const original = await source.inputValue();
+        await source.fill(kind === 'skill' ? `${original}\n${edit}\n` : original.replace(`description: ${description}`, edit));
+        if (kind === 'skill') {
+            await editor.getByRole('combobox', { name: 'Resource file' }).click();
+            await page.locator('.ant-select-dropdown:visible').getByText('apm.yml', { exact: true }).click();
+            await expect(source).toHaveValue(/version: ['"]?1\.0\.0/);
+        }
+        await editor.getByRole('button', { name: `Publish v${version}`, exact: true }).click();
+        await expect(editor.getByText(`Draft · Published v${version}`, { exact: true })).toBeVisible();
+        const saved = await request.get(resourceFile(name, path));
+        expect(saved.ok(), await saved.text()).toBeTruthy();
+        expect((await saved.json()).content).toContain(edit);
+        const manifest = await request.get(resourceFile(name, 'apm.yml'));
+        expect((await manifest.json()).content).toMatch(new RegExp(`version: ['"]?${version.replaceAll('.', '\\.')}`));
+        await editor.getByRole('button', { name: 'Close', exact: true }).click();
+        await expect(row).toContainText(`Published v${version}`);
     }
+
+    await page.locator('.cms-top-banner .anticon-more').click();
+    await page.getByRole('menuitem', { name: /Agentic resources \(legacy\)…$/ }).click();
+    const legacy = page.getByRole('dialog', { name: 'Agentic resources (legacy)', exact: true });
+    await legacy.getByRole('combobox', { name: 'Agentic resource', exact: true }).click();
+    await page.locator('.ant-select-dropdown:visible').getByText('skill-review-checklist · v1.1.0', { exact: true }).click();
+    await expect(legacy.getByRole('textbox', { name: 'Resource source' })).toHaveValue(/version: ['"]?1\.1\.0/);
 });
 
 const dependencies = [
@@ -200,7 +305,7 @@ for (const dependency of dependencies) {
         try {
             await page.goto('works');
             await page.locator('.cms-top-banner .anticon-more').click();
-            await page.getByRole('menuitem', { name: /Agents…$/ }).click();
+            await page.getByRole('menuitem', { name: /Agentic resources…$/ }).click();
             const row = page.getByTestId('agent-card').filter({ hasText: name });
             const edit = row.getByTestId('edit-agent');
             await edit.click();
@@ -216,7 +321,7 @@ for (const dependency of dependencies) {
             await expect(unlink).toBeVisible();
 
             const publish = async (bump: 'major' | 'patch', version: string) => {
-                await editor.getByRole('button', { name: `Publish ${bump} v${version}` }).click();
+                await editor.getByRole('button', { name: `Publish v${version}` }).click();
                 await expect(row).toContainText(`Published v${version}`, { timeout: 30000 });
                 const draft = await (await request.get(agentUrl)).json();
                 const bundle = await request.get(`${agentUrl}/packages/${draft.published.commit}`);
@@ -228,7 +333,7 @@ for (const dependency of dependencies) {
             const close = page.getByTestId('central-panel-agent-editor-close');
             await close.click();
             await edit.click();
-            await expect(editor.getByRole('button', { name: 'Publish patch v1.0.1' })).toBeDisabled();
+            await expect(editor.getByRole('button', { name: 'Publish v1.0.1' })).toBeDisabled();
             await unlink.click();
             await expect(empty).toBeVisible();
             expect(dependency.isDeployed(await publish('patch', '1.0.1'))).toBe(false);

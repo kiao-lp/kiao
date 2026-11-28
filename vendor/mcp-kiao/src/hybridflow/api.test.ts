@@ -6,31 +6,19 @@ import type {
     BoardAgent,
     BoardAgentPatch,
     BoardChanges,
-    BoardClassVersion,
-    BoardClassVersionPatch,
     BoardFlowNode,
-   BoardFlowNodeClass,
-    BoardFlowNodeClassPatch,
     BoardFlowNodePatch,
-    BoardInstantiateRequest,
-    BoardListedClass,
-    BoardListedWorkflowClass,
     BoardPatch,
     BoardRunner,
     BoardRunnerPatch,
     BoardUsageTotals,
     BoardWhole,
     BoardWorkflow,
-    BoardWorkflowClass,
-    BoardWorkflowClassPatch,
     BoardWorkflowPatch,
     NewBoardAgent,
-    NewBoardClassVersion,
     NewBoardFlowNode,
-    NewBoardFlowNodeClass,
     NewBoardRunner,
     NewBoardWorkflow,
-    NewBoardWorkflowClass,
 } from './model.js';
 
 // Records the calls HybridflowApi makes on the files client and answers canned boards — the analogue
@@ -48,9 +36,7 @@ class FakeFiles {
         return {
             board: { id: 'b1', name, slug: handle, createdAt: '', updatedAt: '', revision: 1, archived: false },
             flowNodes: [],
-            flowNodeClasses: [],
             workflows: [],
-            workflowClasses: [],
             cursor: 1,
         };
     }
@@ -113,73 +99,6 @@ class FakeFiles {
         return { reports: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, reasoningTokens: 0 };
     }
 
-    async convertFlowNodeToClass(handle: string, id: string): Promise<BoardFlowNodeClass> {
-        this.record('convertFlowNodeToClass', [handle, id]);
-        return {
-            id: 'class-1', title: 'Class', type: 'ai', versions: [],
-            createdAt: '', updatedAt: '', revision: 1,
-        };
-    }
-
-    async listFlowNodeClasses(): Promise<{ flowNodeClasses: BoardListedClass[] }> {
-        this.record('listFlowNodeClasses', []);
-        return { flowNodeClasses: [] };
-    }
-
-    async createFlowNodeClass(handle: string, flowNodeClass: NewBoardFlowNodeClass): Promise<BoardFlowNodeClass> {
-        this.record('createFlowNodeClass', [handle, flowNodeClass]);
-        return {
-            id: 'class-1', title: flowNodeClass.title, type: flowNodeClass.type ?? 'human', versions: [],
-            createdAt: '', updatedAt: '', revision: 1,
-        };
-    }
-
-    async getFlowNodeClass(handle: string, id: string): Promise<BoardFlowNodeClass> {
-        this.record('getFlowNodeClass', [handle, id]);
-        return { id, title: 'Class', type: 'human', versions: [], createdAt: '', updatedAt: '', revision: 1 };
-    }
-
-    async patchFlowNodeClass(
-        handle: string, id: string, patch: BoardFlowNodeClassPatch, ifMatch?: number,
-    ): Promise<BoardFlowNodeClass> {
-        this.record('patchFlowNodeClass', [handle, id, patch, ifMatch]);
-        return { id, title: 'Class', type: 'human', versions: [], createdAt: '', updatedAt: '', revision: 2 };
-    }
-
-    async deleteFlowNodeClasses(handle: string, flowNodeClasses: string[]): Promise<void> {
-        this.record('deleteFlowNodeClasses', [handle, flowNodeClasses]);
-    }
-
-    async chainFlowNodeClass(handle: string, id: string, flowNode: string): Promise<BoardFlowNodeClass> {
-        this.record('chainFlowNodeClass', [handle, id, flowNode]);
-        return { id, title: 'Class', type: 'human', versions: [], createdAt: '', updatedAt: '', revision: 2 };
-    }
-
-    async createClassVersion(
-        handle: string, classId: string, version: NewBoardClassVersion,
-    ): Promise<BoardClassVersion> {
-        this.record('createClassVersion', [handle, classId, version]);
-        return { id: 'ver-1', number: 1, status: 'draft', createdAt: '', updatedAt: '', revision: 1 };
-    }
-
-    async patchClassVersion(
-        handle: string, classId: string, versionId: string, patch: BoardClassVersionPatch, ifMatch?: number,
-    ): Promise<BoardClassVersion> {
-        this.record('patchClassVersion', [handle, classId, versionId, patch, ifMatch]);
-        return { id: versionId, number: 1, status: 'draft', createdAt: '', updatedAt: '', revision: 2 };
-    }
-
-    async deleteClassVersion(handle: string, classId: string, versionId: string): Promise<void> {
-        this.record('deleteClassVersion', [handle, classId, versionId]);
-    }
-
-    async instantiateFlowNodeClass(
-        handle: string, classId: string, request: BoardInstantiateRequest,
-    ): Promise<{ flowNodes: BoardFlowNode[] }> {
-        this.record('instantiateFlowNodeClass', [handle, classId, request]);
-        return { flowNodes: [] };
-    }
-
     async createWorkflow(handle: string, workflow: NewBoardWorkflow): Promise<BoardWorkflow> {
         this.record('createWorkflow', [handle, workflow]);
         return { id: 'wf-1', name: workflow.name ?? '', createdAt: '', updatedAt: '', revision: 1 };
@@ -199,42 +118,6 @@ class FakeFiles {
 
     async deleteWorkflows(handle: string, workflows: string[]): Promise<void> {
         this.record('deleteWorkflows', [handle, workflows]);
-    }
-
-    async listWorkflowClasses(): Promise<{ workflowClasses: BoardListedWorkflowClass[] }> {
-        this.record('listWorkflowClasses', []);
-        return { workflowClasses: [] };
-    }
-
-    async createWorkflowClass(handle: string, workflowClass: NewBoardWorkflowClass): Promise<BoardWorkflowClass> {
-        this.record('createWorkflowClass', [handle, workflowClass]);
-        return { id: 'wc-1', name: workflowClass.name ?? '', createdAt: '', updatedAt: '', revision: 1 };
-    }
-
-    async getWorkflowClass(handle: string, id: string): Promise<BoardWorkflowClass> {
-        this.record('getWorkflowClass', [handle, id]);
-        return { id, name: 'Sprint', createdAt: '', updatedAt: '', revision: 1 };
-    }
-
-    async patchWorkflowClass(
-        handle: string, id: string, patch: BoardWorkflowClassPatch, ifMatch?: number,
-    ): Promise<BoardWorkflowClass> {
-        this.record('patchWorkflowClass', [handle, id, patch, ifMatch]);
-        return { id, name: 'Sprint', createdAt: '', updatedAt: '', revision: 2 };
-    }
-
-    async deleteWorkflowClasses(handle: string, workflowClasses: string[]): Promise<void> {
-        this.record('deleteWorkflowClasses', [handle, workflowClasses]);
-    }
-
-    async instantiateWorkflowClass(
-        handle: string, id: string, request: BoardInstantiateRequest,
-    ): Promise<{ workflow: BoardWorkflow; flowNodes: BoardFlowNode[] }> {
-        this.record('instantiateWorkflowClass', [handle, id, request]);
-        return {
-            workflow: { id: 'wf-1', name: 'Sprint', createdAt: '', updatedAt: '', revision: 1 },
-            flowNodes: [],
-        };
     }
 
     async listAgents(): Promise<{ agents: BoardAgent[] }> {
@@ -393,18 +276,16 @@ describe('HybridflowApi', () => {
         await expect(api.deleteBoard('')).rejects.toThrow(/must not be empty/);
     });
 
-    it('reads one card, chains it, reads its usage and converts it to a class', async () => {
+    it('reads one card, chains it and reads its usage', async () => {
         await api.getFlowNode('major', 'card-1');
         await api.chainFlowNode('major', 'card-1', 'card-2');
         await api.chainFlowNode('major', 'card-1', '  ');
         await api.getFlowNodeUsage('major', 'card-1');
-        await api.convertFlowNodeToClass('major', 'card-1');
         expect(fake.calls).toEqual([
             { method: 'getFlowNode', args: ['major', 'card-1'] },
             { method: 'chainFlowNode', args: ['major', 'card-1', 'card-2'] },
             { method: 'chainFlowNode', args: ['major', 'card-1', ''] },
             { method: 'getFlowNodeUsage', args: ['major', 'card-1'] },
-            { method: 'convertFlowNodeToClass', args: ['major', 'card-1'] },
         ]);
         await expect(api.getFlowNode('major', '  ')).rejects.toThrow(/must not be empty/);
     });
@@ -418,35 +299,6 @@ describe('HybridflowApi', () => {
         await expect(api.deleteFlowNodes('major', ['  '])).rejects.toThrow(/at least one card id/);
     });
 
-    it('creates, reads, patches, chains, deletes and instantiates node classes', async () => {
-        await api.listFlowNodeClasses();
-        await api.createFlowNodeClass('major', { title: '  Review  ', type: 'ai' });
-        await api.getFlowNodeClass('major', 'class-1');
-        await api.patchFlowNodeClass('major', 'class-1', { note: 'When to use it.' }, 2);
-        await api.chainFlowNodeClass('major', 'class-1', 'class-2');
-        await api.instantiateFlowNodeClass('major', 'class-1', { spot: { x: 0, y: 0 } });
-        await api.deleteFlowNodeClasses('major', ['class-1']);
-        expect(fake.calls.map((c) => c.method)).toEqual([
-            'listFlowNodeClasses', 'createFlowNodeClass', 'getFlowNodeClass', 'patchFlowNodeClass',
-            'chainFlowNodeClass', 'instantiateFlowNodeClass', 'deleteFlowNodeClasses',
-        ]);
-        expect(fake.calls[1].args[1]).toEqual({ title: 'Review', type: 'ai' });
-        await expect(api.createFlowNodeClass('major', { title: '  ' })).rejects.toThrow(/needs a title/);
-        await expect(api.patchFlowNodeClass('major', 'class-1', {})).rejects.toThrow(/at least one/);
-        await expect(api.deleteFlowNodeClasses('major', [])).rejects.toThrow(/at least one class id/);
-    });
-
-    it('creates, patches and deletes class versions, refusing an empty version patch', async () => {
-        await api.createClassVersion('major', 'class-1', { from: 'ver-1' });
-        await api.patchClassVersion('major', 'class-1', 'ver-2', { status: 'published' }, 1);
-        await expect(api.deleteClassVersion('major', 'class-1', 'ver-2')).resolves.toEqual({ deleted: 'ver-2' });
-        expect(fake.calls.map((c) => c.method)).toEqual([
-            'createClassVersion', 'patchClassVersion', 'deleteClassVersion',
-        ]);
-        await expect(api.patchClassVersion('major', 'class-1', 'ver-2', {})).rejects.toThrow(/at least one/);
-        await expect(api.patchClassVersion('major', 'class-1', '  ', { status: 'published' })).rejects.toThrow(/must not be empty/);
-    });
-
     it('creates, reads, patches and deletes workflows, refusing an empty patch and id list', async () => {
         await api.createWorkflow('major', { name: 'Sprint', flowNodes: ['card-1'] });
         await api.getWorkflow('major', 'wf-1');
@@ -457,21 +309,6 @@ describe('HybridflowApi', () => {
         ]);
         await expect(api.patchWorkflow('major', 'wf-1', {})).rejects.toThrow(/at least one/);
         await expect(api.deleteWorkflows('major', [])).rejects.toThrow(/at least one workflow id/);
-    });
-
-    it('creates, reads, patches, deletes and instantiates workflow classes', async () => {
-        await api.listWorkflowClasses();
-        await api.createWorkflowClass('major', { name: 'Sprint', classes: ['class-1'] });
-        await api.getWorkflowClass('major', 'wc-1');
-        await api.patchWorkflowClass('major', 'wc-1', { name: 'Release' });
-        await api.instantiateWorkflowClass('major', 'wc-1', {});
-        await api.deleteWorkflowClasses('major', ['wc-1']);
-        expect(fake.calls.map((c) => c.method)).toEqual([
-            'listWorkflowClasses', 'createWorkflowClass', 'getWorkflowClass',
-            'patchWorkflowClass', 'instantiateWorkflowClass', 'deleteWorkflowClasses',
-        ]);
-        await expect(api.patchWorkflowClass('major', 'wc-1', {})).rejects.toThrow(/at least one/);
-        await expect(api.deleteWorkflowClasses('major', [])).rejects.toThrow(/at least one workflow class id/);
     });
 
     it('creates, reads, patches and deletes agents, refusing an empty name, harness and patch', async () => {

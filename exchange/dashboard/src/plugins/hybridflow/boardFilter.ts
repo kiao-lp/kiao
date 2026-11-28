@@ -1,15 +1,15 @@
 /** View-only tag filtering: selections are ORed and never alter board content. */
 
-export interface TaggedCard {
+export interface TaggedFlowNode {
     tags: string[];
 }
 
 /** Offer tags used by this board, including unregistered tags; sort to keep chips stable. */
-export const boardTags = (cards: TaggedCard[]): string[] => {
+export const boardTags = (nodes: TaggedFlowNode[]): string[] => {
     const seen = new Set<string>();
     const words: string[] = [];
-    for (const card of cards) {
-        for (const label of card.tags) {
+    for (const node of nodes) {
+        for (const label of node.tags) {
             const key = label.toLowerCase();
             if (seen.has(key)) continue;
             seen.add(key);
@@ -19,15 +19,15 @@ export const boardTags = (cards: TaggedCard[]): string[] => {
     return words.sort((one, other) => one.localeCompare(other, undefined, { sensitivity: 'base' }));
 };
 
-/** No selection shows all cards; matching is case-insensitive. */
-export const showsFlowNode = (card: TaggedCard, selected: string[]): boolean => {
+/** No selection shows all nodes; matching is case-insensitive. */
+export const showsFlowNode = (node: TaggedFlowNode, selected: string[]): boolean => {
     if (!selected.length) return true;
-    return card.tags.some(label => selected.some(wanted => wanted.toLowerCase() === label.toLowerCase()));
+    return node.tags.some(label => selected.some(wanted => wanted.toLowerCase() === label.toLowerCase()));
 };
 
-/** Preserve card identity and order; return the original array when unfiltered. */
-export const filterFlowNodes = <T extends TaggedCard>(cards: T[], selected: string[]): T[] =>
-    (selected.length ? cards.filter(card => showsFlowNode(card, selected)) : cards);
+/** Preserve node identity and order; return the original array when unfiltered. */
+export const filterFlowNodes = <T extends TaggedFlowNode>(nodes: T[], selected: string[]): T[] =>
+    (selected.length ? nodes.filter(node => showsFlowNode(node, selected)) : nodes);
 
 export const toggleTag = (selected: string[], label: string): string[] => {
     const held = selected.some(word => word.toLowerCase() === label.toLowerCase());

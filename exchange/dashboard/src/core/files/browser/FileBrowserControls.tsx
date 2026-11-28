@@ -1,5 +1,5 @@
 import React from 'react';
-import { Button } from 'antd';
+import { IconButton } from '../../ui-foundation/toolbar/IconButton';
 import { CheckSquareOutlined, ReloadOutlined } from '@ant-design/icons';
 import { NewButtonCmp } from './NewButton-cmp';
 import { ViewModeSwitch } from '../view-mode/ViewModeSwitch';
@@ -15,20 +15,18 @@ export const FileBrowserControls: React.FC = () => {
     return (
         <>
             {isCoarse && (
-                <Button aria-label={selection.selectMode ? 'Exit select mode' : 'Enter select mode'}
+                <IconButton
+                    label={selection.selectMode ? 'Exit select mode' : 'Enter select mode'}
                     type={selection.selectMode ? 'primary' : 'text'}
-                    size="small"
                     icon={<CheckSquareOutlined />}
                     onClick={() => selection.setSelectMode(!selection.selectMode)}
                     data-testid="select-mode-toggle"
                 />
             )}
-            <Button
-                type="text"
-                size="small"
+            <IconButton
+                label="Refresh file list"
                 icon={<ReloadOutlined />}
                 onClick={() => void refreshFileList()}
-                aria-label="Refresh file list"
                 data-testid="refresh-file-list"
             />
             <ViewModeSwitch />

@@ -3,7 +3,6 @@ package playback
 import (
 	"context"
 	pkgBoards "kiao/worker/internal/hybridflow-runner/boards"
-	runnerconfig "kiao/worker/internal/hybridflow-runner/config"
 	"kiao/worker/internal/hybridflow-runner/conversations"
 	harnessapi "kiao/worker/internal/hybridflow-runner/harnesses"
 	harnessfaults "kiao/worker/internal/hybridflow-runner/harnesses/faults"
@@ -22,16 +21,14 @@ import (
 // the turn was *stopped* rather than finished. A turn killed mid-sentence is often recorded as
 // having said nothing at all: the CLI does not hand over a message it never finished, and inventing
 // one here would put words in the model's mouth.
-func (r *ChainRunner) turn(ctx context.Context, run *ChainRun, chat string, req turns.TurnRequest, attach bool) (reply harnessfaults.TurnReply, refusal *harnessfaults.TurnRefusal, stopped bool) {
+func (r *ChainRunner) turn(ctx context.Context, run *ChainRun, chat string, req turns.TurnRequest, resumed *suspendedTurn) (reply harnessfaults.TurnReply, refusal *harnessfaults.TurnRefusal, stopped bool) {
 	var job *turns.Turn
-	if attach && chat != "" {
-		job = r.awaitTurnStart(ctx, chat)
-		if ctx.Err() == nil {
-			if job != nil {
-				r.LogNote(run, req.FlowNodeID, chat, "", "joined the turn started in this chat")
-			} else {
-				r.LogNote(run, req.FlowNodeID, chat, "", "no turn started in time; the flow node is played as written")
-			}
+	if resumed != nil && resumed.awaitMessage {
+		job = r.awaitTurnStart(ctx, run.waking(), chat, resumed.previousTurn)
+		if job != nil {
+			r.LogNote(run, req.FlowNodeID, chat, "", "joined the turn started in this chat")
+		} else if r.stopping(run) {
+			return harnessfaults.TurnReply{}, nil, true
 		}
 	}
 	if job == nil {
@@ -59,44 +56,42 @@ func (r *ChainRunner) turn(ctx context.Context, run *ChainRun, chat string, req 
 	// The transcript holds what the turn *said*; the job holds what it reported going wrong, which is
 	// where `codex exec` puts an error and where the transcript therefore has nothing. Both readings
 	// travel, and replyFault decides which of them is the turn's story.
-	said := r.lastReply(chat)
+	said := r.lastReply(chat, job.TurnID)
 	said.Failure = job.LastFailure()
 	return said, nil, interrupted
 }
 
-// awaitTurnStart finds a live user turn within ResumeWindow. Nil asks the caller to submit the card.
-func (r *ChainRunner) awaitTurnStart(ctx context.Context, chat string) *turns.Turn {
-	deadline := time.Now().Add(r.ResumeWindow)
+// awaitTurnStart includes turns that settled before the first observation.
+func (r *ChainRunner) awaitTurnStart(ctx context.Context, waking <-chan struct{}, chat string, previous *turns.Turn) *turns.Turn {
+	deadline := time.NewTimer(r.ResumeWindow)
+	defer deadline.Stop()
+	poll := time.NewTicker(100 * time.Millisecond)
+	defer poll.Stop()
 	for {
-		if job := r.Hub.RunningTurn(chat); job != nil {
-			job.Mu.Lock()
-			live := !job.IsDone
-			job.Mu.Unlock()
-			if live {
-				return job
-			}
-		}
-		if time.Now().After(deadline) {
-			return nil
+		if job := r.Hub.RunningTurn(chat); job != nil && job != previous {
+			return job
 		}
 		select {
 		case <-ctx.Done():
 			return nil
-		case <-time.After(100 * time.Millisecond):
+		case <-waking:
+			return nil
+		case <-deadline.C:
+			return nil
+		case <-poll.C:
 		}
 	}
 }
 
-// lastReply reads the settled turn's last assistant record. Every settled turn writes one,
-// including empty and failed turns, so a previous answer cannot be mistaken for this one.
-func (r *ChainRunner) lastReply(chat string) harnessfaults.TurnReply {
+// lastReply reads the assistant record for the settled turn.
+func (r *ChainRunner) lastReply(chat, turnID string) harnessfaults.TurnReply {
 	records, err := r.convs.Messages(chat)
 	if err != nil {
 		pkgBoards.LogChainRun.Warn("cannot read back the reply", "conversation", chat, "error", err)
 		return harnessfaults.TurnReply{}
 	}
 	for i := len(records) - 1; i >= 0; i-- {
-		if records[i].Role == conversations.RoleAssistant {
+		if records[i].Role == conversations.RoleAssistant && records[i].TurnID == turnID {
 			return harnessfaults.TurnReply{
 				Text:     records[i].BlockText(),
 				Tail:     records[i].BlockTail(),
@@ -108,13 +103,13 @@ func (r *ChainRunner) lastReply(chat string) harnessfaults.TurnReply {
 }
 
 // compact sends the chat command through TurnExecutor. Failure ends progression immediately;
-// the card required compaction before its conversation could be handed over.
+// the flow node required compaction before its conversation could be handed over.
 func (r *ChainRunner) compact(ctx context.Context, run *ChainRun, chat string) bool {
 	flowNodeID := run.FlowNodeID
 	reply, refusal, stopped := r.turn(ctx, run, chat, turns.TurnRequest{
 		ConversationID: chat, Prompt: briefing.ChainRunCompactCommand,
 		RunID: run.Id, FlowNodeID: flowNodeID, Board: run.Handle,
-	}, false)
+	}, nil)
 	if ctx.Err() != nil {
 		return false
 	}
@@ -152,7 +147,7 @@ func (r *ChainRunner) harnessLabel(harness string) string {
 	if r.Hub == nil || r.Hub.HarnessRegistry() == nil {
 		return protocol.OrDefault(harness, "the harness")
 	}
-	// A card that names no agent is one no run reaches — a flow node missing any of its five settings
+	// A flow node that names no agent is one no run reaches — a flow node missing any of its five settings
 	// is not playable — but a summary is a sentence shown to somebody, and " is overloaded" is not
 	// one.
 	if strings.TrimSpace(harness) == "" {
@@ -173,9 +168,9 @@ func (r *ChainRunner) chatHarnessLabel(chat string) string {
 	return r.harnessLabel(meta.Harness)
 }
 
-// ConversationFor creates a chat with the card's settings and current published agent version.
+// ConversationFor creates a chat with the flow node's settings and current published agent version.
 func (r *ChainRunner) ConversationFor(run *ChainRun, flowNode pkgBoards.FlowNode, resolved PlayAgent) (string, error) {
-	folder, err := runnerconfig.ResolveFolder(r.cfg.RootPath, flowNode.Settings.WorkFolder())
+	folder, err := r.cfg.ResolveFolder(flowNode.Settings.WorkFolder())
 	if err != nil {
 		return "", err
 	}
@@ -215,9 +210,9 @@ func (r *ChainRunner) ConversationFor(run *ChainRun, flowNode pkgBoards.FlowNode
 	return meta.ID, nil
 }
 
-// forkChat names the successor conversation after its card, avoiding duplicate titles
+// forkChat names the successor conversation after its flow node, avoiding duplicate titles
 // in the conversation switcher. The fork notice identifies its source.
-// Compatible engines and profiles branch the native session; other targets receive
+// Compatible harnesses and profiles branch the native session; other targets receive
 // the common transcript as context in a fresh session.
 func (r *ChainRunner) forkChat(run *ChainRun, chat, title string, targets ...PlayAgent) (string, error) {
 	source, err := r.convs.Get(chat)

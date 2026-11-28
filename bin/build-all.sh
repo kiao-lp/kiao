@@ -8,6 +8,11 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
+rm -f "$PROJECT_ROOT/dist/kiao-build-revision"
+if [ "$(readlink "$PROJECT_ROOT/reference/kiao-mcp" || true)" = ../agentic-resources/mcp-kiao ]; then
+    python3 "$SCRIPT_DIR/stage-agentic-repositories.py" restore --name mcp-kiao "$PROJECT_ROOT"
+fi
+
 # Build reference libraries before their consumers.
 "$SCRIPT_DIR/build-reference.sh"
 
@@ -46,6 +51,9 @@ if [ -d "$DASHBOARD_DIR" ]; then
 else
     echo "Warning: Dashboard directory not found."
 fi
+
+cp "$PROJECT_ROOT/agentic-resources.json" "$PROJECT_ROOT/dist/agentic-resources.json"
+git -C "$PROJECT_ROOT" rev-parse HEAD > "$PROJECT_ROOT/dist/kiao-build-revision"
 
 echo "------------------------------------------------"
 echo "Shared build complete. The end scripts can now run without repeating any of it:"

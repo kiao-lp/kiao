@@ -47,7 +47,7 @@ describe('RevealInTreeButton', () => {
     });
 
     // Root path is `''`; `null` means no target.
-    it('asks for the store root, which no path names', () => {
+    it('reveals the DCMS root using the empty path', () => {
         show('');
 
         fireEvent.click(screen.getByTestId('locate'));

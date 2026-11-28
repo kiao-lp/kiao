@@ -52,15 +52,15 @@ func TestConfigValidate(t *testing.T) {
 		cfg   *runnerconfig.Config
 		wantN int
 	}{
-		{"valid", &runnerconfig.Config{Config: &coreconfig.Config{RootPath: dir}, MaxTurns: 4}, 0},
+		{"valid", &runnerconfig.Config{Config: &coreconfig.Config{DCMSRoot: dir}, MaxTurns: 4}, 0},
 		// A turn cap of zero refuses every prompt, which reaches the UI as an ordinary "too many
 		// turns" and is indistinguishable from a busy service; it has to be caught at startup.
-		{"turn cap of zero", &runnerconfig.Config{Config: &coreconfig.Config{RootPath: dir}}, 1},
+		{"turn cap of zero", &runnerconfig.Config{Config: &coreconfig.Config{DCMSRoot: dir}}, 1},
 		// --setting-sources goes to the CLI verbatim, so an unknown source fails every spawn rather
 		// than anything the service would recognise as a configuration problem. Empty is legal: it
 		// is how the flag is omitted.
-		{"unknown setting source", &runnerconfig.Config{Config: &coreconfig.Config{RootPath: dir}, MaxTurns: 4, ClaudeSettingSources: "user,enterprise"}, 1},
-		{"no setting sources", &runnerconfig.Config{Config: &coreconfig.Config{RootPath: dir}, MaxTurns: 4, ClaudeSettingSources: ""}, 0},
+		{"unknown setting source", &runnerconfig.Config{Config: &coreconfig.Config{DCMSRoot: dir}, MaxTurns: 4, ClaudeSettingSources: "user,enterprise"}, 1},
+		{"no setting sources", &runnerconfig.Config{Config: &coreconfig.Config{DCMSRoot: dir}, MaxTurns: 4, ClaudeSettingSources: ""}, 0},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -75,7 +75,7 @@ func TestConfigValidate(t *testing.T) {
 // empty environment value as unset and hands back the default — which is why this one setting is read
 // with LookupEnv instead.
 func TestSettingSourcesCanBeSpelledEmpty(t *testing.T) {
-	t.Setenv("KIAO_WORKER_ROOT_PATH", t.TempDir())
+	t.Setenv("KIAO_WORKER_DCMS_ROOT", t.TempDir())
 
 	t.Setenv("KIAO_WORKER_HYBRIDFLOW_RUNNER_CLAUDE_SETTING_SOURCES", "")
 	if got := runnerconfig.LoadConfig(coreconfig.LoadConfig()).ClaudeSettingSources; got != "" {
@@ -97,7 +97,7 @@ func TestSettingSourcesCanBeSpelledEmpty(t *testing.T) {
 
 // A deployment that still speaks the middle spelling gets exactly what it always did.
 func TestTheHarnessEnvironmentNamesAreStillRead(t *testing.T) {
-	t.Setenv("KIAO_WORKER_ROOT_PATH", t.TempDir())
+	t.Setenv("KIAO_WORKER_DCMS_ROOT", t.TempDir())
 	t.Setenv("KIAO_WORKER_HARNESS_MAX_TURNS", "9")
 	t.Setenv("KIAO_WORKER_HARNESS_BYPASS_ENABLED", "false")
 	t.Setenv("KIAO_WORKER_HARNESS_CLAUDE_LOGIN_ENABLED", "true")
@@ -118,7 +118,7 @@ func TestTheHarnessEnvironmentNamesAreStillRead(t *testing.T) {
 
 // A deployment that says nothing new gets exactly what it always did.
 func TestTheOldEnvironmentNamesAreStillRead(t *testing.T) {
-	t.Setenv("KIAO_WORKER_ROOT_PATH", t.TempDir())
+	t.Setenv("KIAO_WORKER_DCMS_ROOT", t.TempDir())
 	t.Setenv("KIAO_WORKER_CLAUDE_MAX_TURNS", "9")
 	t.Setenv("KIAO_WORKER_CLAUDE_BYPASS_ENABLED", "false")
 	t.Setenv("KIAO_WORKER_CLAUDE_LOGIN_ENABLED", "true")
@@ -139,7 +139,7 @@ func TestTheOldEnvironmentNamesAreStillRead(t *testing.T) {
 // The namespaced name wins where several are set — an operator who has moved to it is not overruled
 // by a line they left behind — and the middle spelling wins over the oldest for the same reason.
 func TestTheNamespacedEnvironmentNamesWin(t *testing.T) {
-	t.Setenv("KIAO_WORKER_ROOT_PATH", t.TempDir())
+	t.Setenv("KIAO_WORKER_DCMS_ROOT", t.TempDir())
 	t.Setenv("KIAO_WORKER_CLAUDE_MAX_TURNS", "9")
 	t.Setenv("KIAO_WORKER_HARNESS_MAX_TURNS", "7")
 	t.Setenv("KIAO_WORKER_HYBRIDFLOW_RUNNER_MAX_TURNS", "2")
@@ -165,7 +165,7 @@ func TestTheNamespacedEnvironmentNamesWin(t *testing.T) {
 // A namespaced name set to nothing wins too, on the settings whose empty value is what says "off".
 // Falling back to the old name there would leave an operator no way to say it at all.
 func TestAnEmptyNamespacedNameStillWins(t *testing.T) {
-	t.Setenv("KIAO_WORKER_ROOT_PATH", t.TempDir())
+	t.Setenv("KIAO_WORKER_DCMS_ROOT", t.TempDir())
 	t.Setenv("KIAO_WORKER_CLAUDE_SETTING_SOURCES", "user,project")
 	t.Setenv("KIAO_WORKER_HARNESS_CLAUDE_SETTING_SOURCES", "user,project")
 	t.Setenv("KIAO_WORKER_HYBRIDFLOW_RUNNER_CLAUDE_SETTING_SOURCES", "")
@@ -177,7 +177,7 @@ func TestAnEmptyNamespacedNameStillWins(t *testing.T) {
 // Muse defaults to enabled and accepts both the namespaced flag
 // and the KIAO_WORKER_HARNESS_MUSE_ENABLED compatibility alias.
 func TestMuseIsOfferedByDefault(t *testing.T) {
-	t.Setenv("KIAO_WORKER_ROOT_PATH", t.TempDir())
+	t.Setenv("KIAO_WORKER_DCMS_ROOT", t.TempDir())
 	if cfg := runnerconfig.LoadConfig(coreconfig.LoadConfig()); cfg.MuseDisabled {
 		t.Error("MuseDisabled must default to false: Muse is offered unless vetoed")
 	}
@@ -197,8 +197,8 @@ func TestMuseIsOfferedByDefault(t *testing.T) {
 // Validate names the variable the value actually came from. A message pointing at a name nobody set
 // sends its reader to the wrong line of the env file.
 func TestValidateNamesTheVariableTheValueCameFrom(t *testing.T) {
-	t.Setenv("KIAO_WORKER_ROOT_PATH", t.TempDir())
-	cfg := runnerconfig.Config{Config: &coreconfig.Config{RootPath: t.TempDir()}, MaxTurns: 0}
+	t.Setenv("KIAO_WORKER_DCMS_ROOT", t.TempDir())
+	cfg := runnerconfig.Config{Config: &coreconfig.Config{DCMSRoot: t.TempDir()}, MaxTurns: 0}
 
 	t.Setenv("KIAO_WORKER_CLAUDE_MAX_TURNS", "0")
 	if problems := cfg.Validate(); len(problems) != 1 ||

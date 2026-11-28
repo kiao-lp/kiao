@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import { mergeBoardContent } from './boardMerge';
-import { FlowNodeClass, FlowNodeClassVersion, newFlowNodeClass } from './flowNodeClass';
 import { noSuccess } from './flowNodeSuccess';
 import { READY } from './flowNodeStatus';
 import { BoardContent, FlowNode } from './boardContent';
@@ -9,22 +8,33 @@ import { BoardContent, FlowNode } from './boardContent';
 
 const flowNode = (id: string, over: Partial<FlowNode> = {}): FlowNode =>
     ({
-        id, title: id, type: 'human', note: '', value: {}, valueType: '', tags: [], body: '', criteria: [], complexity: null,
-        settings: {}, at: '', spot: null, status: READY, archived: false, chat: '', onSuccess: noSuccess(),
-        classVersion: null, workflow: '', ...over,
+        id, title: id, type: 'human', note: '', value: {}, valueType: '', tags: [], body: '', multiPartTemplate: false,
+        criteria: [], complexity: null,
+        settings: {}, at: '', spot: null, size: null, status: READY, archived: false, chat: '', onSuccess: noSuccess(),
+        workflow: '', ...over,
     });
 
-/** The board those cards make. */
+/** The board those nodes make. */
 const board = (...flowNodes: FlowNode[]): BoardContent => (
-    ({ flowNodes, flowNodeClasses: [], workflows: [], workflowClasses: [] }));
+    ({ flowNodes, workflows: [] }));
 
-/** The board as a shape a test can read: the cards, by id. */
+/** The board as a shape a test can read: the nodes, by id. */
 const shape = (content: BoardContent) => content.flowNodes.map(entry => entry.id);
 
 const find = (content: BoardContent, id: string): FlowNode | undefined =>
     content.flowNodes.find(entry => entry.id === id);
 
 describe('mergeBoardContent – a run writing while a board is being written', () => {
+    it('shows the store countdown when a limiter is played after a maximum edit', () => {
+        const base = board(flowNode('gate', { type: 'limiter', maxPasses: 3, remainingPasses: 0 }));
+        const ours = board(flowNode('gate', { type: 'limiter', title: 'Renamed', maxPasses: 2, remainingPasses: 2 }));
+        const theirs = board(flowNode('gate', { type: 'limiter', maxPasses: 2, remainingPasses: 1, status: 'done' }));
+
+        expect(find(mergeBoardContent(base, ours, theirs), 'gate')).toMatchObject({
+            title: 'Renamed', maxPasses: 2, remainingPasses: 1, status: 'done',
+        });
+    });
+
     it('receives structured output while retaining a description edit', () => {
         const base = board(flowNode('a', { type: 'ai', body: 'Write', outputType: 'schema' }));
         const ours = board(flowNode('a', { type: 'ai', body: 'Write more', outputType: 'schema' }));
@@ -51,7 +61,7 @@ describe('mergeBoardContent – a run writing while a board is being written', (
         expect(find(merged, 'b')!.title).toBe('Written while it ran');
     });
 
-    // The description is only ever written here: a description typed while the turn ran is kept, which is the card.
+    // The description is only ever written here: a description typed while the turn ran is kept, which is the node.
     it('keeps a description written here while the play was sending the last one', () => {
         const base = board(flowNode('a', { body: 'Do the thing.' }));
         const ours = board(flowNode('a', { body: 'And then the other thing.' }));
@@ -67,11 +77,11 @@ describe('mergeBoardContent – a run writing while a board is being written', (
         const base = board(flowNode('a'));
         const ours = board(flowNode('a'));
         const theirs = board(flowNode('a', {
-            title: 'Renamed by a turn', body: 'Written by a turn', status: 'error',
+            title: 'Renamed by a turn', body: 'Written by a turn', multiPartTemplate: true, status: 'error',
         }));
 
         expect(find(mergeBoardContent(base, ours, theirs), 'a')).toMatchObject({
-            title: 'Renamed by a turn', body: 'Written by a turn', status: 'error',
+            title: 'Renamed by a turn', body: 'Written by a turn', multiPartTemplate: true, status: 'error',
         });
     });
 
@@ -84,9 +94,9 @@ describe('mergeBoardContent – a run writing while a board is being written', (
     });
 });
 
-describe('mergeBoardContent – the tags a card is filed under', () => {
+describe('mergeBoardContent – the tags a node is filed under', () => {
     // A field the run never touches, like the title: whoever changed it is whoever meant to.
-    it('keeps the words typed here while the run was marking the card', () => {
+    it('keeps the words typed here while the run was marking the node', () => {
         const base = board(flowNode('a'));
         const ours = board(flowNode('a', { tags: ['bug'] }));
         const theirs = board(flowNode('a', { status: 'done', body: 'Answered.' }));
@@ -105,7 +115,28 @@ describe('mergeBoardContent – the tags a card is filed under', () => {
     });
 });
 
-describe('mergeBoardContent – cards arriving and leaving', () => {
+describe('mergeBoardContent – role nodes', () => {
+    it('merges independent changes to role fields', () => {
+        const role = flowNode('role', { type: 'role', roleId: 'reviewers', people: ['Alex Rivera'] });
+        const base = board(role);
+        const ours = board({ ...role, roleId: 'release-reviewers', roleKind: 'agent', description: 'Review each release.' });
+        const theirs = board({ ...role, people: ['Sam Lee'] });
+        const expected = { roleId: 'release-reviewers', roleKind: 'agent', people: ['Sam Lee'], description: 'Review each release.' };
+
+        expect(find(mergeBoardContent(base, ours, theirs), role.id)).toMatchObject(expected);
+        expect(find(mergeBoardContent(base, theirs, ours), role.id)).toMatchObject(expected);
+    });
+
+    it('refreshes empty fields on a role created locally', () => {
+        const role = flowNode('role', { type: 'role' });
+        const base = board({ ...role, roleId: '', people: [], description: '' });
+        const saved = { roleId: 'reviewers', people: ['Alex Rivera'], description: 'Review each release.' };
+
+        expect(find(mergeBoardContent(base, board(role), board({ ...role, ...saved })), role.id)).toMatchObject(saved);
+    });
+});
+
+describe('mergeBoardContent – nodes arriving and leaving', () => {
     it('takes a flow node the service has that this board has never seen', () => {
         const base = board(flowNode('a'));
         const ours = board(flowNode('a'), flowNode('mine'));
@@ -139,8 +170,8 @@ describe('mergeBoardContent – cards arriving and leaving', () => {
     });
 });
 
-describe('mergeBoardContent – where the cards sit', () => {
-    it('keeps a card placed here against the service holding it unplaced', () => {
+describe('mergeBoardContent – where the nodes sit', () => {
+    it('keeps a node placed here against the service holding it unplaced', () => {
         const base = board(flowNode('a'));
         const ours = board(flowNode('a', { spot: { x: 100, y: 100 } }));
         const theirs = board(flowNode('a', { status: 'done' }));
@@ -150,7 +181,7 @@ describe('mergeBoardContent – where the cards sit', () => {
         expect(find(merged, 'a')!.status).toBe('done');
     });
 
-    it('takes a card placed elsewhere where nothing placed it here', () => {
+    it('takes a node placed elsewhere where nothing placed it here', () => {
         const base = board(flowNode('a'));
         const ours = board(flowNode('a'));
         const theirs = board(flowNode('a', { spot: { x: 100, y: 100 } }));
@@ -166,7 +197,7 @@ describe('mergeBoardContent – where the cards sit', () => {
         expect(shape(mergeBoardContent(base, ours, theirs))).toEqual(['b', 'a']);
     });
 
-    it('takes a card added elsewhere onto a board that is being rearranged', () => {
+    it('takes a node added elsewhere onto a board that is being rearranged', () => {
         const base = board(flowNode('a'));
         const ours = board(flowNode('mine'), flowNode('a'));
         const theirs = board(flowNode('a'), flowNode('new'));
@@ -174,7 +205,7 @@ describe('mergeBoardContent – where the cards sit', () => {
         expect(shape(mergeBoardContent(base, ours, theirs))).toEqual(['mine', 'a', 'new']);
     });
 
-    it('puts a card added elsewhere after the card it follows there', () => {
+    it('puts a node added elsewhere after the node it follows there', () => {
         const base = board(flowNode('a'), flowNode('b'));
         const ours = board(flowNode('b'), flowNode('a'));
         const theirs = board(flowNode('a'), flowNode('new'), flowNode('b'));
@@ -183,79 +214,10 @@ describe('mergeBoardContent – where the cards sit', () => {
     });
 });
 
-describe('mergeBoardContent – a fresh class and its versions', () => {
-    const version = (
-        id: string, number: number, status: FlowNodeClassVersion['status'] = 'draft',
-    ): FlowNodeClassVersion => ({ id, number, body: '', criteria: [], template: false, status });
-
-    const classOf = (id: string, over: Partial<FlowNodeClass> = {}): FlowNodeClass => ({
-        ...newFlowNodeClass('human'), id, title: id, ...over,
-    });
-
-    const classes = (...flowNodeClasses: FlowNodeClass[]): BoardContent =>
-        ({ flowNodes: [], flowNodeClasses, workflows: [], workflowClasses: [] });
-
-    const versionsOf = (content: BoardContent, id: string): string[] =>
-        content.flowNodeClasses.find(one => one.id === id)?.versions.map(one => one.id) ?? [];
-
-    const titleOf = (content: BoardContent, id: string): string | undefined =>
-        content.flowNodeClasses.find(one => one.id === id)?.title;
-
-    it('takes the service versions of a class added here, keeping the title typed since', () => {
-        const base = classes();
-        const ours = classes(classOf('c1', { title: 'Typed', versions: [] }));
-        const theirs = classes(classOf('c1', { title: '', versions: [version('v1', 1)] }));
-
-        const merged = mergeBoardContent(base, ours, theirs);
-        expect(versionsOf(merged, 'c1')).toEqual(['v1']);
-        expect(titleOf(merged, 'c1')).toBe('Typed');
-    });
-
-    // The re-read after that one: the versions taken then are still the versions now, because this board has not said otherwise since.
-    it('keeps the versions taken at the first re-read on the ones after', () => {
-        const first = classes(classOf('c1', { title: 'Typed', versions: [version('v1', 1)] }));
-        const merged = mergeBoardContent(first, first, first);
-
-        expect(versionsOf(merged, 'c1')).toEqual(['v1']);
-    });
-
-    it('takes a version the service grew where the succession was untouched here', () => {
-        const v1 = version('v1', 1, 'published');
-        const base = classes(classOf('c1', { versions: [v1] }));
-        const ours = classes(classOf('c1', { versions: [v1] }));
-        const theirs = classes(classOf('c1', { versions: [v1, version('v2', 2)] }));
-
-        expect(versionsOf(mergeBoardContent(base, ours, theirs), 'c1')).toEqual(['v1', 'v2']);
-    });
-
-    it('leaves a version deleted here deleted', () => {
-        const v1 = version('v1', 1, 'published');
-        const v2 = version('v2', 2);
-        const base = classes(classOf('c1', { versions: [v1, v2] }));
-        const ours = classes(classOf('c1', { versions: [v1] }));
-        const theirs = classes(classOf('c1', { versions: [v1, v2] }));
-
-        expect(versionsOf(mergeBoardContent(base, ours, theirs), 'c1')).toEqual(['v1']);
-    });
-
-    it('takes the note written on either side', () => {
-        const noteOf = (content: BoardContent, id: string): string | undefined =>
-            content.flowNodeClasses.find(one => one.id === id)?.note;
-        const base = classes(classOf('c1', { note: '' }));
-        const ours = classes(classOf('c1', { note: 'Typed here.' }));
-        const writtenHere = classes(classOf('c1', { note: '' }));
-
-        expect(noteOf(mergeBoardContent(base, ours, writtenHere), 'c1')).toBe('Typed here.');
-        expect(noteOf(mergeBoardContent(base, writtenHere, ours), 'c1')).toBe('Typed here.');
-    });
-});
-
 describe('workflows', () => {
     const grouped = (...members: [string, string][]): BoardContent => ({
         flowNodes: members.map(([id, workflow]) => flowNode(id, { workflow })),
-        flowNodeClasses: [],
         workflows: [{ id: 'w1', name: 'Sprint' }],
-        workflowClasses: [],
     });
 
     it('takes the name written on either side, and keeps a rectangle filed on either', () => {

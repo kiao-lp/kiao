@@ -18,11 +18,11 @@ import (
 )
 
 // newConversationTestServer builds a Service wired for the conversation endpoints, in debug auth
-// mode (all requests permitted), over a fresh store root and a state directory of its own.
+// mode (all requests permitted), over a fresh DCMS root and a state directory of its own.
 func newConversationTestServer(t *testing.T) (*Service, *runnerconfig.Config) {
 	t.Helper()
 	cfg := &runnerconfig.Config{
-		Config: &coreconfig.Config{AuthMode: "debug", RootPath: t.TempDir(), StatePath: t.TempDir(), MaxUploadBytes: 1 << 20},
+		Config: &coreconfig.Config{AuthMode: "debug", DCMSRoot: t.TempDir(), StatePath: t.TempDir(), MaxUploadBytes: 1 << 20},
 		// What LoadConfig defaults it to; a hand-built Config leaves it false, which is the
 		// bypass-less deployment TestConversationsWithoutBypass covers.
 		BypassEnabled: true,
@@ -68,7 +68,7 @@ func mustCreateThroughHandlers(t *testing.T, s *Service, body string) pkgConvers
 // error.
 func TestConversationEndpointsStatusMapping(t *testing.T) {
 	s, cfg := newConversationTestServer(t)
-	mustMkdir(t, cfg.RootPath, "units/demo")
+	mustMkdir(t, cfg.DCMSRoot, "units/demo")
 	existing := mustCreateThroughHandlers(t, s, `{"agentId": "claude-agent", "folder": "units/demo"}`)
 
 	cases := []struct {
@@ -87,7 +87,7 @@ func TestConversationEndpointsStatusMapping(t *testing.T) {
 		{"unknown agent", jsonReq(http.MethodPost, "/claude/conversations", `{"folder": "", "agentId": "missing"}`), http.StatusNotFound},
 		{"folder outside the root", jsonReq(http.MethodPost, "/claude/conversations", `{"agentId": "claude-agent", "folder": "../escape"}`), http.StatusBadRequest},
 		{"folder that is gone", jsonReq(http.MethodPost, "/claude/conversations", `{"agentId": "claude-agent", "folder": "units/nope"}`), http.StatusNotFound},
-		{"the store root is an ordinary folder", jsonReq(http.MethodPost, "/claude/conversations", `{"agentId": "claude-agent", "folder": ""}`), http.StatusCreated},
+		{"the DCMS root is an ordinary folder", jsonReq(http.MethodPost, "/claude/conversations", `{"agentId": "claude-agent", "folder": ""}`), http.StatusCreated},
 		{"unknown permission mode", jsonReq(http.MethodPost, "/claude/conversations", `{"agentId": "claude-agent", "folder": "units", "permissionMode": "plan"}`), http.StatusBadRequest},
 		{"manual live is a mode this service drives", jsonReq(http.MethodPost, "/claude/conversations", `{"agentId": "claude-agent", "folder": "units", "permissionMode": "manualLive"}`), http.StatusCreated},
 		{"unknown permission mode on patch", jsonReq(http.MethodPatch, "/claude/conversations/"+existing.ID, `{"permissionMode": "plan"}`), http.StatusBadRequest},
@@ -105,7 +105,7 @@ func TestConversationEndpointsStatusMapping(t *testing.T) {
 // resolves — 409, not 500.
 func TestCreateConversationOverTheCapIsConflict(t *testing.T) {
 	s, cfg := newConversationTestServer(t)
-	mustMkdir(t, cfg.RootPath, "units")
+	mustMkdir(t, cfg.DCMSRoot, "units")
 	s.conversations.MaxConversations = 1
 	mustCreateThroughHandlers(t, s, `{"agentId": "claude-agent", "folder": "units"}`)
 
@@ -115,13 +115,11 @@ func TestCreateConversationOverTheCapIsConflict(t *testing.T) {
 	}
 }
 
-// TestConversationsWithoutBypass: on a service that does not allow `bypassPermissions`, the mode
-// cannot be stored on a conversation — neither at creation nor by a later patch — and a creation
-// that names no mode gets `manual` rather than the bypass every other deployment defaults to.
+// With bypass disabled, new conversations default to Manual Live and explicit bypass is refused.
 func TestConversationsWithoutBypass(t *testing.T) {
 	s, cfg := newConversationTestServer(t)
 	cfg.BypassEnabled = false
-	mustMkdir(t, cfg.RootPath, "units/demo")
+	mustMkdir(t, cfg.DCMSRoot, "units/demo")
 
 	body := `{"agentId": "claude-agent", "folder": "units/demo", "permissionMode": "bypassPermissions"}`
 	if rec := do(s, jsonReq(http.MethodPost, "/claude/conversations", body)); rec.Code != http.StatusBadRequest {
@@ -129,9 +127,9 @@ func TestConversationsWithoutBypass(t *testing.T) {
 	}
 
 	created := mustCreateThroughHandlers(t, s, `{"agentId": "claude-agent", "folder": "units/demo"}`)
-	if created.PermissionMode != runnerconfig.PermissionModeManual {
+	if created.PermissionMode != runnerconfig.PermissionModeManualLive {
 		t.Errorf("default mode = %q, want %q on a service without bypass",
-			created.PermissionMode, runnerconfig.PermissionModeManual)
+			created.PermissionMode, runnerconfig.PermissionModeManualLive)
 	}
 
 	patch := jsonReq(http.MethodPatch, "/claude/conversations/"+created.ID, `{"permissionMode": "bypassPermissions"}`)
@@ -140,10 +138,30 @@ func TestConversationsWithoutBypass(t *testing.T) {
 	}
 }
 
+type manualOnlyHarness struct {
+	stubHarness
+}
+
+func (*manualOnlyHarness) Options() harnessapi.HarnessOptionsDto {
+	return harnessapi.HarnessOptionsDto{
+		PermissionModes: []harnessapi.HarnessOption{{Value: runnerconfig.PermissionModeManual}},
+	}
+}
+
+func TestCreateConversationDefaultsToManualWhenItIsTheOnlyMode(t *testing.T) {
+	s, _ := newConversationTestServer(t)
+	s.harnesses.Set(harnessapi.HarnessClaude, &manualOnlyHarness{})
+
+	created := mustCreateThroughHandlers(t, s, `{"agentId": "claude-agent", "folder": ""}`)
+	if created.PermissionMode != runnerconfig.PermissionModeManual {
+		t.Errorf("default mode = %q, want %q", created.PermissionMode, runnerconfig.PermissionModeManual)
+	}
+}
+
 // Create, list, read, rename, archive, delete — the whole switcher, through the middleware chain.
 func TestConversationRoundTripThroughTheHandlers(t *testing.T) {
 	s, cfg := newConversationTestServer(t)
-	mustMkdir(t, cfg.RootPath, "units/demo")
+	mustMkdir(t, cfg.DCMSRoot, "units/demo")
 
 	created := mustCreateThroughHandlers(t, s, `{"agentId": "claude-agent", "folder": "units/demo", "thinking": false}`)
 	if created.Title != pkgConversations.DefaultConversationTitle || created.Model != "opus" || created.Thinking {
@@ -193,7 +211,7 @@ func TestConversationRoundTripThroughTheHandlers(t *testing.T) {
 // this: a client that sends {"archived": true} must not silently clear the model from the agent.
 func TestPatchLeavesOmittedFieldsAlone(t *testing.T) {
 	s, cfg := newConversationTestServer(t)
-	mustMkdir(t, cfg.RootPath, "units")
+	mustMkdir(t, cfg.DCMSRoot, "units")
 	created := mustCreateThroughHandlers(t, s,
 		`{"agentId": "claude-agent", "folder": "units", "title": "Release notes", "effort": "max", "permissionMode": "manual", "thinking": true}`)
 
@@ -219,7 +237,7 @@ func TestPatchLeavesOmittedFieldsAlone(t *testing.T) {
 // differently, not shown less.
 func TestPatchPinsWithoutHidingAnything(t *testing.T) {
 	s, cfg := newConversationTestServer(t)
-	mustMkdir(t, cfg.RootPath, "units")
+	mustMkdir(t, cfg.DCMSRoot, "units")
 	created := mustCreateThroughHandlers(t, s, `{"agentId": "claude-agent", "folder": "units", "title": "Release notes"}`)
 	if created.Pinned {
 		t.Fatal("a conversation is not pinned until someone pins it")
@@ -244,7 +262,7 @@ func TestPatchPinsWithoutHidingAnything(t *testing.T) {
 // running for as long as its metadata said so — which, after a crash, is forever.
 func TestGetConversationReportsLivenessFromTheHubNotTheDisk(t *testing.T) {
 	s, cfg := newConversationTestServer(t)
-	mustMkdir(t, cfg.RootPath, "units")
+	mustMkdir(t, cfg.DCMSRoot, "units")
 	created := mustCreateThroughHandlers(t, s, `{"agentId": "claude-agent", "folder": "units"}`)
 
 	// The metadata says a turn was started; nothing is wired to the turn registry, so the answer is
@@ -268,11 +286,42 @@ func TestGetConversationReportsLivenessFromTheHubNotTheDisk(t *testing.T) {
 	}
 }
 
+func TestGetConversationLocatesFilesOnTheWorker(t *testing.T) {
+	s, cfg := newConversationTestServer(t)
+	mustMkdir(t, cfg.DCMSRoot, "units/demo")
+	var err error
+	s.attachments, err = pkgConversations.NewAttachmentStore(filepath.Join(cfg.StatePath, "uploads"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	created := mustCreateThroughHandlers(t, s, `{"agentId": "claude-agent", "folder": "units/demo"}`)
+
+	dir := filepath.Join(cfg.StatePath, pkgConversations.ConversationsDirName, created.ID)
+	want := pkgConversations.HarnessConversationLocationsDto{
+		WorkingDirectory:      filepath.Join(cfg.DCMSRoot, "units/demo"),
+		ConversationDirectory: dir,
+		MetadataFile:          filepath.Join(dir, "meta.json"),
+		TranscriptFile:        filepath.Join(dir, "transcript.jsonl"),
+		TurnTracesDirectory:   filepath.Join(dir, "turns"),
+		AttachmentsDirectory:  s.attachments.Dir,
+	}
+	if got := getConversation(t, s, created.ID).Locations; got != want {
+		t.Errorf("locations = %+v, want %+v", got, want)
+	}
+	if err := os.Remove(want.WorkingDirectory); err != nil {
+		t.Fatal(err)
+	}
+	want.WorkingDirectory = ""
+	if got := getConversation(t, s, created.ID).Locations; got != want {
+		t.Errorf("locations after the working directory was removed = %+v, want %+v", got, want)
+	}
+}
+
 // The endpoint's whole job: a second conversation over the same history, announced in the list,
 // with the transcript readable through the same GET as any other.
 func TestForkThroughTheHandlers(t *testing.T) {
 	s, cfg := newConversationTestServer(t)
-	mustMkdir(t, cfg.RootPath, "units/demo")
+	mustMkdir(t, cfg.DCMSRoot, "units/demo")
 	source := mustCreateThroughHandlers(t, s, `{"agentId": "claude-agent", "folder": "units/demo", "thinking": false}`)
 	patchConversation(t, s, source.ID, `{"title": "Rewrite the README"}`)
 	if _, err := s.conversations.AppendAndUpdate(source.ID,
@@ -317,7 +366,7 @@ func TestForkThroughTheHandlers(t *testing.T) {
 // hold is refused rather than quietly widened into a fork of everything.
 func TestForkFromAMessageThroughTheHandlers(t *testing.T) {
 	s, cfg := newConversationTestServer(t)
-	mustMkdir(t, cfg.RootPath, "units/demo")
+	mustMkdir(t, cfg.DCMSRoot, "units/demo")
 	source := mustCreateThroughHandlers(t, s, `{"agentId": "claude-agent", "folder": "units/demo"}`)
 	for _, rec := range []pkgConversations.ConversationRecord{
 		{Role: pkgConversations.RoleUser, Text: "first"},
@@ -357,7 +406,7 @@ func TestForkFromAMessageThroughTheHandlers(t *testing.T) {
 // stop a turn because it has no conversation left to damage, and a fork has.
 func TestForkIsRefusedWhileATurnIsRunning(t *testing.T) {
 	s, cfg := newConversationTestServer(t)
-	mustMkdir(t, cfg.RootPath, "units")
+	mustMkdir(t, cfg.DCMSRoot, "units")
 	source := mustCreateThroughHandlers(t, s, `{"agentId": "claude-agent", "folder": "units"}`)
 
 	s.liveness = func(id string) bool { return id == source.ID }
@@ -378,9 +427,9 @@ func TestForkIsRefusedWhileATurnIsRunning(t *testing.T) {
 // made is refused where the user asked for it rather than at the fork's first prompt.
 func TestForkOfAConversationWhoseFolderIsGone(t *testing.T) {
 	s, cfg := newConversationTestServer(t)
-	mustMkdir(t, cfg.RootPath, "units/demo")
+	mustMkdir(t, cfg.DCMSRoot, "units/demo")
 	source := mustCreateThroughHandlers(t, s, `{"agentId": "claude-agent", "folder": "units/demo"}`)
-	if err := os.RemoveAll(filepath.Join(cfg.RootPath, "units/demo")); err != nil {
+	if err := os.RemoveAll(filepath.Join(cfg.DCMSRoot, "units/demo")); err != nil {
 		t.Fatal(err)
 	}
 

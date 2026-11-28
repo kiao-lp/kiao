@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext } from 'react';
 import { AutoComplete, Input, Select } from 'antd';
-import { storeLinkOf } from 'kiao-worker/utils';
+import { dcmsLinkOf } from 'kiao-worker/utils';
 import { extractName, useFileDrop, VoiceTextArea } from '@kiao-dashboard-core';
 
 import { FILE_TYPE, isBuiltInType, kbElExprParse, KiaoElHeap, KiaoElObject, ParsedExpression, TEXT_TYPE, getObjectsForType, getAllObjects, kiaoFieldOf } from '@kiao-dashboard-kit/template-lang';
@@ -73,10 +73,10 @@ const useSetFile = () => {
     const [, setHeap] = useHeap();
 
     return useCallback((parsed: ParsedExpression, path: string) => {
-        const stored = storeLinkOf(path);
+        const link = dcmsLinkOf(path);
         setHeap(heap => ({
             ...heap,
-            [parsed.key]: { type: FILE_TYPE, value: stored, name: extractName(path) || stored },
+            [parsed.key]: { type: FILE_TYPE, value: link, name: extractName(path) || link },
         }));
     }, [setHeap]);
 };
@@ -112,22 +112,8 @@ const TextInput: React.FC<{ parsed: ParsedExpression }> = ({ parsed }) => {
 };
 
 /**
- * The path of a file of the store, **dropped in from the navigation tree**: ${var:file}
- *
- * A path is a thing the store already knows how to point at, and typing one out is the slowest way
- * of naming it — so the box takes what is dragged onto it out of the file tree or the file browser,
- * exactly as the board's working-folder box does (both are `useFileDrop`). It stays an
- * ordinary text box: a path can still be typed, pasted or corrected by hand, and a drop is only
- * the quick way in.
- *
- * The drop fills **the whole object**, so one dropped file answers more than one question:
- * `${doc:file}` is its path from the store root, `${doc:file.name}` the file's name alone. The
- * path is written plainly, with a leading slash and nothing escaped — it is as likely to end up in
- * a sentence handed to an agent as inside a markdown link, and only the second of those would want
- * the escaping.
- *
- * A folder dropped on it is taken as what it is, its own path: a variable asking for something of
- * the store is not the place to decide that a folder was a mistake.
+ * A dropped file or folder fills the whole variable object. `${doc:file}` is its raw DCMS
+ * link for use in prose or agent input. `${doc:file.name}` is its name. The input allows edits.
  */
 const FileInput: React.FC<{ parsed: ParsedExpression }> = ({ parsed }) => {
     const value = useGetValue()(parsed) || "";
@@ -139,7 +125,7 @@ const FileInput: React.FC<{ parsed: ParsedExpression }> = ({ parsed }) => {
         <Input
             value={value}
             onChange={event => setValue(parsed, event.target.value)}
-            placeholder={parsed.defaultValue || "Drop a file here, or type a path..."}
+            placeholder={parsed.defaultValue || "Drop a file or folder, or enter a DCMS link"}
             style={{
                 width: '100%',
                 ...(dropping ? { borderColor: 'var(--accent)', background: 'var(--state-pointed-bg)' } : {}),

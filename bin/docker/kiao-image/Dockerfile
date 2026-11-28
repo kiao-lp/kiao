@@ -61,10 +61,11 @@ RUN python3 -m venv /opt/kiao/apm \
     && /opt/kiao/apm/bin/pip install --no-cache-dir apm-cli==0.35.1 uv==0.12.7
 ENV KIAO_APM_BINARY=/opt/kiao/apm/bin/apm
 COPY agentic-seed /opt/kiao/agentic-seed
+COPY VERSION /opt/kiao/VERSION
 COPY seed-agentic-resources.py /opt/kiao/seed-agentic-resources.py
 
 # Pi may be installed later from Configuration. Reject an incompatible Node even
-# when this image has no preinstalled agent CLI, using the launcher's own check.
+# when this image has no preinstalled harness CLI, using the launcher's own check.
 COPY kiao-node-check.cjs /opt/kiao/kiao-node-check.cjs
 RUN node --require /opt/kiao/kiao-node-check.cjs --version
 
@@ -157,7 +158,7 @@ ENV KIAO_DEV_HOME=/opt/kiao/dev \
     MAVEN_ARGS="-Dmaven.repo.local=/opt/kiao/dev/cache/m2 -s /opt/kiao/dev/m2/settings.xml" \
     npm_config_userconfig=/opt/kiao/dev/npmrc
 
-# SPA base is /dashboard/. Mount /data (or set KIAO_WORKER_ROOT_PATH) for your store;
+# SPA base is /dashboard/. Mount the DCMS root at /data or set KIAO_WORKER_DCMS_ROOT;
 # its .kiao-config holds service state and the default Claude home across replacements.
 # Persist boards separately at /var/lib/postgresql/data on a named volume: PostgreSQL
 # needs Unix ownership, which Windows bind mounts cannot supply.

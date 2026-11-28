@@ -110,14 +110,14 @@ func TestMigrationRunEndToEnd(t *testing.T) {
 	if err != nil {
 		t.Skip("node not available; skipping migration e2e")
 	}
-	dataRoot := t.TempDir()
+	dcmsRoot := t.TempDir()
 	migDir := newMigrationSource(t, "base", 0)
-	// A migration that writes a marker file into the data root.
+	// A migration that writes a marker file into the DCMS root.
 	script := "const fs=require('fs');fs.writeFileSync(process.argv[2]+'/migrated.txt','ok');"
 	mustWrite(t, filepath.Join(migDir, "V001__marker.js"), script)
 
 	cfg := &fileconfig.Config{
-		Config:              &coreconfig.Config{RootPath: dataRoot, StatePath: t.TempDir(), NodeBinary: node},
+		Config:              &coreconfig.Config{DCMSRoot: dcmsRoot, StatePath: t.TempDir(), NodeBinary: node},
 		MigrationsPath:      migDir,
 		MigrationsEnabled:   true,
 		MigrationsFailOnErr: true,
@@ -126,7 +126,7 @@ func TestMigrationRunEndToEnd(t *testing.T) {
 	if err := migrations.RunMigrations(cfg); err != nil {
 		t.Fatalf("runMigrations failed: %v", err)
 	}
-	if b := mustRead(t, filepath.Join(dataRoot, "migrated.txt")); b != "ok" {
+	if b := mustRead(t, filepath.Join(dcmsRoot, "migrated.txt")); b != "ok" {
 		t.Errorf("migration did not run; marker=%q", b)
 	}
 	// Re-running must be a no-op (already at version 1).
@@ -135,28 +135,28 @@ func TestMigrationRunEndToEnd(t *testing.T) {
 	}
 }
 
-// A migration resolves the store's declarations from the data root alone: `.kiao-files` sits there
+// A migration resolves the store's declarations from the DCMS root alone: `.kiao-files` sits there
 // under a fixed name, and nested ones are found by walking down from it. The old
 // KIAO_MIGRATION_IGNORE_FILE existed only because the state directory is configurable, and a script
 // that still read it would silently honour nothing.
-func TestMigrationRunPassesTheDataRootAndNoIgnoreFile(t *testing.T) {
+func TestMigrationRunPassesTheDCMSRootAndNoIgnoreFile(t *testing.T) {
 	node, err := execLookNode()
 	if err != nil {
 		t.Skip("node not available; skipping migration e2e")
 	}
-	dataRoot := t.TempDir()
+	dcmsRoot := t.TempDir()
 	migDir := newMigrationSource(t, "base", 0)
 	state := t.TempDir()
 	script := "const fs=require('fs');" +
 		"fs.writeFileSync(process.argv[2]+'/seen.txt'," +
 		"process.env.KIAO_DATA_ROOT+'|'+(process.env.KIAO_MIGRATION_IGNORE_FILE||'unset'));"
-	mustWrite(t, filepath.Join(migDir, "V001__data-root.js"), script)
+	mustWrite(t, filepath.Join(migDir, "V001__dcms-root.js"), script)
 
-	cfg := &fileconfig.Config{Config: &coreconfig.Config{RootPath: dataRoot, StatePath: state, NodeBinary: node}, MigrationsPath: migDir, MigrationsEnabled: true, MigrationsFailOnErr: true, MigrationsTimeout: 60 * time.Second}
+	cfg := &fileconfig.Config{Config: &coreconfig.Config{DCMSRoot: dcmsRoot, StatePath: state, NodeBinary: node}, MigrationsPath: migDir, MigrationsEnabled: true, MigrationsFailOnErr: true, MigrationsTimeout: 60 * time.Second}
 	if err := migrations.RunMigrations(cfg); err != nil {
 		t.Fatalf("runMigrations failed: %v", err)
 	}
-	if got, want := mustRead(t, filepath.Join(dataRoot, "seen.txt")), dataRoot+"|unset"; got != want {
+	if got, want := mustRead(t, filepath.Join(dcmsRoot, "seen.txt")), dcmsRoot+"|unset"; got != want {
 		t.Errorf("migration environment = %q, want %q", got, want)
 	}
 }

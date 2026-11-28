@@ -14,8 +14,8 @@ import (
 func NewHarnessRegistry(cfg *runnerconfig.Config) *harnessapi.HarnessRegistry {
 	profiles := picli.NewPiProfiles(cfg)
 	modelPreferencesDir := ""
-	if cfg.Config != nil && cfg.RootPath != "" {
-		modelPreferencesDir = filepath.Join(coreconfig.DefaultStatePath(cfg.RootPath), "harness-models")
+	if cfg.Config != nil && cfg.DCMSRoot != "" {
+		modelPreferencesDir = filepath.Join(coreconfig.DefaultStatePath(cfg.DCMSRoot), "harness-models")
 	}
 	return &harnessapi.HarnessRegistry{Profiles: profiles, ModelPreferencesDir: modelPreferencesDir, Entries: []harnessapi.HarnessEntry{{
 		Name:    harnessapi.HarnessClaude,

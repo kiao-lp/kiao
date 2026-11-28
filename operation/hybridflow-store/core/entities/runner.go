@@ -4,7 +4,7 @@ import (
 	"time"
 )
 
-// Runner is a machine that plays cards. Tasks may pin its ID or run where Play is pressed.
+// Runner is a machine that plays flow nodes. Tasks may pin its ID or run where Play is pressed.
 // Task references have no foreign key: deleting a runner preserves the requested ID
 // so the task can still open and report the missing runner at play time.
 type Runner struct {

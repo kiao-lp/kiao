@@ -1,9 +1,9 @@
 /**
  * Ordered JSON array of { title, link, note }, without IDs or categories.
- * Internal links start at the store root with `/`; a missing file means an empty list.
+ * A bookmark can hold a DCMS link or a web URL. A missing file means an empty list.
  */
 
-import { storedLinkOf } from '@kiao-dashboard-core';
+import { encodedDcmsLinkOf } from '@kiao-dashboard-core';
 
 export const BOOKMARKS_PATH = 'kiao-user-config/bookmarks.json';
 
@@ -37,9 +37,9 @@ export const bookmarksFileText = (bookmarks: Bookmark[]): string =>
 
 export const newBookmark = (title: string, link: string): Bookmark => ({ title, link, note: '' });
 
-export const linkOfPath = storedLinkOf;
+export const linkOfPath = encodedDcmsLinkOf;
 
-/** Resolve store links only; query and fragment do not affect document identity. */
+/** Read the path component of a DCMS link for matching by document identity. */
 export const pathOfLink = (link: string): string | null => {
     const target = link.split(/[?#]/)[0];
     if (!target.startsWith('/')) return null;

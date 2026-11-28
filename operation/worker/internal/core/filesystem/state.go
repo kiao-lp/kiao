@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"kiao/worker/internal/core/config"
 	"kiao/worker/internal/core/logging"
 	"os"
 	"path/filepath"
@@ -91,8 +92,8 @@ func seedStateFile(path, body string) (bool, error) {
 	return true, nil
 }
 
-// EnsureStateDir runs before registry access and seeds a .gitignore only inside the data root.
-func EnsureStateDir(rootPath, statePath string) error {
+// EnsureStateDir runs before registry access and seeds a .gitignore only inside the DCMS root.
+func EnsureStateDir(dcmsRoot, statePath string) error {
 	if strings.TrimSpace(statePath) == "" {
 		return ErrEmptyStatePath
 	}
@@ -100,7 +101,7 @@ func EnsureStateDir(rootPath, statePath string) error {
 	if err := os.MkdirAll(statePath, stateDirPerm); err != nil {
 		return fmt.Errorf("failed to create the state directory %s: %w", statePath, err)
 	}
-	if !insideDataRoot(rootPath, statePath) {
+	if !insideDCMSRoot(physicalPath(dcmsRoot), physicalPath(statePath)) {
 		return nil
 	}
 	gitignore := filepath.Join(statePath, StateGitignoreFile)
@@ -117,9 +118,8 @@ func EnsureStateDir(rootPath, statePath string) error {
 	return nil
 }
 
-// Equality is excluded: writing "*" to the root .gitignore would hide all content.
-// This is a lexical check; symlinks may affect whether the .gitignore is seeded.
-func insideDataRoot(root, dir string) bool {
+// Equality is excluded so the root .gitignore remains available for store content.
+func insideDCMSRoot(root, dir string) bool {
 	absRoot, err := filepath.Abs(root)
 	if err != nil {
 		return false
@@ -131,13 +131,12 @@ func insideDataRoot(root, dir string) bool {
 	return absDir != absRoot && strings.HasPrefix(absDir, absRoot+string(filepath.Separator))
 }
 
-// RelativeStateDir returns the state path in file-API form (root-relative, forward slashes)
-// so Storage can deny access. Returns "" when state is outside the data root.
+// RelativeStateDir returns the state path relative to the DCMS root, using forward slashes.
 func RelativeStateDir(root, state string) string {
-	if !insideDataRoot(root, state) {
+	if !insideDCMSRoot(root, state) {
 		return ""
 	}
-	// insideDataRoot already checked both absolute paths.
+	// insideDCMSRoot already checked both absolute paths.
 	absRoot, _ := filepath.Abs(root)
 	absState, _ := filepath.Abs(state)
 	rel, err := filepath.Rel(absRoot, absState)
@@ -145,4 +144,43 @@ func RelativeStateDir(root, state string) string {
 		return ""
 	}
 	return filepath.ToSlash(rel)
+}
+
+func NewStorage(root, state string) *Storage {
+	storage := &Storage{Root: root}
+	if state == "" {
+		return storage
+	}
+	realRoot, realState := physicalPath(root), physicalPath(state)
+	// A state path shared with the store still reserves the package cache.
+	if containsPath(realState, realRoot) {
+		state = filepath.Join(state, config.AgentPackagesDirName)
+		realState = filepath.Join(realState, config.AgentPackagesDirName)
+	}
+	storage.StateDir = RelativeStateDir(root, state)
+	storage.physicalStateDir = RelativeStateDir(realRoot, realState)
+	storage.physicalStatePath = realState
+	return storage
+}
+
+func containsPath(root, target string) bool {
+	rel, err := filepath.Rel(root, target)
+	return err == nil && filepath.IsLocal(rel)
+}
+
+// Resolve the existing prefix so a new file under a symlink still has a physical destination.
+func physicalPath(path string) string {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return path
+	}
+	for prefix := abs; ; prefix = filepath.Dir(prefix) {
+		if resolved, err := filepath.EvalSymlinks(prefix); err == nil {
+			suffix, _ := filepath.Rel(prefix, abs)
+			return filepath.Join(resolved, suffix)
+		}
+		if prefix == filepath.Dir(prefix) {
+			return abs
+		}
+	}
 }

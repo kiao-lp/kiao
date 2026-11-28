@@ -17,9 +17,9 @@ import {
     FileOutlined,
 } from '@ant-design/icons';
 import { isIndexable } from 'kiao-worker';
-import { storeLinkOf } from 'kiao-worker/utils';
+import { dcmsLinkOf } from 'kiao-worker/utils';
 import { setClipboard } from '../../ui-foundation/clipboard/clipboard';
-import { WorkerClient, getStoreRoot, absoluteStorePath } from '../service';
+import { WorkerClient, getDcmsRoot, absoluteStorePath } from '../service';
 import { markdownLinksOf } from '../dnd/dragPaths';
 import { ContextMenuItemDescriptor } from '../context-menu/ContextMenuRegistry';
 import { useFileSelection } from '../selection/SelectionModel-ctx';
@@ -131,7 +131,7 @@ export const buildFileBrowserContextMenu = ({
         icon: <CopyOutlined />,
         group: '2-clipboard',
         order: 40,
-        // The store root has no path of its own to copy.
+        // Copy formats are available for entries below the DCMS root.
         enabledWhen: (ctx) => !ctx.isEmptyArea && ctx.paths.some(Boolean),
         children: [
             {
@@ -154,17 +154,14 @@ export const buildFileBrowserContextMenu = ({
                 },
             },
             {
-                id: 'copy-relative-path',
-                label: 'Copy relative path',
+                id: 'copy-dcms-link',
+                label: 'Copy DCMS link',
                 order: 20,
                 enabledWhen: (ctx) => !ctx.isEmptyArea && ctx.paths.some(Boolean),
                 execute: async (ctx) => {
-                    // The link form — from the store root, with the leading slash. A path copied
-                    // here is pasted into a document, where only that slash tells a reference apart
-                    // from one read against the document holding it.
-                    const paths = ctx.paths.filter(Boolean).map(storeLinkOf);
-                    await setClipboard(paths.join('\n'));
-                    message.success(paths.length > 1 ? `${paths.length} paths copied!` : 'Path copied!');
+                    const links = ctx.paths.filter(Boolean).map(dcmsLinkOf);
+                    await setClipboard(links.join('\n'));
+                    message.success(links.length > 1 ? `${links.length} DCMS links copied!` : 'DCMS link copied!');
                 },
             },
             {
@@ -174,11 +171,10 @@ export const buildFileBrowserContextMenu = ({
                 enabledWhen: (ctx) => !ctx.isEmptyArea && ctx.paths.some(Boolean),
                 execute: async (ctx) => {
                     const paths = ctx.paths.filter(Boolean);
-                    // Only the server knows where the store sits on its host, so the prefix is
-                    // fetched (once per session) rather than derived from anything the browser holds.
+                    // The worker provides the absolute host path of the DCMS root once per client.
                     try {
-                        const root = await getStoreRoot(workerClient);
-                        const absolute = paths.map(path => absoluteStorePath(root, path));
+                        const dcmsRoot = await getDcmsRoot(workerClient);
+                        const absolute = paths.map(path => absoluteStorePath(dcmsRoot, path));
                         await setClipboard(absolute.join('\n'));
                         message.success(absolute.length > 1 ? `${absolute.length} paths copied!` : 'Path copied!');
                     } catch {
@@ -212,7 +208,7 @@ export const buildFileBrowserContextMenu = ({
         icon: <BlockOutlined />,
         group: '3-edit',
         order: 5,
-        // The store root has no name of its own to number.
+        // Only entries below the DCMS root can be duplicated.
         enabledWhen: (ctx) => !ctx.isEmptyArea && ctx.paths.some(Boolean),
         execute: (ctx) => { duplicateFiles(ctx.paths); },
     },

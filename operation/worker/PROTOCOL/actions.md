@@ -47,5 +47,5 @@ header and `X-Request-Id` to the provider. Failures split in two: an operation t
 comes back `200 {"ok": false, "message": "…"}` (the same choice the [Git contract](./git.md)
 makes for a failed command), while a provider that cannot be reached or that exceeds the
 10-minute budget is a `502`.
-An unknown action id is `404`, and a `path` escaping the storage root is `400`, refused before
+An unknown action id is `404`, and a `path` escaping the DCMS root is `400`, refused before
 anything leaves the service.

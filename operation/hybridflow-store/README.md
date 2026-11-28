@@ -12,12 +12,9 @@ It is the backend part of **hybridflow** — the workflow and agent feature — 
 plugin in Dashboard and the
 `hybridflow-runner` inside worker (conversations, turns, the play loop).
 
-**A card that is work somebody does is a task.** Two of the five kinds are — an **AI** card an agent
-plays and a **Human** card a person does — and everything only those two have is a row of `task`,
-keyed by the flow node it belongs to: the description, where the work happens, what the turn is run
-with, the chat it is played in and what becomes of that chat. A Shutdown, a Scheduler and a Gateway
-are the board acting on its own machine, describe no work, and have no task. The word is worth
-having because the alternative was to say "an AI or a Human flow node" every time.
+The store gives each AI and Human flow node a `task` row keyed by that node's ID. The row
+holds the description, settings, conversation reference and conversation handoff. See the
+[Hybridflow concept catalog](/docs/architecture/data/hybridflow-concept-catalog.md).
 
 It is the other half of the move described in
 [`operation/hybridflow-store/docs/solution-design/`](docs/solution-design/README.md)
@@ -74,17 +71,24 @@ Every route needs a Keycloak token carrying `files_user`, except `GET /healthz`.
 | `GET /schema-values/{id}` | resolve a task output schema |
 | `GET /schema` | the migration ledger: which version this instance is on |
 | `GET /boards` | the boards page — names and handles, nothing on them |
-| `POST /boards` | create one |
-| `GET /boards/{handle}` | **the board, whole**: its cards, and the change cursor it was read at |
-| `PATCH /boards/{handle}` | rename, archive |
+| `POST /boards` | create a board with a `name` and an optional `folderId` |
+| `GET /boards/{handle}` | **the board, whole**: its flow nodes, and the change cursor it was read at |
+| `PATCH /boards/{handle}` | rename, archive or move to a classification folder |
 | `DELETE /boards/{handle}` | the board and everything on it |
-| `POST /boards/{handle}/flow-nodes` | create cards; several at once, because a paste is one gesture |
+| `GET,POST /folders/boards` | list board folders or create one with `{ "name": "…" }` |
+| `PATCH,DELETE /folders/boards/{id}` | rename a folder or remove it and return its boards to the top level |
+| `GET /flow-nodes/{id}/board` | resolve a flow node ID to its board summary |
+| `POST /boards/{handle}/flow-nodes` | create flow nodes; several at once, because a paste is one gesture |
+| `GET /boards/{handle}/workflows/{id}/clipboard` | export a workflow and its members as versioned clipboard JSON |
+| `POST /boards/{handle}/workflows/clipboard` | paste `{ "clipboard": …, "spot": { "x": …, "y": … } }`; omit `spot` to place below existing flow nodes |
+| `PATCH /boards/{handle}/workflows/{id}` | edit the name, `workflowFolder` or `files`, or change shared values using `setValues` and `removeValues` |
 | `PATCH /boards/{handle}/flow-nodes/{id}` | change the fields the patch names, and no others |
-| `DELETE /boards/{handle}/flow-nodes` | remove cards |
-| `POST /boards/{handle}/flow-nodes/{id}/chain` | link to the card played next, or unlink |
-| `POST /boards/{handle}/flow-nodes/{id}/play` | take the card for a run |
-| `POST /boards/{handle}/flow-nodes/{id}/played` | mark the card and hand it back |
-| `POST /runs/{run}/settle` | free every card a run still holds — what a restart calls |
+| `DELETE /boards/{handle}/flow-nodes` | remove flow nodes |
+| `POST /boards/{handle}/flow-nodes/{id}/chain` | link to the flow node played next, or unlink |
+| `POST /boards/{handle}/flow-nodes/{id}/play` | claim a Ready or Done flow node for a run and detach a Done AI flow node's previous chat |
+| `POST /boards/{handle}/flow-nodes/{id}/played` | finish the claimed flow node and commit its output and any workflow value updates |
+| `POST /boards/{handle}/flow-nodes/{id}/pass` | complete a limiter pass at the supplied flow node revision and return the selected successor |
+| `POST /runs/{run}/settle` | free every flow node a run still holds — what a restart calls |
 | `GET /changes` | what happened after a cursor; `?wait=1` holds the request until something does |
 | `GET,POST /agents` | the managed agents; create |
 | `GET,PATCH,DELETE /agents/{id}` | one agent |
@@ -95,11 +99,19 @@ Every route needs a Keycloak token carrying `files_user`, except `GET /healthz`.
 | `POST /runners/{id}/heartbeat` | the runner is alive: stamps its last seen |
 
 Agent routes forward to [agentic-resource-manager](../agentic-resource-manager/README.md).
-It owns source editing, publication, deletion confirmation and package delivery. Task conversations
-capture their selected publication and retain it on replay.
+It owns source editing, publication, deletion confirmation and package delivery. A task conversation
+pins its selected publication. Replaying a completed task creates a conversation with the current
+publication.
 
 `{handle}` is a board's id **or** its slug: the client that has a URL holds a slug and the client
-that has a card holds an id, and neither should have to know which the other uses.
+that has a flow node holds an id, and neither should have to know which the other uses.
+
+Supply `folderId` to create a board directly in a folder or to move an existing board. An empty
+string places it at the top level. Moving a board preserves its slug and flow nodes.
+
+Workflows store `workflowFolder` and each entry in `files` as paths from the DCMS root.
+A patch replaces either field when supplied. Send `""` to clear the folder or `[]` to clear the
+files. Clipboard copies carry both fields.
 
 ### Four conventions worth reading once
 
@@ -112,15 +124,13 @@ Without it, the write does not care, which is what a run's status write means an
 rename does not. A malformed `If-Match` is `400` rather than ignored: a client that meant to be
 conditional and silently was not would overwrite somebody.
 
-**A card and its task are one card on the wire.** `flowNode` is flat — `type`, `tags`, `body`,
-`settings`, `at`, `spot`, `status`, `chat`, `onSuccess` — and the split into two tables stops at
-this service's own edge. The wire is one definition of what a card is, shared by a database, two
-services and a browser, and it is the board's own shape; `If-Match` is the
-card's revision, task included, because there is one thing for a client to hold.
+**One flow node has one revision.** The API includes task fields such as `body` and
+`settings` in the same `flowNode` object. `If-Match` checks the flow node's revision for
+every write, including a patch that touches only task fields.
 
 **Read the board, then watch from the cursor it gave you.** `GET /boards/{handle}` answers with a
 `cursor`; `GET /changes?since=<cursor>&board=<id>&wait=1` is answered the moment anything on that
-board moves, and names the card that moved. There is no window between the read and the watch, and
+board moves, and names the flow node that moved. There is no window between the read and the watch, and
 a client watching one board is never woken by another board's turns.
 
 `KIAO_AGENTIC_RESOURCE_MANAGER_URL` selects the agent service; its technical bearer uses
@@ -132,7 +142,7 @@ execution provenance. New run claims include `agentPackage: true`.
 
 | | |
 | --- | --- |
-| `core/entities/` | boards, cards (`flow_node.go`) and their tasks (`task.go`), agents, runners — pure Go, no driver |
+| `core/entities/` | boards, flow nodes (`flow_node.go`) and their tasks (`task.go`), agents, runners — pure Go, no driver |
 | `core/ports/` | what the core asks of the outside world, as interfaces and nothing else |
 | `core/services/` | the rules: `boards.go`, `flow_nodes.go` (including the two calls a play is made of), `agents.go`, `runners.go` |
 | `adapters/agentclient/` | Agent identity lookup and API forwarding to the resource manager |

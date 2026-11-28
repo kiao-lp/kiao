@@ -7,13 +7,15 @@ import (
 
 // AgenticResource is one independently versioned APM project.
 type AgenticResource struct {
-	Name       string   `json:"name"`
-	Kind       string   `json:"kind"`
-	Repository string   `json:"repository,omitempty"`
-	Commit     string   `json:"commit,omitempty"`
-	Version    string   `json:"version,omitempty"`
-	Dirty      bool     `json:"dirty"`
-	Files      []string `json:"files"`
+	Name             string   `json:"name"`
+	Kind             string   `json:"kind"`
+	Description      string   `json:"description,omitempty"`
+	Repository       string   `json:"repository,omitempty"`
+	Commit           string   `json:"commit,omitempty"`
+	Version          string   `json:"version,omitempty"`
+	PublishedVersion string   `json:"publishedVersion,omitempty"`
+	Dirty            bool     `json:"dirty"`
+	Files            []string `json:"files"`
 }
 
 type AgentDependencyKind string

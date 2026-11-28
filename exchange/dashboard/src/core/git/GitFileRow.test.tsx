@@ -1,4 +1,4 @@
-import { render } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { GitFile } from 'kiao-worker';
 import { GitFileRow } from './GitFileRow';
@@ -15,8 +15,8 @@ const file = (over: Partial<GitFile>): GitFile => ({
     ...over,
 });
 
-const renderRow = (f: GitFile, staged: boolean) => render(
-    <GitFileRow file={f} staged={staged} onOpen={vi.fn()} onStage={vi.fn()} onUnstage={vi.fn()} onRevert={vi.fn()} />,
+const renderRow = (f: GitFile, staged: boolean, disabled = false) => render(
+    <GitFileRow file={f} staged={staged} disabled={disabled} onOpen={vi.fn()} onStage={vi.fn()} onUnstage={vi.fn()} onRevert={vi.fn()} />,
 );
 
 describe('GitFileRow', () => {
@@ -41,5 +41,11 @@ describe('GitFileRow', () => {
         const row = container.querySelector('.git-file-row')!;
         expect(row.classList.contains('git-file-deleted')).toBe(false);
         expect(row.querySelector('.git-file-badge')!.textContent).toBe('M');
+    });
+
+    it('disables file actions while the repository is busy', () => {
+        renderRow(file({}), false, true);
+        expect(screen.getByRole('button', { name: 'Stage changes' })).toBeDisabled();
+        expect(screen.getByRole('button', { name: 'Discard changes' })).toBeDisabled();
     });
 });

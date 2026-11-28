@@ -24,11 +24,11 @@ func wireUsage(t *testing.T) (*pgxpool.Pool, *services.Boards, *services.FlowNod
 	ids := uuidIDs{store: boardStore}
 	return pool,
 		services.NewBoards(boardStore, realClock{}, ids),
-		services.NewFlowNodes(boardStore, agentStore, runnerStore, boardStore, boardStore, realClock{}, ids),
+		services.NewFlowNodes(boardStore, agentStore, runnerStore, boardStore, realClock{}, ids),
 		boardStore, changeStore
 }
 
-func aiUsageCard(t *testing.T, boards *services.Boards, flowNodes *services.FlowNodes, name string) string {
+func aiUsageNode(t *testing.T, boards *services.Boards, flowNodes *services.FlowNodes, name string) string {
 	t.Helper()
 	ctx := context.Background()
 	board, err := boards.Create(ctx, services.NewBoardRequest{Name: name}, "alex")
@@ -45,16 +45,16 @@ func aiUsageCard(t *testing.T, boards *services.Boards, flowNodes *services.Flow
 }
 
 // A usage report round-trips through the database: filed under the reporter's id, summed back
-// in the card's totals, with an unpriced cost staying unknown rather than zero.
+// in the flow node's totals, with an unpriced cost staying unknown rather than zero.
 func TestUsageRoundTrip(t *testing.T) {
 	pool, boards, flowNodes, _, _ := wireUsage(t)
 	store := NewUsageStore(pool)
 	ctx := context.Background()
-	card := aiUsageCard(t, boards, flowNodes, "Major")
+	node := aiUsageNode(t, boards, flowNodes, "Major")
 	priced := int64(23400)
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	if err := store.RecordUsage(ctx, &entities.TaskUsage{
-		ID: "00000000-0000-4000-8000-0000000000a1", FlowNodeID: card,
+		ID: "00000000-0000-4000-8000-0000000000a1", FlowNodeID: node,
 		ReportedAt: now, RunID: "run-1", Model: "muse-spark",
 		InputTokens: 100, OutputTokens: 50, CacheReadTokens: 10, CacheWriteTokens: 5,
 		ReasoningTokens: 7, CostUsdMicros: &priced,
@@ -62,12 +62,12 @@ func TestUsageRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := store.RecordUsage(ctx, &entities.TaskUsage{
-		ID: "00000000-0000-4000-8000-0000000000a2", FlowNodeID: card,
+		ID: "00000000-0000-4000-8000-0000000000a2", FlowNodeID: node,
 		ReportedAt: now, RunID: "run-1", InputTokens: 200, OutputTokens: 30,
 	}); err != nil {
 		t.Fatal(err)
 	}
-	totals, err := store.UsageTotals(ctx, card)
+	totals, err := store.UsageTotals(ctx, node)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,9 +86,9 @@ func TestUsageRerecordIsADoubleCountNowhere(t *testing.T) {
 	pool, boards, flowNodes, _, _ := wireUsage(t)
 	store := NewUsageStore(pool)
 	ctx := context.Background()
-	card := aiUsageCard(t, boards, flowNodes, "Major")
+	node := aiUsageNode(t, boards, flowNodes, "Major")
 	report := &entities.TaskUsage{
-		ID: "00000000-0000-4000-8000-0000000000b1", FlowNodeID: card,
+		ID: "00000000-0000-4000-8000-0000000000b1", FlowNodeID: node,
 		ReportedAt: time.Now().UTC(), InputTokens: 100, OutputTokens: 50,
 	}
 	if err := store.RecordUsage(ctx, report); err != nil {
@@ -97,7 +97,7 @@ func TestUsageRerecordIsADoubleCountNowhere(t *testing.T) {
 	if err := store.RecordUsage(ctx, report); err != nil {
 		t.Fatal(err)
 	}
-	totals, err := store.UsageTotals(ctx, card)
+	totals, err := store.UsageTotals(ctx, node)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,9 +106,9 @@ func TestUsageRerecordIsADoubleCountNowhere(t *testing.T) {
 	}
 }
 
-// The foreign key names the task: a report on a card that is not there — or on one that is no
+// The foreign key names the task: a report on a flow node that is not there — or on one that is no
 // task — is not found rather than filed.
-func TestUsageOnNoCardIsNotFound(t *testing.T) {
+func TestUsageOnNoFlowNodeIsNotFound(t *testing.T) {
 	pool, _, _, _, _ := wireUsage(t)
 	store := NewUsageStore(pool)
 	if err := store.RecordUsage(context.Background(), &entities.TaskUsage{
@@ -116,7 +116,7 @@ func TestUsageOnNoCardIsNotFound(t *testing.T) {
 		FlowNodeID: "00000000-0000-4000-8000-0000000000c9",
 		ReportedAt: time.Now().UTC(), InputTokens: 1,
 	}); !errors.Is(err, entities.ErrNotFound) {
-		t.Errorf("record on a missing card = %v, want not found", err)
+		t.Errorf("record on a missing flow node = %v, want not found", err)
 	}
 }
 
@@ -126,32 +126,32 @@ func TestUsageRefusesNegativeFigures(t *testing.T) {
 	pool, boards, flowNodes, _, _ := wireUsage(t)
 	store := NewUsageStore(pool)
 	ctx := context.Background()
-	card := aiUsageCard(t, boards, flowNodes, "Major")
+	node := aiUsageNode(t, boards, flowNodes, "Major")
 	if err := store.RecordUsage(ctx, &entities.TaskUsage{
-		ID: "00000000-0000-4000-8000-0000000000d1", FlowNodeID: card,
+		ID: "00000000-0000-4000-8000-0000000000d1", FlowNodeID: node,
 		ReportedAt: time.Now().UTC(), OutputTokens: -1,
 	}); !errors.Is(err, entities.ErrInvalid) {
 		t.Errorf("negative tokens = %v, want invalid", err)
 	}
 }
 
-// Deleting the card takes its reports with it: the spend is the card's, and a card that has
+// Deleting the flow node takes its reports with it: the spend is the flow node's, and a flow node that has
 // gone has no spend to sum.
-func TestUsageGoesWithItsCard(t *testing.T) {
+func TestUsageGoesWithItsFlowNode(t *testing.T) {
 	pool, boards, flowNodes, boardStore, _ := wireUsage(t)
 	store := NewUsageStore(pool)
 	ctx := context.Background()
-	card := aiUsageCard(t, boards, flowNodes, "Major")
+	node := aiUsageNode(t, boards, flowNodes, "Major")
 	if err := store.RecordUsage(ctx, &entities.TaskUsage{
-		ID: "00000000-0000-4000-8000-0000000000e1", FlowNodeID: card,
+		ID: "00000000-0000-4000-8000-0000000000e1", FlowNodeID: node,
 		ReportedAt: time.Now().UTC(), InputTokens: 100,
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := boardStore.DeleteFlowNodes(ctx, []string{card}, "alex"); err != nil {
+	if err := boardStore.DeleteFlowNodes(ctx, []string{node}, "alex"); err != nil {
 		t.Fatal(err)
 	}
-	totals, err := store.UsageTotals(ctx, card)
+	totals, err := store.UsageTotals(ctx, node)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -160,7 +160,7 @@ func TestUsageGoesWithItsCard(t *testing.T) {
 	}
 }
 
-// A usage write moves nothing but its own row: the card's revision stands still, and the feed
+// A usage write moves nothing but its own row: the flow node's revision stands still, and the feed
 // hears nothing of it.
 func TestUsageWritesNothingButItsRow(t *testing.T) {
 	pool, boards, flowNodes, _, changes := wireUsage(t)
@@ -176,23 +176,23 @@ func TestUsageWritesNothingButItsRow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	card := made[0]
+	node := made[0]
 	from, err := changes.Latest(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := store.RecordUsage(ctx, &entities.TaskUsage{
-		ID: "00000000-0000-4000-8000-0000000000f1", FlowNodeID: card.ID,
+		ID: "00000000-0000-4000-8000-0000000000f1", FlowNodeID: node.ID,
 		ReportedAt: time.Now().UTC(), InputTokens: 100,
 	}); err != nil {
 		t.Fatal(err)
 	}
-	again, err := flowNodes.Find(ctx, card.ID)
+	again, err := flowNodes.Find(ctx, node.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if again.Revision != card.Revision {
-		t.Errorf("revision = %d, want %d: the report moves nothing on the card", again.Revision, card.Revision)
+	if again.Revision != node.Revision {
+		t.Errorf("revision = %d, want %d: the report moves nothing on the flow node", again.Revision, node.Revision)
 	}
 	feed, _, err := changes.Since(ctx, from, "", 100)
 	if err != nil {

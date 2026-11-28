@@ -4,20 +4,21 @@ document:
   role: PRIMARY_SOURCE
 ---
 
-# Agent resource flows
+# Agentic resource flows
 
-This **conceptual data-flow model** follows agent resources from authoring to execution.
+This **conceptual data-flow model** follows agentic resources from authoring to execution.
 Processes are rounded, data stores cylindrical and external participants rectangular.
 Arrows name data transfers.
-The [solution design](../../solution-design/agentic-resources.md) maps these roles to Git, APM,
+The [Hybridflow concept catalog](hybridflow-concept-catalog.md) defines the terms.
+The [solution design](../../solution-design/agentic-resources.md) maps the flows to Git, APM,
 services and auditable paths.
 
 ## Sources and publications
 
-An **agent definition** combines identity, standing instructions, model intent and dependency
-declarations. **Skill definitions** contain guidance and companion files; **tool packages**
-contain executable integrations and their configuration. Each resource has its own source history.
-**Compiled instructions** and installed dependency projections are derived representations.
+Agent authors select dependencies by referencing reusable resources. Skill sources supply
+guidance and companion files. Tool packages supply integrations and their configuration.
+Each resource has its own source history. Compiled instructions and installed dependency
+projections are derived representations.
 
 ```mermaid
 flowchart TB
@@ -63,7 +64,7 @@ flowchart TB
     Install([Fetch and install the selected package])
     Installed[(Execution machine package cache)]
     Bind([Bind resources to a turn])
-    Harness[Harness executing the task]
+    Harness[Harness executing a turn]
     Evidence[(Execution provenance and conversation history)]
 
     Sources -->|Revision, dependency locks and source files| Prepare
@@ -77,19 +78,11 @@ flowchart TB
     Installed -->|Skill files and tool runtimes read in place| Harness
     Bind -->|Publication identity and effective configuration| Evidence
     Harness -->|Turn observations and history| Evidence
-
-    Bundle[Delivered store skill bundle]
-    Sync([Install store guidance])
-    StoreSkills[(Store agent directories)]
-    Bundle -->|Skill definitions and companion files| Sync
-    Sync -->|Copy or refresh: selected skills| StoreSkills
-    StoreSkills -->|Locally discoverable guidance| Harness
 ```
 
 **Binding** to a **harness** supplies instructions and file references; it can also render temporary
 configuration in the harness's format. The task workspace remains the working directory.
-**Store guidance** is a separate delivery flow: selected skills are copied into the store's
-agent directories for local discovery. Published agent dependencies remain in the execution cache.
+The harness reads skills delivered through the agent's package in the execution cache.
 
 **Execution provenance** identifies the publication, dependency revisions and effective runtime
 configuration. Deleting a local source clone can make that publication unavailable for a new

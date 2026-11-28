@@ -1,14 +1,17 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from 'src/test/render';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-/** Deleting a card — or the several a Ctrl-click picked out — and the question that sometimes goes. */
+/** Deleting a node — or the several a Ctrl-click picked out — and the question that sometimes goes. */
 
 const board = vi.hoisted(() => ({ content: null as any, removeFlowNodes: vi.fn() }));
 const client = vi.hoisted(() => ({ deleteHarnessConversation: vi.fn().mockResolvedValue(undefined) }));
 
 vi.mock('./Hybridflow-ctx', () => ({ useHybridflow: () => board }));
-vi.mock('@kiao-dashboard-core', () => ({ useWorkerClient: () => client }));
+vi.mock('@kiao-dashboard-core', async () => ({
+    useConfirmation: (await import('src/core/ui-foundation/forms/ConfirmationDialog')).useConfirmation,
+    useWorkerClient: () => client,
+}));
 
 import { useFlowNodeDelete } from './useFlowNodeDelete';
 import { newFlowNode, FlowNode } from './boardContent';
@@ -26,11 +29,11 @@ const showing = (left: FlowNode[], right: FlowNode[] = []) => {
 const played = (title: string, chat: string): FlowNode => ({ ...newFlowNode(title), chat });
 
 /** The dialog being asked: the last one opened, an answered one lingering while it fades out. */
-const dialogs = (): HTMLElement[] => [...document.querySelectorAll<HTMLElement>('.ant-modal-confirm')];
+const dialogs = (): HTMLElement[] => screen.queryAllByRole('dialog');
 
 /** Whether a dialog on screen is asking this. */
 const asking = (title: string): boolean =>
-    [...document.querySelectorAll('.ant-modal-confirm-title')].some(node => node.textContent === title);
+    screen.queryByRole('dialog', { name: title }) !== null;
 
 /** Answers the dialog on screen by the label of one of its two buttons. */
 const answer = async (label: string) => {
@@ -122,8 +125,8 @@ describe('the chat of the last flow node naming it', () => {
     });
 });
 
-/** The cards marked with Ctrl-click, deleted together: one question, one edit to the document,. */
-describe('deleting several marked cards', () => {
+/** The nodes marked with Ctrl-click, deleted together: one question, one edit to the document,. */
+describe('deleting several marked nodes', () => {
     it('asks once, naming them, and takes them off in one edit', async () => {
         const first = newFlowNode('One');
         const second = newFlowNode('Two');
@@ -185,7 +188,7 @@ describe('deleting several marked cards', () => {
         expect(client.deleteHarnessConversation).toHaveBeenCalledWith('chat-1');
     });
 
-    it('says nothing about a chat one of the cards left behind still names', async () => {
+    it('says nothing about a chat one of the nodes left behind still names', async () => {
         const first = played('One', 'chat-1');
         showing([first, newFlowNode('Plain')], [played('Kept', 'chat-1')]);
         render(<Probe flowNodeIds={[first.id]} />);

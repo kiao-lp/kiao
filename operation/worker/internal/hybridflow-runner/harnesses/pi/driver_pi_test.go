@@ -27,7 +27,7 @@ import (
 func piTestSetup(t *testing.T, binary string) (*runnerconfig.Config, *PiProfiles, *conversations.ConversationStore, conversations.ConversationMeta) {
 	t.Helper()
 	root := t.TempDir()
-	cfg := &runnerconfig.Config{Config: &coreconfig.Config{RootPath: root, StatePath: filepath.Join(root, ".kiao-config"), AuthMode: "debug"}, BypassEnabled: true, MaxTurns: 4}
+	cfg := &runnerconfig.Config{Config: &coreconfig.Config{DCMSRoot: root, StatePath: filepath.Join(root, ".kiao-config"), AuthMode: "debug"}, BypassEnabled: true, MaxTurns: 4}
 	if binary == "" {
 		var err error
 		binary, err = filepath.Abs("testdata/fake-pi.mjs")
@@ -36,7 +36,7 @@ func piTestSetup(t *testing.T, binary string) (*runnerconfig.Config, *PiProfiles
 		}
 	}
 	profiles := NewPiProfiles(cfg)
-	doc := harnessapi.PiProfilesDocument{Version: 1, DefaultPiProfileID: "work", Installations: []equipment.HarnessInstallation{{ID: "reference", Engine: harnessapi.HarnessPi, Version: equipment.PiVersion, Path: binary, Protocol: equipment.PiRPCProtocol, External: true}}, Profiles: []harnessapi.PiProfile{{ID: "work", Name: "Work", InstallationID: "reference", DefaultModel: "openai/shared-model", DefaultEffort: "off", Connections: []harnessapi.PiConnection{{Provider: "openai", API: "openai-completions", BaseURL: "http://127.0.0.1:1/v1", Models: []harnessapi.PiModel{{ID: "shared-model", Reasoning: true, Input: []string{"text", "image"}, ContextWindow: 10000, MaxTokens: 1024}}}}}}}
+	doc := harnessapi.PiProfilesDocument{Version: 1, DefaultPiProfileID: "work", Installations: []equipment.HarnessInstallation{{ID: "reference", Harness: harnessapi.HarnessPi, Version: equipment.PiVersion, Path: binary, Protocol: equipment.PiRPCProtocol, External: true}}, Profiles: []harnessapi.PiProfile{{ID: "work", Name: "Work", InstallationID: "reference", DefaultModel: "openai/shared-model", DefaultEffort: "off", Connections: []harnessapi.PiConnection{{Provider: "openai", API: "openai-completions", BaseURL: "http://127.0.0.1:1/v1", Models: []harnessapi.PiModel{{ID: "shared-model", Reasoning: true, Input: []string{"text", "image"}, ContextWindow: 10000, MaxTokens: 1024}}}}}}}
 	if err := profiles.WriteProfiles(doc); err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +52,7 @@ func piTestSetup(t *testing.T, binary string) (*runnerconfig.Config, *PiProfiles
 }
 
 func piTestRun(cfg *runnerconfig.Config, meta conversations.ConversationMeta, prompt string) harnessapi.HarnessRun {
-	return harnessapi.HarnessRun{Conversation: meta.ID, Turn: "turn-test", ProfileID: meta.ProfileID, Model: meta.Model, Effort: "off", PermissionMode: runnerconfig.PermissionModeBypass, AllowBypass: true, Thinking: true, Prompt: prompt, WorkDir: cfg.RootPath, StoreRoot: cfg.RootPath, SessionID: meta.SessionID, ForkSession: meta.ForkPending, ResumeAt: meta.ForkAnchor}
+	return harnessapi.HarnessRun{Conversation: meta.ID, Turn: "turn-test", ProfileID: meta.ProfileID, Model: meta.Model, Effort: "off", PermissionMode: runnerconfig.PermissionModeBypass, AllowBypass: true, Thinking: true, Prompt: prompt, WorkDir: cfg.DCMSRoot, DCMSRoot: cfg.DCMSRoot, SessionID: meta.SessionID, ForkSession: meta.ForkPending, ResumeAt: meta.ForkAnchor}
 }
 
 func collectPi(t *testing.T, d *PiDriver, run harnessapi.HarnessRun, action func(harnessapi.HarnessEvent)) []harnessapi.HarnessEvent {

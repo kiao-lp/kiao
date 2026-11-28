@@ -41,7 +41,7 @@ func newCore() (*services.Boards, *services.FlowNodes, *services.Agents, *memory
 	store := memory.New()
 	clock := fixedClock{at: time.Date(2026, 9, 12, 8, 0, 0, 0, time.UTC)}
 	ids := &countingIDs{}
-	return services.NewBoards(store, clock, ids), services.NewFlowNodes(store, store, store, store, store, clock, ids),
+	return services.NewBoards(store, clock, ids), services.NewFlowNodes(store, store, store, store, clock, ids),
 		services.NewAgents(store, clock, ids), store
 }
 

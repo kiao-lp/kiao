@@ -52,7 +52,7 @@ describe('InternalLinkNavigator', () => {
     });
 
     // Passage fragments must survive navigation for `useTextFragment` scrolling.
-    it('keeps the passage a stored link names', () => {
+    it('keeps the passage fragment while navigating', () => {
         clickAnchor({ href: '/dashboard/units/abc/cadre.md#text=is%20drawn%20once' });
         expect(navigate).toHaveBeenCalledWith('/units/abc/cadre.md#text=is%20drawn%20once');
     });

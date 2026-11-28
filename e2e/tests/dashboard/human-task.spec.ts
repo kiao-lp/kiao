@@ -6,7 +6,8 @@ const stamp = { createdAt: '2026-11-14T08:00:00Z', updatedAt: '2026-11-14T08:00:
 async function serveTask(page: Page, { typed = false, failSave = false } = {}) {
     const human = {
         id: 'review', title: 'Review the result', type: 'human', status: 'todo',
-        body: 'Check the result.', criteria: [{ id: 'checked', text: 'Result checked' }],
+        workflow: 'release', body: 'Check {{currentWokflow.message}}.',
+        criteria: [{ id: 'checked', text: 'Result checked in {{currentWorkflow.name}} ({{currentWokflow.id}})' }],
         outputType: typed ? 'schema-1' : '', onSuccess: { flowNode: 'writer', mode: 'end' },
         spot: { x: 80, y: 80 }, ...stamp,
     };
@@ -17,7 +18,8 @@ async function serveTask(page: Page, { typed = false, failSave = false } = {}) {
     };
     const board = {
         board: { id: 'human-task', slug: 'human-task', name: 'Human task', archived: false, ...stamp },
-        flowNodes: [human, ai], flowNodeClasses: [], workflows: [], workflowClasses: [], cursor: 0,
+        flowNodes: [human, ai], cursor: 0,
+        workflows: [{ id: 'release', name: 'Release', values: { message: 'the result' }, ...stamp }],
     };
     const plays: unknown[] = [];
     const savedOutputs: unknown[] = [];
@@ -40,7 +42,7 @@ async function serveTask(page: Page, { typed = false, failSave = false } = {}) {
         return route.fulfill({ json: {
             agents: [{ id: 'agent-1', name: 'Writer', harness: 'claude', model: 'opus',
                 published: { id: 'version-1', number: 1, harness: 'claude', model: 'opus', ...stamp }, ...stamp }],
-            runners: [], flowNodeClasses: [], workflowClasses: [],
+            runners: [],
             schemaValues: typed ? [{ id: 'schema-1', title: 'Answer', value: {
                 type: 'object', properties: { approved: { type: 'boolean' } }, required: ['approved'],
             } }] : [],
@@ -77,6 +79,8 @@ test('human task zoom follows the top panel and starts its successor after savin
     const output = panel.getByRole('textbox', { name: 'Output', exact: true });
     const instructions = panel.locator('p').filter({ hasText: 'Check the result.' });
     const submit = panel.getByRole('button', { name: 'Submit', exact: true });
+    await expect(instructions).toHaveText('Check the result.');
+    await expect(panel.getByTestId('work-on-task-criteria')).toHaveText('Result checked in Release (release)');
     await expect(strip.getByTestId('board-filter')).toHaveCount(0);
     await expect(zoom).toHaveCount(1);
     const initialText = (await instructions.boundingBox())!;
@@ -110,7 +114,7 @@ test('human task zoom follows the top panel and starts its successor after savin
     await expect(panel).toBeVisible();
     await task.save();
     await expect.poll(() => task.plays).toEqual([
-        { path: 'human-task', flowNodeId: 'writer', name: expect.stringMatching(/^Started /) },
+        { path: 'human-task', flowNodeId: 'writer', name: expect.stringMatching(/^Started /), afterPredecessor: true },
     ]);
     expect(task.savedOutputs).toEqual([expect.objectContaining({ status: 'done', output: 'Approved' })]);
     await expect(panel).toHaveCount(0);

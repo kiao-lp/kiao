@@ -1,17 +1,18 @@
 import { describe, it, expect } from 'vitest';
 import {
-    BYPASS_PERMISSION, chains, FLOW_NODE_CLASS_TYPE_ORDER, FLOW_NODE_TYPE_LABELS, FLOW_NODE_TYPE_ORDER,
+    BYPASS_PERMISSION, chains, FLOW_NODE_TYPE_LABELS, FLOW_NODE_TYPE_ORDER,
     hasFolder, hasTransition, isForAgent, isTask,
     newFlowNodeSettings, NO_AGENT, readType, runsItself, saysType, settingsHarness, typeChanges,
 } from './flowNodeType';
 
-/** A card is typed, and the type is a field: two of the four answers have nothing on the card to be. */
+/** A node is typed, and the type is a field: two of the four answers have nothing on the node to be. */
 describe('the type a document says', () => {
-    it('reads the four words it knows, however they are cased', () => {
+    it('reads known types regardless of case', () => {
         expect(readType('ai', {})).toBe('ai');
         expect(readType('human', { agent: 'agent-1' })).toBe('human');
         expect(readType(' Shutdown ', {})).toBe('shutdown');
         expect(readType('scheduler', {})).toBe('scheduler');
+        expect(readType(' Exclusive-Gateway ', {})).toBe('exclusive-gateway');
     });
 
     it('falls back on the settings where the document says no type', () => {
@@ -20,7 +21,7 @@ describe('the type a document says', () => {
         expect(readType(undefined, { effort: 'high', permission: 'manual', folder: '/' })).toBe('human');
     });
 
-    it('reads a legacy card as AI', () => {
+    it('reads a legacy node as AI', () => {
         expect(readType(undefined, { agent: 'claude', model: 'opus' })).toBe('ai');
         expect(readType(undefined, { model: 'opus' })).toBe('ai');
     });
@@ -38,7 +39,7 @@ describe('the type a document says', () => {
 });
 
 describe('what each type is asked', () => {
-    it('asks about a conversation on an AI card and on no other', () => {
+    it('asks about a conversation on an AI node and on no other', () => {
         expect([isForAgent('ai'), hasTransition('ai')]).toEqual([true, true]);
         expect([isForAgent('human'), isForAgent('shutdown'), isForAgent('scheduler'), isForAgent('gateway')])
             .toEqual([false, false, false, false]);
@@ -46,7 +47,7 @@ describe('what each type is asked', () => {
             .toEqual([false, false, false, false]);
     });
 
-    it('asks every card but a Shutdown what comes after it', () => {
+    it('asks every node but a Shutdown what comes after it', () => {
         expect(chains('shutdown')).toBe(false);
         expect([chains('ai'), chains('human'), chains('scheduler'), chains('gateway')]).toEqual([true, true, true, true]);
     });
@@ -58,13 +59,14 @@ describe('what each type is asked', () => {
         expect([isTask('shutdown'), isTask('scheduler'), isTask('gateway')]).toEqual([false, false, false]);
     });
 
-    it('knows which three the board plays to itself', () => {
-        expect([runsItself('shutdown'), runsItself('scheduler'), runsItself('gateway')]).toEqual([true, true, true]);
+    it('runs control nodes without an agent', () => {
+        expect([runsItself('shutdown'), runsItself('scheduler'), runsItself('gateway'), runsItself('exclusive-gateway')])
+            .toEqual([true, true, true, true]);
         expect([runsItself('ai'), runsItself('human')]).toEqual([false, false]);
     });
 });
 
-describe('typing a card', () => {
+describe('typing a node', () => {
     it('leaves a new AI awaiting its agent selection', () => {
         expect(typeChanges({}, 'ai')).toEqual({ agent: NO_AGENT });
     });
@@ -73,13 +75,13 @@ describe('typing a card', () => {
         expect(typeChanges({}, 'ai')).toEqual({ agent: NO_AGENT });
     });
 
-    it('keeps the agent a card typed AI already had', () => {
+    it('keeps the agent a node typed AI already had', () => {
         expect(typeChanges({ agent: 'agent-9' }, 'ai'))
             .toEqual({ agent: 'agent-9' });
     });
 
     // The three that only speak about a played turn go; the folder stays, being asked of both the types that name work.
-    it('takes back what only a played turn means when a card is typed Human', () => {
+    it('takes back what only a played turn means when a node is typed Human', () => {
         expect(typeChanges(
             { agent: 'agent-1', effort: 'high', permission: 'manual', folder: 'x' }, 'human',
         )).toEqual({ agent: undefined, model: undefined, effort: undefined, permission: undefined });
@@ -95,8 +97,8 @@ describe('typing a card', () => {
     });
 });
 
-/** A card made on the board is not a card read out of a document: the file means Human by its silence. */
-describe('the card the board makes', () => {
+/** A node made on the board is not a node read out of a document: the file means Human by its silence. */
+describe('the node the board makes', () => {
     it('starts with explicitly selected execution settings', () => {
         expect(newFlowNodeSettings())
             .toEqual({});
@@ -114,7 +116,7 @@ describe('the card the board makes', () => {
     });
 });
 
-describe('the harness a card is read against', () => {
+describe('the harness a node is read against', () => {
     const agents = [
         { id: 'agent-1', harness: 'claude' },
         { id: 'agent-2', harness: 'codex' },
@@ -128,7 +130,7 @@ describe('the harness a card is read against', () => {
         expect(settingsHarness({ agent: 'claude', model: 'opus' }, agents)).toBe('claude');
     });
 
-    it('is empty for a card that names nothing', () => {
+    it('is empty for a node that names nothing', () => {
         expect(settingsHarness({}, agents)).toBe('');
     });
 });
@@ -138,9 +140,12 @@ describe('the kinds on offer', () => {
         expect(settingsHarness({ agent: 'reviewer' }, [{ id: 'reviewer', harness: 'codex',
             published: { harness: 'claude' } }])).toBe('claude');
     });
-    it('offers all seven to a card, and every kind but the gateway and the display kinds to a class', () => {
-        expect(FLOW_NODE_TYPE_ORDER).toEqual(['ai', 'human', 'shutdown', 'scheduler', 'gateway', 'note', 'value']);
-        expect(FLOW_NODE_CLASS_TYPE_ORDER).toEqual(['ai', 'human', 'shutdown', 'scheduler']);
+    it('offers node types in menu order', () => {
+        expect(FLOW_NODE_TYPE_ORDER).toEqual([
+            'ai', 'human', 'start', 'shutdown', 'scheduler', 'bitbucket-pr-status', 'bitbucket-commit-status',
+            'gateway', 'exclusive-gateway', 'limiter', 'note', 'value', 'role',
+        ]);
         expect(FLOW_NODE_TYPE_LABELS.gateway).toBe('Parallel gateway');
+        expect(FLOW_NODE_TYPE_LABELS['exclusive-gateway']).toBe('Exclusive gateway');
     });
 });

@@ -13,6 +13,8 @@ import (
 	"kiao/worker/internal/hybridflow-runner/playback"
 	runstate "kiao/worker/internal/hybridflow-runner/playback/state"
 	pkgTurns "kiao/worker/internal/hybridflow-runner/turns"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -64,7 +66,7 @@ func newRunnerTest(t *testing.T, board string) *runnerTest {
 
 	rt := &runnerTest{
 		t: t, runner: runner, hub: hub, convs: convs, cfg: cfg,
-		root: cfg.RootPath, binDir: t.TempDir(), handle: "major", boards: boards,
+		root: cfg.DCMSRoot, binDir: t.TempDir(), handle: "major", boards: boards,
 	}
 	rt.fakeCLI()
 	return rt
@@ -99,7 +101,7 @@ func (rt *runnerTest) fakeCLI() {
 	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
 		rt.t.Fatal(err)
 	}
-	rt.hub.Harnesses.Set(harnessapi.HarnessClaude, claudeAgentAt(rt.cfg, path))
+	rt.hub.Harnesses.Set(harnessapi.HarnessClaude, claudeHarnessAt(rt.cfg, path))
 	rt.answers("Done.")
 }
 
@@ -350,15 +352,15 @@ func chainBoard(mode string) string {
 	]}`
 }
 
-// chainBoardCompacting is the same board with the first card asking for its chat to be shortened
+// chainBoardCompacting is the same board with the first flow node asking for its chat to be shortened
 // when it ends. It is the box beside the mode, and a different question: who gets the conversation
-// next is one thing, what this card leaves it as is another.
+// next is one thing, what this flow node leaves it as is another.
 func chainBoardCompacting(mode string) string {
 	return strings.Replace(chainBoard(mode),
 		`"mode":"`+mode+`"`, `"mode":"`+mode+`","compact":true`, 1)
 }
 
-// twoChainBoard is two chains of two cards on one board, sharing nothing: what two runs playing
+// twoChainBoard is two chains of two flow nodes on one board, sharing nothing: what two runs playing
 // side by side look like.
 func twoChainBoard() string {
 	const settings = `"settings":{"agent":"claude","model":"opus","effort":"high",` +
@@ -373,7 +375,7 @@ func twoChainBoard() string {
 	]}`
 }
 
-// editFlowNode rewrites one card of the board in the store, the way the panel would: what a person
+// editFlowNode rewrites one flow node of the board in the store, the way the panel would: what a person
 // does between a run ending and starting it again.
 func (rt *runnerTest) editFlowNode(id string, edit func(*pkgBoards.FlowNode)) {
 	rt.t.Helper()
@@ -410,12 +412,12 @@ func TestChainRunPlaysTheChainWithNobodyWatching(t *testing.T) {
 		t.Fatalf("statuses = %q / %q, want both flow nodes marked done", first.Status, second.Status)
 	}
 	// The descriptions stay where they are: a play sends them, and what the turns said is in the
-	// conversations the cards name.
+	// conversations the flow nodes name.
 	if first.Body != "Do the first thing." || second.Body != "Do the second thing." {
 		t.Errorf("bodies = %q / %q, want the descriptions kept", first.Body, second.Body)
 	}
 	// The chain carries the conversation, and carries it as a **fork**: the second flow node was
-	// played in a copy of the first one's chat rather than in the chat itself, so each card keeps a
+	// played in a copy of the first one's chat rather than in the chat itself, so each flow node keeps a
 	// conversation of its own while the second still remembers everything the first did. It is written
 	// on the flow node rather than held in the run, so a chain resumed goes back into it.
 	if first.Chat == "" || second.Chat == "" || first.Chat == second.Chat {
@@ -430,12 +432,12 @@ func TestChainRunPlaysTheChainWithNobodyWatching(t *testing.T) {
 		t.Errorf("forkedFrom = %q, want the copy branched from the chat the chain ran in (%q)",
 			forked.ForkedFrom, first.Chat)
 	}
-	// Named after the card it was made for: a switcher of six copies called "First" would have lost
+	// Named after the flow node it was made for: a switcher of six copies called "First" would have lost
 	// the one thing a title is for.
 	if forked.Title != "Second" {
 		t.Errorf("title = %q, want the fork named after the flow node it is played in", forked.Title)
 	}
-	// The description alone: the title is the card's name on the board, not a line of the prompt.
+	// The description alone: the title is the flow node's name on the board, not a line of the prompt.
 	prompts := rt.prompts()
 	if len(prompts) != 2 || !strings.HasPrefix(prompts[0], "Do the first thing.") {
 		t.Fatalf("prompts = %q, want the description of each flow node", prompts)
@@ -462,9 +464,44 @@ func TestChainRunChainCanEndTheConversation(t *testing.T) {
 	}
 }
 
+func TestRestartReplaysACompletedChainWithNewConversations(t *testing.T) {
+	for _, mode := range []string{pkgBoards.TransitionEnd, pkgBoards.TransitionContinue} {
+		t.Run(mode, func(t *testing.T) {
+			rt := newRunnerTest(t, chainBoard(mode))
+			rt.answers("First run, first answer.", "First run, second answer.", "Replay, first answer.", "Replay, second answer.")
+			rt.play("flow-node-1")
+			rt.waitIdle()
+			original := rt.board()
+			if _, err := rt.runner.Restart(access.Identity{User: "tester"}, rt.last().ID); err != nil {
+				t.Fatal(err)
+			}
+			rt.waitIdle()
+			replayed := rt.board()
+			for _, id := range []string{"flow-node-1", "flow-node-2"} {
+				oldChat, node := original.FlowNode(id).Chat, replayed.FlowNode(id)
+				if node.Status != pkgBoards.FlowNodeStatusDone || node.Chat == "" || node.Chat == oldChat {
+					t.Fatalf("replayed %s = %+v, want done with a fresh chat", id, node)
+				}
+				messages, err := rt.convs.Messages(oldChat)
+				if err != nil || len(messages) == 0 || !strings.Contains(messages[len(messages)-1].BlockText(), "First run") {
+					t.Fatalf("previous chat %s: %v, %v", oldChat, messages, err)
+				}
+			}
+			meta, err := rt.convs.Get(replayed.FlowNode("flow-node-2").Chat)
+			wantSource := ""
+			if mode == pkgBoards.TransitionContinue {
+				wantSource = replayed.FlowNode("flow-node-1").Chat
+			}
+			if err != nil || meta.ForkedFrom != wantSource {
+				t.Fatalf("replayed successor chat = %+v (%v), want source %q", meta, err, wantSource)
+			}
+		})
+	}
+}
+
 // A chain that ends its conversation plays the next flow node in a chat of its own even when the
-// next card already names the conversation just finished: a chain run before under `continue`
-// writes it onto the next card, and flipping the mode to `end` since does not take it back off —
+// next flow node already names the conversation just finished: a chain run before under `continue`
+// writes it onto the next flow node, and flipping the mode to `end` since does not take it back off —
 // but the ended conversation is still ended, so a fresh one is made for what follows.
 func TestChainRunChainEndingTheConversationMakesOneForTheNextFlowNode(t *testing.T) {
 	rt := newRunnerTest(t, chainBoard(pkgBoards.TransitionEnd))
@@ -490,8 +527,8 @@ func TestChainRunChainEndingTheConversationMakesOneForTheNextFlowNode(t *testing
 	}
 }
 
-// A card that asks for it has its chat shortened once its own flow node is done, and `/compact`
-// goes in as itself — into the chat that card ran in, before the fork the next flow node is played
+// A flow node that asks for it has its chat shortened once its own flow node is done, and `/compact`
+// goes in as itself — into the chat that flow node ran in, before the fork the next flow node is played
 // in is taken off it.
 func TestChainRunCompactsTheChatOfTheFlowNodeThatAskedForIt(t *testing.T) {
 	rt := newRunnerTest(t, chainBoardCompacting(pkgBoards.TransitionContinue))
@@ -505,7 +542,7 @@ func TestChainRunCompactsTheChatOfTheFlowNodeThatAskedForIt(t *testing.T) {
 	}
 }
 
-// The box says what a card leaves its own conversation as, so it is honoured on a card that hands
+// The box says what a flow node leaves its own conversation as, so it is honoured on a flow node that hands
 // that conversation to nobody — the last of a chain, or one played on its own.
 func TestChainRunCompactsTheChatOfAFlowNodeThatEndsTheConversation(t *testing.T) {
 	rt := newRunnerTest(t, chainBoardCompacting(pkgBoards.TransitionEnd))
@@ -519,14 +556,14 @@ func TestChainRunCompactsTheChatOfAFlowNodeThatEndsTheConversation(t *testing.T)
 	}
 	board := rt.board()
 	if first, second := board.FlowNode("flow-node-1"), board.FlowNode("flow-node-2"); first.Chat == second.Chat {
-		t.Errorf("chats = %q / %q, want the conversation still ended with the card that shortened it",
+		t.Errorf("chats = %q / %q, want the conversation still ended with the flow node that shortened it",
 			first.Chat, second.Chat)
 	}
 }
 
-// A flow node whose turn blocked twice is forked and played again from the fork: the card
+// A flow node whose turn blocked twice is forked and played again from the fork: the flow node
 // points at the fork, the forked turn is sent the fork prompt rather than the description,
-// and its answer marks the card done — so the run carries on instead of stopping on the
+// and its answer marks the flow node done — so the run carries on instead of stopping on the
 // blockage.
 func TestChainRunForksAFlowNodeBlockedTwice(t *testing.T) {
 	rt := newRunnerTest(t, chainBoard(pkgBoards.TransitionEnd))
@@ -538,17 +575,17 @@ func TestChainRunForksAFlowNodeBlockedTwice(t *testing.T) {
 	}
 	run := &playback.ChainRun{Id: "run-1", Name: "Test", Handle: rt.handle,
 		Owner: access.Identity{User: "tester"}, Done: make(chan struct{})}
-	// The blocked turn held the card: a forked answer marks it, and a mark is refused from a run
-	// that does not hold the card.
+	// The blocked turn held the flow node: a forked answer marks it, and a mark is refused from a run
+	// that does not hold the flow node.
 	if _, err := rt.runner.Boards.Start(rt.handle, "flow-node-1", run.Id); err != nil {
-		t.Fatalf("claim the card for the run: %v", err)
+		t.Fatalf("claim the flow node for the run: %v", err)
 	}
 	chat, err := rt.runner.ConversationFor(run, *flowNode, resolved)
 	if err != nil {
 		t.Fatalf("make the flow node's chat: %v", err)
 	}
 	out, fault := rt.runner.PlayBlockedFork(context.Background(), run, *flowNode,
-		playback.PlayOneOutcome{Chat: chat, Title: flowNode.Title, Harness: resolved.Harness}, resolved, chat, nil)
+		playback.PlayOneOutcome{Chat: chat, Title: flowNode.Title, Harness: resolved.Harness}, resolved, chat, nil, nil)
 	if fault != nil {
 		t.Fatalf("playBlockedFork fault = %+v, want the forked answer to decide", fault)
 	}
@@ -575,7 +612,7 @@ func TestChainRunForksAFlowNodeBlockedTwice(t *testing.T) {
 		t.Errorf("status = %q, want the flow node done on the forked answer", got.Status)
 	}
 	if got.Chat != out.Chat {
-		t.Errorf("chat = %q, want the card pointing at the fork (%q)", got.Chat, out.Chat)
+		t.Errorf("chat = %q, want the flow node pointing at the fork (%q)", got.Chat, out.Chat)
 	}
 }
 
@@ -634,7 +671,7 @@ func TestChainRunMarksAFlowNodeItsTurnCouldNotDo(t *testing.T) {
 // was not finished.
 //
 // What it does instead is **hold** the flow node: the notice says when the window reopens, and
-// until then there is nothing to do with the card and nothing to say about it but that. The chain
+// until then there is nothing to do with the flow node and nothing to say about it but that. The chain
 // is not followed, and the board says `waiting-refresh` where a spinner would have claimed the turn
 // was still working.
 func TestChainRunHoldsAFlowNodeThatRanIntoTheSessionLimit(t *testing.T) {
@@ -652,7 +689,7 @@ func TestChainRunHoldsAFlowNodeThatRanIntoTheSessionLimit(t *testing.T) {
 	board := rt.board()
 	first := board.FlowNode("flow-node-1")
 	if first.Status != pkgBoards.FlowNodeStatusWaitingRefresh {
-		t.Fatalf("status = %q, want the card saying it is waiting for the limit to refresh rather than"+
+		t.Fatalf("status = %q, want the flow node saying it is waiting for the limit to refresh rather than"+
 			" drawing a spinner over a turn that is not running", first.Status)
 	}
 	if first.Body == "" {
@@ -662,7 +699,7 @@ func TestChainRunHoldsAFlowNodeThatRanIntoTheSessionLimit(t *testing.T) {
 		t.Error("on success means on success: the chain must not be followed past a limit")
 	}
 
-	// The run is stopped while it holds — and the card, which was nobody's but this run's, says the
+	// The run is stopped while it holds — and the flow node, which was nobody's but this run's, says the
 	// flowNode was left part-way rather than sitting `waiting-refresh` for a run that is gone.
 	rt.stop()
 	rt.waitIdle()
@@ -773,6 +810,110 @@ func TestStoppingTheChatSuspendsTheRun(t *testing.T) {
 	}
 }
 
+func (rt *runnerTest) interruptChainTurn() *runstate.HarnessChainRunDto {
+	rt.t.Helper()
+	rt.answers(`{"type":"system","subtype":"init","session_id":"sess-1"}` + "\n" +
+		`{"type":"assistant","message":{"content":[{"type":"text","text":"Half an answer."}]}}` + "\n")
+	rt.play("flow-node-1")
+	run := rt.waitTurn()
+	rt.waitSaid(run.Chat)
+	rt.hub.StopProcess(run.Chat, "tester")
+	return rt.waitState(playback.ChainRunStateSuspended)
+}
+
+func TestPlayInterruptedTaskContinuesItsConversation(t *testing.T) {
+	for _, action := range []string{"play-suspended", "resume-suspended", "play-interrupted", "restart-ended"} {
+		t.Run(action, func(t *testing.T) {
+			rt := newRunnerTest(t, chainBoard(pkgBoards.TransitionEnd))
+			run := rt.interruptChainTurn()
+			if action == "play-interrupted" || action == "restart-ended" {
+				rt.stop()
+			}
+			rt.answers("The completed answer.", "The successor's answer.")
+			srv := &Service{cfg: rt.cfg, hub: rt.hub, chainRunner: rt.runner}
+			path, body := "/play", `{"path":"major","flowNodeId":"flow-node-1"}`
+			switch action {
+			case "resume-suspended":
+				path, body = "/resume", `{"runId":"`+run.ID+`","startTurn":true}`
+			case "restart-ended":
+				path, body = "/restart", `{"runId":"`+run.ID+`"}`
+			}
+			rec := do(srv, httptest.NewRequest(http.MethodPost, "/hybridflow-runner/chain-runs"+path, strings.NewReader(body)))
+			if rec.Code != http.StatusOK {
+				t.Fatalf("%s = %d, %s", path, rec.Code, rec.Body)
+			}
+			var result runstate.ChainRunDto
+			if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
+				t.Fatal(err)
+			}
+			if resumed := result.Run; resumed == nil || resumed.Chat != run.Chat ||
+				resumed.State != playback.ChainRunStatePlaying || (resumed.ID == run.ID) != (action != "play-interrupted") {
+				t.Fatalf("resumed = %+v, interrupted run = %+v", resumed, run)
+			}
+			rt.waitIdle()
+			board := rt.board()
+			first := board.FlowNode("flow-node-1")
+			if first.Status != pkgBoards.FlowNodeStatusDone || first.Chat != run.Chat ||
+				board.FlowNode("flow-node-2").Status != pkgBoards.FlowNodeStatusDone {
+				t.Fatalf("board after resuming = %+v", board.FlowNodes)
+			}
+			if prompts := rt.prompts(); len(prompts) != 3 || prompts[1] != playback.ChainRunResumePrompt {
+				t.Fatalf("prompts = %q, want a continuation in between the flow node prompts", prompts)
+			}
+			if args := rt.invoked(); !strings.Contains(args, "--resume\nsess-1\n") {
+				t.Fatalf("the harness did not resume the task's original session: %q", args)
+			}
+		})
+	}
+}
+
+func TestChatPromptResumesTheInterruptedRun(t *testing.T) {
+	rt := newRunnerTest(t, chainBoard(pkgBoards.TransitionEnd))
+	run := rt.interruptChainTurn()
+	rt.answers("The answer to the chat message.", "The successor's answer.")
+	srv := &Service{cfg: rt.cfg, hub: rt.hub, chainRunner: rt.runner}
+	ts := httptest.NewServer(srv.handler())
+	defer ts.Close()
+	conn := dialClaude(t, ts.URL)
+	defer conn.Close()
+	readUntil(t, conn, "hello")
+
+	other := mustCreateConversation(t, rt.convs, "/")
+	const text = "Finish using the notes above."
+	for _, chat := range []string{other.ID, run.Chat} {
+		if err := conn.WriteJSON(map[string]string{
+			"type": "prompt", "conversationId": chat, "resumeRunId": run.ID, "prompt": text,
+			"responseTokenLimit": "40",
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if chat == other.ID {
+			if frame := readUntil(t, conn, "error"); frame["code"] != "resume_failed" {
+				t.Fatalf("refusal = %v", frame)
+			}
+		}
+	}
+	readUntil(t, conn, "done")
+	rt.waitIdle()
+	board := rt.board()
+	if first := board.FlowNode("flow-node-1"); first.Status != pkgBoards.FlowNodeStatusDone || first.Chat != run.Chat ||
+		board.FlowNode("flow-node-2").Status != pkgBoards.FlowNodeStatusDone {
+		t.Fatalf("board after resuming = %+v", board.FlowNodes)
+	}
+	if prompts := rt.prompts(); len(prompts) != 3 || !strings.HasPrefix(prompts[1], text+"\n\nFor this turn, use at most 40 tokens total") ||
+		strings.Contains(prompts[2], "tokens total") {
+		t.Fatalf("prompts = %q, want the token budget on the chat message only", prompts)
+	}
+	records, err := rt.convs.Messages(run.Chat)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 4 || records[2].Text != text || records[2].RunID != run.ID ||
+		records[2].FlowNodeID != "flow-node-1" || records[3].BlockText() != "The answer to the chat message." {
+		t.Fatalf("resumed conversation = %+v", records)
+	}
+}
+
 // Stop and the chat's Stop are a step apart at the end: a run somebody ended is over, while one
 // whose turn was interrupted is kept for the next message in that chat to pick up. Pressing both is
 // the first of the two.
@@ -840,11 +981,11 @@ func TestARunIsCalledWhatItWasStartedAs(t *testing.T) {
 	rt.waitIdle()
 }
 
-// A card is played by one run. A second play on the same card is refused, and — this is the half
+// A flow node is played by one run. A second play on the same flow node is refused, and — this is the half
 // worth stating — the run already on it carries straight on.
-func TestPlayRefusesACardAnotherRunHolds(t *testing.T) {
+func TestPlayRefusesAFlowNodeAnotherRunHolds(t *testing.T) {
 	rt := newRunnerTest(t, twoChainBoard())
-	// A turn that never emits `result` keeps the first run on its card while the second is tried.
+	// A turn that never emits `result` keeps the first run on its flow node while the second is tried.
 	rt.answers(`{"type":"system","subtype":"init","session_id":"sess-1"}` + "\n" +
 		`{"type":"assistant","message":{"content":[{"type":"text","text":"Working."}]}}` + "\n")
 
@@ -852,7 +993,7 @@ func TestPlayRefusesACardAnotherRunHolds(t *testing.T) {
 	first := rt.waitTurn()
 
 	if _, err := rt.runner.Play(access.Identity{User: "tester"}, rt.handle, "flow-node-1", "Second"); err == nil {
-		t.Error("a card another run is holding must be refused rather than played twice")
+		t.Error("a flow node another run is holding must be refused rather than played twice")
 	}
 	if runs := rt.runner.Snapshots(); len(runs) != 1 || runs[0].ID != first.ID {
 		t.Fatalf("runs = %+v, want the refused play to have left the first one alone", runs)
@@ -863,11 +1004,11 @@ func TestPlayRefusesACardAnotherRunHolds(t *testing.T) {
 	rt.waitIdle()
 }
 
-// A chain walking into a card another run is holding stops there and says whose it is: two turns
+// A chain walking into a flow node another run is holding stops there and says whose it is: two turns
 // on one flow node would have the second mark written over the first.
-func TestAChainStopsAtACardAnotherRunHolds(t *testing.T) {
+func TestAChainStopsAtAFlowNodeAnotherRunHolds(t *testing.T) {
 	rt := newRunnerTest(t, chainBoard(pkgBoards.TransitionEnd))
-	// Both turns queued up front, one file each: the first never ends — that is the held card — and
+	// Both turns queued up front, one file each: the first never ends — that is the held flow node — and
 	// the second answers. Written now rather than between the two plays, because rewriting the file
 	// a running stub is still reading is a race, and the whole point of this test is the one that is
 	// still running.
@@ -876,14 +1017,14 @@ func TestAChainStopsAtACardAnotherRunHolds(t *testing.T) {
 			`{"type":"assistant","message":{"content":[{"type":"text","text":"Working."}]}}`+"\n",
 		"The first answer.")
 
-	// The second card first, and held: its turn never ends.
+	// The second flow node first, and held: its turn never ends.
 	rt.play("flow-node-2")
 	held := rt.waitTurn()
 	rt.waitSaid(held.Chat)
 
-	// Now the chain, whose first card answers and whose second is that held card.
+	// Now the chain, whose first flow node answers and whose second is that held flow node.
 	rt.play("flow-node-1")
-	rt.waitFor("the chain to end at the held card", func() bool {
+	rt.waitFor("the chain to end at the held flow node", func() bool {
 		for _, run := range rt.runner.Snapshots() {
 			if run.RootFlowNodeID == "flow-node-1" && run.State == playback.ChainRunStateEnded {
 				return true
@@ -896,7 +1037,7 @@ func TestAChainStopsAtACardAnotherRunHolds(t *testing.T) {
 		t.Errorf("first flow node = %q, want its own turn marked", got)
 	}
 	if len(rt.prompts()) != 2 {
-		t.Errorf("%d prompts, want the held card not to have been sent a second turn", len(rt.prompts()))
+		t.Errorf("%d prompts, want the held flow node not to have been sent a second turn", len(rt.prompts()))
 	}
 
 	rt.stop()
@@ -905,8 +1046,8 @@ func TestAChainStopsAtACardAnotherRunHolds(t *testing.T) {
 }
 
 // A run stays in the list once it is over, saying so — that is what a Restart is offered on — and
-// Restart plays it again from the card it started on, under the name it already has.
-func TestAnEndedRunIsRestartedFromTheCardItStartedOn(t *testing.T) {
+// Restart plays it again from the flow node it started on, under the name it already has.
+func TestAnEndedRunIsRestartedFromTheFlowNodeItStartedOn(t *testing.T) {
 	rt := newRunnerTest(t, twoChainBoard())
 
 	if _, err := rt.runner.Play(access.Identity{User: "tester"}, rt.handle, "flow-node-1", "Nightly"); err != nil {
@@ -919,7 +1060,7 @@ func TestAnEndedRunIsRestartedFromTheCardItStartedOn(t *testing.T) {
 		t.Fatalf("run = %+v, want it kept in the list saying it is over", ended)
 	}
 
-	// The card still asks what it was asking — a play takes nothing away — so it plays again as it
+	// The flow node still asks what it was asking — a play takes nothing away — so it plays again as it
 	// stands: same run, same name, same place in the list.
 	if _, err := rt.runner.Restart(access.Identity{User: "tester"}, ended.ID); err != nil {
 		t.Fatalf("restart: %v", err)
@@ -951,7 +1092,7 @@ func TestForgetTakesAnEndedRunOffTheList(t *testing.T) {
 	}
 }
 
-// What the panel draws: the chain a run has walked, the card it is on, and what lies ahead of it —
+// What the panel draws: the chain a run has walked, the flow node it is on, and what lies ahead of it —
 // each with the title and the status the board holds, so a chain run shows without its board.
 func TestARunReportsTheChainItIsWalking(t *testing.T) {
 	rt := newRunnerTest(t, chainBoard(pkgBoards.TransitionEnd))
@@ -961,10 +1102,10 @@ func TestARunReportsTheChainItIsWalking(t *testing.T) {
 
 	run := rt.last()
 	if len(run.FlowNodes) != 2 {
-		t.Fatalf("flow nodes = %+v, want the two cards of the chain", run.FlowNodes)
+		t.Fatalf("flow nodes = %+v, want the two flow nodes of the chain", run.FlowNodes)
 	}
 	if run.FlowNodes[0].ID != "flow-node-1" || run.FlowNodes[0].Title != "First" || !run.FlowNodes[0].Played {
-		t.Errorf("first = %+v, want the card it played, named and marked as played", run.FlowNodes[0])
+		t.Errorf("first = %+v, want the flow node it played, named and marked as played", run.FlowNodes[0])
 	}
 	if run.FlowNodes[1].Status != pkgBoards.FlowNodeStatusDone {
 		t.Errorf("second = %+v, want the status the board holds", run.FlowNodes[1])
@@ -1015,7 +1156,7 @@ func TestPlayRefusesAFlowNodeNothingCanPlay(t *testing.T) {
 	}
 }
 
-// The prompt is the title, the description or the success criteria, so a card saying none of
+// The prompt is the title, the description or the success criteria, so a flow node saying none of
 // the three has nothing to send. Writing one of them is what offers it a turn.
 func TestPlayRefusesAFlowNodeWithNothingToSend(t *testing.T) {
 	rt := newRunnerTest(t, `{"flowNodes":[
@@ -1030,7 +1171,7 @@ func TestPlayRefusesAFlowNodeWithNothingToSend(t *testing.T) {
 	}
 }
 
-// ... while a card with no description but a title is played on its name.
+// ... while a flow node with no description but a title is played on its name.
 func TestPlayTakesAFlowNodeWithNoDescriptionButATitle(t *testing.T) {
 	rt := newRunnerTest(t, `{"flowNodes":[
 		{"id":"flow-node-1","title":"Something to send","settings":{"agent":"claude","model":"opus",
@@ -1048,7 +1189,7 @@ func TestPlayTakesAFlowNodeWithNoDescriptionButATitle(t *testing.T) {
 	rt.waitIdle()
 }
 
-// And the same rule ends a chain: the card after this one has an empty box, so there is
+// And the same rule ends a chain: the flow node after this one has an empty box, so there is
 // nothing to send it and the run stops rather than spending a turn on an empty prompt.
 func TestChainRunChainStopsAtAFlowNodeWithNothingToSend(t *testing.T) {
 	rt := newRunnerTest(t, `{"flowNodes":[
@@ -1063,18 +1204,18 @@ func TestChainRunChainStopsAtAFlowNodeWithNothingToSend(t *testing.T) {
 
 	board := rt.board()
 	if board.FlowNode("flow-node-1").Status != pkgBoards.FlowNodeStatusDone {
-		t.Fatalf("first flow node = %q, want the card that was played marked done", board.FlowNode("flow-node-1").Status)
+		t.Fatalf("first flow node = %q, want the flow node that was played marked done", board.FlowNode("flow-node-1").Status)
 	}
 	if got := board.FlowNode("flow-node-2").Status; got != "" {
-		t.Errorf("second flow node = %q, want the chain stopped at a card with nothing to send", got)
+		t.Errorf("second flow node = %q, want the chain stopped at a flow node with nothing to send", got)
 	}
 	if len(rt.prompts()) != 1 {
 		t.Errorf("prompts = %q, want the one flow node that had something to send", rt.prompts())
 	}
 }
 
-// A card with no description is still played on its name: the title stands in for the missing
-// description, so the chain carries on to a titled card.
+// A flow node with no description is still played on its name: the title stands in for the missing
+// description, so the chain carries on to a titled flow node.
 func TestChainRunChainPlaysATitledFlowNodeWithNoDescription(t *testing.T) {
 	rt := newRunnerTest(t, `{"flowNodes":[
 		{"id":"flow-node-1","title":"First","body":"Do the first thing.","settings":{"agent":"claude","model":"opus",
@@ -1087,7 +1228,7 @@ func TestChainRunChainPlaysATitledFlowNodeWithNoDescription(t *testing.T) {
 	rt.waitIdle()
 
 	if got := rt.board().FlowNode("flow-node-2").Status; got != pkgBoards.FlowNodeStatusDone {
-		t.Errorf("second flow node = %q, want the titled card played on its name", got)
+		t.Errorf("second flow node = %q, want the titled flow node played on its name", got)
 	}
 	prompts := rt.prompts()
 	if len(prompts) != 2 || prompts[1] != "Second" {
@@ -1114,9 +1255,9 @@ func TestChainRunChainStopsWhenTheNextFlowNodeRunsElsewhere(t *testing.T) {
 	}
 }
 
-// The board is read again at every step: a card edited while its turn ran is still the same
+// The board is read again at every step: a flow node edited while its turn ran is still the same
 // flow node, and still gets its own mark — and the edit survives the run's write, the mark being
-// one field of the card rather than the card whole.
+// one field of the flow node rather than the flow node whole.
 func TestChainRunFindsItsFlowNodeWhereverTheBoardPutIt(t *testing.T) {
 	rt := newRunnerTest(t, chainBoard(pkgBoards.TransitionEnd))
 	rt.answers(`{"type":"system","subtype":"init","session_id":"sess-1"}` + "\n" +
@@ -1127,7 +1268,7 @@ func TestChainRunFindsItsFlowNodeWhereverTheBoardPutIt(t *testing.T) {
 	run := rt.waitTurn()
 	rt.waitSaid(run.Chat)
 
-	// The board is edited under the run: the played card is retitled and moved, exactly as a
+	// The board is edited under the run: the played flow node is retitled and moved, exactly as a
 	// person would while its turn runs.
 	rt.editFlowNode("flow-node-1", func(flowNode *pkgBoards.FlowNode) {
 		flowNode.Title = "First, renamed"
@@ -1139,7 +1280,7 @@ func TestChainRunFindsItsFlowNodeWhereverTheBoardPutIt(t *testing.T) {
 
 	after := rt.board().FlowNode("flow-node-1")
 	if after.Title != "First, renamed" || after.Spot == nil || after.Spot.X != 640 {
-		t.Errorf("card = %+v, want the run's write to have kept the edit made under it", after)
+		t.Errorf("flow node = %+v, want the run's write to have kept the edit made under it", after)
 	}
 	if after.Status != pkgBoards.FlowNodeStatusInterrupted {
 		t.Errorf("status = %q, want the stopped turn marked on the flow node however it was edited",
@@ -1147,8 +1288,8 @@ func TestChainRunFindsItsFlowNodeWhereverTheBoardPutIt(t *testing.T) {
 	}
 }
 
-// shutdownBoard is a chain ending on a **Shutdown** card, with a third flow node named nowhere: a
-// card that turns the machine off names nothing after it, so the chain ends there whatever else is
+// shutdownBoard is a chain ending on a **Shutdown** flow node, with a third flow node named nowhere: a
+// flow node that turns the machine off names nothing after it, so the chain ends there whatever else is
 // on the board.
 func shutdownBoard() string {
 	return `{"flowNodes":[
@@ -1169,9 +1310,9 @@ func schedulerBoard(at string) string {
 		 "effort":"high","permission":"bypassPermissions","folder":"/"}}]}`
 }
 
-// The whole feature: a chain reaching a Shutdown card turns the machine off, and ends there —
+// The whole feature: a chain reaching a Shutdown flow node turns the machine off, and ends there —
 // playing anything into a machine on its way down would be starting work to abandon it.
-func TestChainRunShutdownCardEndsTheChainAndTurnsTheMachineOff(t *testing.T) {
+func TestChainRunShutdownFlowNodeEndsTheChainAndTurnsTheMachineOff(t *testing.T) {
 	rt := newRunnerTest(t, shutdownBoard())
 	asked := rt.powersOff()
 
@@ -1179,20 +1320,20 @@ func TestChainRunShutdownCardEndsTheChainAndTurnsTheMachineOff(t *testing.T) {
 	rt.waitIdle()
 
 	if !rt.wentOff(asked) {
-		t.Fatal("the chain reached a Shutdown card and the machine was not turned off")
+		t.Fatal("the chain reached a Shutdown flow node and the machine was not turned off")
 	}
 	board := rt.board()
 	if board.FlowNode("flow-node-2").Status != pkgBoards.FlowNodeStatusDone {
-		t.Errorf("the card = %q, want it marked done before anything goes off", board.FlowNode("flow-node-2").Status)
+		t.Errorf("the flow node = %q, want it marked done before anything goes off", board.FlowNode("flow-node-2").Status)
 	}
 	if len(rt.prompts()) != 1 {
-		t.Errorf("prompts = %q, want nothing said to Claude by a card that speaks to nobody", rt.prompts())
+		t.Errorf("prompts = %q, want nothing said to Claude by a flow node that speaks to nobody", rt.prompts())
 	}
 }
 
-// It is a card like any other, so it is played like any other: the board's Play on it is the whole
+// It is a flow node like any other, so it is played like any other: the board's Play on it is the whole
 // of what it takes.
-func TestChainRunShutdownCardIsPlayedOnItsOwn(t *testing.T) {
+func TestChainRunShutdownFlowNodeIsPlayedOnItsOwn(t *testing.T) {
 	rt := newRunnerTest(t, shutdownBoard())
 	asked := rt.powersOff()
 
@@ -1200,16 +1341,16 @@ func TestChainRunShutdownCardIsPlayedOnItsOwn(t *testing.T) {
 	rt.waitIdle()
 
 	if !rt.wentOff(asked) {
-		t.Fatal("a Shutdown card played on its own turns the machine off")
+		t.Fatal("a Shutdown flow node played on its own turns the machine off")
 	}
 	if len(rt.prompts()) != 0 {
-		t.Errorf("prompts = %q, want a card that speaks to nobody to speak to nobody", rt.prompts())
+		t.Errorf("prompts = %q, want a flow node that speaks to nobody to speak to nobody", rt.prompts())
 	}
 }
 
-// A turn that came back an error stops the chain before the card is ever reached, which is the
+// A turn that came back an error stops the chain before the flow node is ever reached, which is the
 // whole point of putting the machine at the end of one: a machine somebody has to look at stays on.
-func TestChainRunShutdownCardIsNotReachedByAFailedChain(t *testing.T) {
+func TestChainRunShutdownFlowNodeIsNotReachedByAFailedChain(t *testing.T) {
 	rt := newRunnerTest(t, shutdownBoard())
 	asked := rt.powersOff()
 	rt.answers(rt.blockEvents("Started.", "API Error: 400 the request was malformed"))
@@ -1227,7 +1368,7 @@ func TestChainRunShutdownCardIsNotReachedByAFailedChain(t *testing.T) {
 
 // A turn somebody stopped is somebody at the keyboard, which is the plainest thing there is to say
 // the machine is wanted.
-func TestChainRunShutdownCardLeavesAStoppedTurnsMachineOn(t *testing.T) {
+func TestChainRunShutdownFlowNodeLeavesAStoppedTurnsMachineOn(t *testing.T) {
 	rt := newRunnerTest(t, shutdownBoard())
 	asked := rt.powersOff()
 	rt.answers(`{"type":"system","subtype":"init","session_id":"sess-1"}` + "\n" +
@@ -1246,9 +1387,9 @@ func TestChainRunShutdownCardLeavesAStoppedTurnsMachineOn(t *testing.T) {
 }
 
 // Where the deployment cannot turn a machine off — a server, the image, every start but the executable
-// — the card is marked an error: it asked for something that did not happen, and a card left saying
+// — the flow node is marked an error: it asked for something that did not happen, and a flow node left saying
 // `done` over a machine still running would be the play claiming otherwise.
-func TestChainRunShutdownCardIsAnErrorWhereTheMachineIsNotThisServicesToTurnOff(t *testing.T) {
+func TestChainRunShutdownFlowNodeIsAnErrorWhereTheMachineIsNotThisServicesToTurnOff(t *testing.T) {
 	rt := newRunnerTest(t, shutdownBoard())
 	// No shutdown command: what LoadConfig gives every deployment but `kiao`.
 	rt.runner.Shutdown = playback.MachinePowerOff(&runnerconfig.Config{})
@@ -1257,7 +1398,107 @@ func TestChainRunShutdownCardIsAnErrorWhereTheMachineIsNotThisServicesToTurnOff(
 	rt.waitIdle()
 
 	if got := rt.board().FlowNode("flow-node-2").Status; got != pkgBoards.FlowNodeStatusError {
-		t.Errorf("the card = %q, want a machine still running marked as what it is", got)
+		t.Errorf("the flow node = %q, want a machine still running marked as what it is", got)
+	}
+}
+
+func TestChainRunStartHandsOffWithoutAnAgent(t *testing.T) {
+	rt := newRunnerTest(t, `{"flowNodes":[
+		{"id":"start","title":"Start","type":"start","onSuccess":{"flowNode":"wait"}},
+		{"id":"wait","title":"Wait","type":"scheduler","duration":"1ms","onSuccess":{"flowNode":"review"}},
+		{"id":"review","title":"Review","type":"human"}
+	]}`)
+
+	rt.play("start")
+	rt.waitIdle()
+
+	board := rt.board()
+	for id, want := range map[string]string{
+		"start":  pkgBoards.FlowNodeStatusDone,
+		"wait":   pkgBoards.FlowNodeStatusDone,
+		"review": pkgBoards.FlowNodeStatusTodo,
+	} {
+		if got := board.FlowNode(id).Status; got != want {
+			t.Errorf("%s status = %q, want %q", id, got, want)
+		}
+	}
+	if got := rt.prompts(); len(got) != 0 {
+		t.Errorf("prompts = %q, want none", got)
+	}
+}
+
+func TestStartCopiesWorkflowFilesBeforeTheTaskUsesThem(t *testing.T) {
+	rt := newRunnerTest(t, `{"workflows":[{"id":"release","name":"Release",
+		"workflowFolder":"/runs/release","files":["/inputs/brief.md","/inputs/bundle"]}],
+		"flowNodes":[
+			{"id":"start","type":"start","workflow":"release","onSuccess":{"flowNode":"review"}},
+			{"id":"review","type":"ai","title":"Review","workflow":"release",
+			 "body":"Read {{workflowFolder}}/brief.md and {{workflowFolder}}/bundle/.assets/notes.",
+			 "settings":{"agent":"claude","model":"opus","effort":"high",
+			             "permission":"bypassPermissions","folder":"{{ workflowFolder }}/bundle/.assets"}}
+		]}`)
+	for name, text := range map[string]string{
+		"inputs/brief.md":                 "brief",
+		"inputs/bundle/.assets/notes":     "nested in a hidden folder",
+		"inputs/bundle/.assets/.settings": "hidden in a hidden folder",
+	} {
+		file := filepath.Join(rt.root, name)
+		if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(file, []byte(text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	rt.play("start")
+	rt.waitIdle()
+	board := rt.board()
+	if start, review := board.FlowNode("start"), board.FlowNode("review"); start.Status != "done" || review.Status != "done" {
+		t.Fatalf("start = %s, review = %s", start.Status, review.Status)
+	}
+	chat, err := rt.convs.Get(board.FlowNode("review").Chat)
+	if err != nil || chat.Folder != "runs/release/bundle/.assets" {
+		t.Fatalf("working folder: %+v, %v", chat, err)
+	}
+	if prompts := rt.prompts(); len(prompts) != 1 ||
+		!strings.HasPrefix(prompts[0], "Read /runs/release/brief.md and /runs/release/bundle/.assets/notes.") {
+		t.Fatalf("prompts = %q", prompts)
+	}
+	for name, want := range map[string]string{
+		"brief.md":                 "brief",
+		"bundle/.assets/notes":     "nested in a hidden folder",
+		"bundle/.assets/.settings": "hidden in a hidden folder",
+	} {
+		body, err := os.ReadFile(filepath.Join(rt.root, "runs/release", name))
+		if err != nil || string(body) != want {
+			t.Errorf("%s = %q, %v", name, body, err)
+		}
+	}
+}
+
+func TestStartStopsBeforeTheSuccessorWhenWorkflowFilesCannotBePrepared(t *testing.T) {
+	rt := newRunnerTest(t, `{"workflows":[{"id":"release","name":"Release","workflowFolder":"/release"}],
+		"flowNodes":[
+			{"id":"start","type":"start","workflow":"release","onSuccess":{"flowNode":"review"}},
+			{"id":"review","type":"human","title":"Review","workflow":"release","status":"draft"}
+		]}`)
+
+	if _, err := rt.runner.Play(access.Identity{User: "tester"}, rt.handle, "start", ""); err == nil ||
+		!strings.Contains(err.Error(), "requires both a folder and at least one file or folder") {
+		t.Fatalf("playing an incomplete workflow returned %v", err)
+	}
+	rt.boards.mu.Lock()
+	rt.boards.boards[rt.handle].Workflow("release").Files = []string{"/missing.md"}
+	rt.boards.mu.Unlock()
+	rt.play("start")
+	rt.waitIdle()
+	board := rt.board()
+	if start, review := board.FlowNode("start"), board.FlowNode("review"); start.Status != "error" || review.Status != "draft" {
+		t.Fatalf("start = %s, review = %s", start.Status, review.Status)
+	}
+	if _, err := os.Stat(filepath.Join(rt.root, "release")); !os.IsNotExist(err) {
+		t.Fatalf("destination after missing source: %v", err)
 	}
 }
 
@@ -1271,7 +1512,7 @@ func TestChainRunSchedulerPlaysOnWhenItsDatetimeHasPassed(t *testing.T) {
 
 	board := rt.board()
 	if board.FlowNode("flow-node-1").Status != pkgBoards.FlowNodeStatusDone {
-		t.Errorf("the scheduler = %q, want a card that has done its waiting marked done",
+		t.Errorf("the scheduler = %q, want a flow node that has done its waiting marked done",
 			board.FlowNode("flow-node-1").Status)
 	}
 	if board.FlowNode("flow-node-2").Status != pkgBoards.FlowNodeStatusDone {
@@ -1282,7 +1523,7 @@ func TestChainRunSchedulerPlaysOnWhenItsDatetimeHasPassed(t *testing.T) {
 	}
 }
 
-// The card holding for its hour is the run doing the one thing that card is for: nothing is
+// The flow node holding for its hour is the run doing the one thing that flow node is for: nothing is
 // running, nothing has gone wrong, and the board says which of the two waits it is in.
 func TestChainRunSchedulerHoldsForItsDatetime(t *testing.T) {
 	rt := newRunnerTest(t, schedulerBoard("2099-01-01T03:00"))
@@ -1291,14 +1532,14 @@ func TestChainRunSchedulerHoldsForItsDatetime(t *testing.T) {
 	run := rt.waitState(playback.ChainRunStateScheduled)
 
 	if run.FlowNodeID != "flow-node-1" {
-		t.Errorf("flow node = %q, want the card being waited on", run.FlowNodeID)
+		t.Errorf("flow node = %q, want the flow node being waited on", run.FlowNodeID)
 	}
 	if rt.board().FlowNode("flow-node-1").Status != pkgBoards.FlowNodeStatusRunning {
-		t.Errorf("the scheduler = %q, want the run's mark on the card it is holding",
+		t.Errorf("the scheduler = %q, want the run's mark on the flow node it is holding",
 			rt.board().FlowNode("flow-node-1").Status)
 	}
 	if len(rt.prompts()) != 0 {
-		t.Errorf("prompts = %q, want nothing played while the card waits", rt.prompts())
+		t.Errorf("prompts = %q, want nothing played while the flow node waits", rt.prompts())
 	}
 
 	// Stop is what ends a wait here, as it ends the twenty minutes between two tries.
@@ -1310,7 +1551,7 @@ func TestChainRunSchedulerHoldsForItsDatetime(t *testing.T) {
 }
 
 // The datetime is a Scheduler's whole configuration, and it is missing the way an effort is missing
-// on an AI card: there is nothing to play.
+// on an AI flow node: there is nothing to play.
 func TestChainRunSchedulerWithNoDatetimeIsNotPlayed(t *testing.T) {
 	rt := newRunnerTest(t, schedulerBoard(""))
 
@@ -1319,7 +1560,7 @@ func TestChainRunSchedulerWithNoDatetimeIsNotPlayed(t *testing.T) {
 	}
 }
 
-// imageBoard is one flow node whose body links two pictures from the store root: one the store
+// imageBoard is one flow node whose body links two pictures from the DCMS root: one the store
 // holds, one that was never there.
 const imageBoard = `{"flowNodes":[
 		{"id":"flow-node-1","title":"Fix the header",
@@ -1328,7 +1569,7 @@ const imageBoard = `{"flowNodes":[
 	]}`
 
 // A flow node's images travel with it. The CLI takes text on a pipe, so what reaches the turn is
-// the path of the file in the store — the real one, resolved from the store root rather than
+// the path of the file in the store — the real one, resolved from the DCMS root rather than
 // against the folder the turn runs in.
 func TestChainRunHandsAFlowNodesImagesToTheTurn(t *testing.T) {
 	rt := newRunnerTest(t, imageBoard)
@@ -1367,11 +1608,11 @@ func TestBoardImagesOfDropsWhatIsNotThere(t *testing.T) {
 	}
 }
 
-// The boards are one list shared by every machine, so a card may perfectly well name an agent
+// The boards are one list shared by every machine, so a flow node may perfectly well name an agent
 // this host does not offer, or a mode that agent does not have. Both are refused at the click,
-// where the message can name the card's own words, rather than at the spawn where the run would
+// where the message can name the flow node's own words, rather than at the spawn where the run would
 // have a conversation on the books already.
-func TestPlayRefusesACardItsAgentCannotHonour(t *testing.T) {
+func TestPlayRefusesAnUnsupportedHarnessPermission(t *testing.T) {
 	rt := newRunnerTest(t, `{"flowNodes":[
 		{"id":"flow-node-1","title":"On an agent nobody has","body":"Do a thing","settings":{"agent":"claude","model":"opus",
 		 "effort":"high","permission":"bypassPermissions","folder":"/","agent":"gemini"}},
@@ -1383,27 +1624,25 @@ func TestPlayRefusesACardItsAgentCannotHonour(t *testing.T) {
 
 	_, err := rt.runner.Play(access.Identity{User: "tester"}, rt.handle, "flow-node-1", "")
 	if err == nil || !strings.Contains(err.Error(), "gemini") {
-		t.Errorf("play of a card naming an agent this service has not = %v, want a refusal naming it", err)
+		t.Errorf("play of a flow node naming an agent this service has not = %v, want a refusal naming it", err)
 	}
 	_, err = rt.runner.Play(access.Identity{User: "tester"}, rt.handle, "flow-node-2", "")
 	if err == nil || !strings.Contains(err.Error(), "Codex") {
-		t.Errorf("play of a card asking Codex for manual = %v, want a refusal naming the agent", err)
+		t.Errorf("play of a flow node asking Codex for manual = %v, want a refusal naming the harness", err)
 	}
 	if rt.live() != nil {
 		t.Error("a refused play must leave no run behind")
 	}
 }
 
-// A card that names an agent is played in a conversation bound to it, which is what makes the turn
-// run on that engine at all: the hub reads the agent off the conversation and never off the
-// request.
-func TestAPlayedCardBindsItsChatToItsAgent(t *testing.T) {
+// The turn uses the harness captured by the task conversation.
+func TestAPlayedFlowNodeBindsItsChatToItsHarness(t *testing.T) {
 	rt := newRunnerTest(t, `{"flowNodes":[
 		{"id":"flow-node-1","title":"A card","body":"Do a thing","settings":{"agent":"claude","model":"opus",
 		 "effort":"high","permission":"bypassPermissions","folder":"/","agent":"claude"}}]}`)
 
 	chat, err := rt.runner.ConversationFor(&playback.ChainRun{Owner: access.Identity{User: "tester"}}, pkgBoards.FlowNode{
-		ID: "flow-node-1", Title: "A card",
+		ID: "flow-node-1", Title: "A flow node",
 		Settings: pkgBoards.FlowNodeSettings{Model: "opus", Effort: "high",
 			Permission: runnerconfig.PermissionModeBypass, Folder: "/", Agent: harnessapi.HarnessClaude},
 	}, playback.PlayAgent{Harness: harnessapi.HarnessClaude, Model: "opus"})
@@ -1415,7 +1654,7 @@ func TestAPlayedCardBindsItsChatToItsAgent(t *testing.T) {
 		t.Fatal(err)
 	}
 	if meta.Harness != harnessapi.HarnessClaude {
-		t.Errorf("agent = %q, want the card's own", meta.Harness)
+		t.Errorf("harness = %q, want the one selected for the flow node", meta.Harness)
 	}
 }
 

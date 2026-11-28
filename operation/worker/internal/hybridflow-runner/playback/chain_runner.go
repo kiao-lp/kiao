@@ -2,14 +2,17 @@ package playback
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"kiao/worker/internal/core/access"
 	"kiao/worker/internal/core/http"
 	idgen "kiao/worker/internal/core/ids"
+	"kiao/worker/internal/hybridflow-runner/bitbucket"
 	pkgBoards "kiao/worker/internal/hybridflow-runner/boards"
 	runnerconfig "kiao/worker/internal/hybridflow-runner/config"
 	"kiao/worker/internal/hybridflow-runner/conversations"
 	runstate "kiao/worker/internal/hybridflow-runner/playback/state"
+	"kiao/worker/internal/hybridflow-runner/turns"
 	turnevents "kiao/worker/internal/hybridflow-runner/turns/events"
 	"net/http"
 	"strings"
@@ -32,11 +35,11 @@ type ChainRunner struct {
 	convs *conversations.ConversationStore
 	cfg   *runnerconfig.Config
 
-	// BoardStore owns card claims and mutations. Nil refuses all playback.
+	// BoardStore owns flow node claims and mutations. Nil refuses all playback.
 	Boards pkgBoards.BoardStore
 
 	// Agents resolves managed agent ids through hybridflow-store.
-	// Without a resolver only legacy engine/model cards can play.
+	// Without a resolver only legacy harness/model flow nodes can play.
 	Agents pkgBoards.AgentResolver
 
 	// Runners supplies display names for runner pinning refusals.
@@ -45,12 +48,15 @@ type ChainRunner struct {
 	// Log writes are nil-safe and best-effort, independent of execution success.
 	runLogs *ChainRunLogStore
 
+	BitbucketClient *http.Client
+
 	// Timing and retry policy are fixed at assembly. Tests can shorten waits.
-	RetryWait     time.Duration
-	RetryLimit    int
-	ResumeWindow  time.Duration
-	ShutdownGrace time.Duration
-	RefreshLeeway time.Duration
+	RetryWait         time.Duration
+	RetryLimit        int
+	ResumeWindow      time.Duration
+	ShutdownGrace     time.Duration
+	RefreshLeeway     time.Duration
+	BitbucketInterval time.Duration
 
 	// Shutdown is nil when the deployment cannot turn off its machine.
 	Shutdown func() error
@@ -59,6 +65,8 @@ type ChainRunner struct {
 	Mu sync.Mutex
 	// Runs retains live and recent ended runs, oldest first.
 	Runs []*ChainRun
+	// Closed under Mu when a local run leaves its flow node.
+	flowNodeReleased chan struct{}
 }
 
 func NewChainRunner(cfg *runnerconfig.Config, hub TurnExecutor, convs *conversations.ConversationStore, boards pkgBoards.BoardStore, agents pkgBoards.AgentResolver, runners pkgBoards.RunnerResolver) *ChainRunner {
@@ -71,7 +79,8 @@ func NewChainRunner(cfg *runnerconfig.Config, hub TurnExecutor, convs *conversat
 		runLogs:   runLogs,
 		RetryWait: chainRunRetryWait, RetryLimit: chainRunRetryLimit, ResumeWindow: chainRunResumeWindow,
 		ShutdownGrace: chainRunShutdownGrace, RefreshLeeway: chainRunRefreshLeeway,
-		Shutdown: MachinePowerOff(cfg),
+		Shutdown:        MachinePowerOff(cfg),
+		BitbucketClient: bitbucket.NewClient(), BitbucketInterval: 30 * time.Second,
 	}
 }
 
@@ -85,19 +94,27 @@ func (r *ChainRunner) find(id string) *ChainRun {
 	return nil
 }
 
-// holder finds the live run on a card. Ended runs hold nothing. Requires Mu.
+// holder finds the live run on a flow node. Ended runs hold nothing. Requires Mu.
 func (r *ChainRunner) holder(handle, flowNodeID string) *ChainRun {
 	for _, run := range r.Runs {
-		if run.State != ChainRunStateEnded && run.Handle == handle && run.FlowNodeID == flowNodeID {
+		if run.State != ChainRunStateEnded && run.State != ChainRunStateQueued && run.Handle == handle && run.FlowNodeID == flowNodeID {
 			return run
 		}
 	}
 	return nil
 }
 
-// Play starts an independent run. Another live run on the same card is refused.
-func (r *ChainRunner) Play(id access.Identity, handle, flowNodeID, name string) (*runstate.HarnessChainRunDto, error) {
-	handle = strings.TrimSpace(handle)
+// Play starts an independent run.
+func (r *ChainRunner) Play(id access.Identity, handle, flowNodeID, name string, afterPredecessor ...bool) (*runstate.HarnessChainRunDto, error) {
+	return r.PlayRequest(id, runstate.PlayChainRunRequestDto{
+		Handle: handle, FlowNodeID: flowNodeID, Name: name,
+		AfterPredecessor: len(afterPredecessor) > 0 && afterPredecessor[0],
+	})
+}
+
+// PlayRequest starts a run and captures the input when a predecessor activates an exclusive gateway.
+func (r *ChainRunner) PlayRequest(id access.Identity, req runstate.PlayChainRunRequestDto) (*runstate.HarnessChainRunDto, error) {
+	handle, flowNodeID := strings.TrimSpace(req.Handle), strings.TrimSpace(req.FlowNodeID)
 	if handle == "" {
 		return nil, &httpkit.HTTPError{Status: http.StatusBadRequest, Msg: "no board named"}
 	}
@@ -105,74 +122,111 @@ func (r *ChainRunner) Play(id access.Identity, handle, flowNodeID, name string) 
 	if err != nil {
 		return nil, err
 	}
-	flowNode := board.FlowNode(strings.TrimSpace(flowNodeID))
+	flowNode := board.FlowNode(flowNodeID)
 	if flowNode == nil {
 		return nil, &httpkit.HTTPError{Status: http.StatusNotFound, Msg: "no such flow node on this board: " + flowNodeID}
 	}
-	if err := r.Playable(board, *flowNode); err != nil {
+	predecessorID := strings.TrimSpace(req.PredecessorID)
+	arriving := req.AfterPredecessor || predecessorID != ""
+	if err := r.Playable(board, *flowNode, arriving); err != nil {
 		return nil, err
 	}
-	// A card a run died holding is taken back first, so the play meets a free card rather than
-	// the run that is gone. What comes back is the board as it stands after the taking.
-	board, err = r.reclaim(handle, board, flowNode.ID)
-	if err != nil {
-		return nil, err
-	}
-	flowNode = board.FlowNode(flowNode.ID)
-	if flowNode == nil {
-		return nil, &httpkit.HTTPError{Status: http.StatusNotFound, Msg: "no such flow node on this board: " + flowNodeID}
+	var input *json.RawMessage
+	state := ChainRunStatePlaying
+	if arriving && flowNode.Type == pkgBoards.FlowNodeTypeExclusiveGateway {
+		output, err := exclusiveArrivalInput(board, flowNodeID, predecessorID)
+		if err != nil {
+			return nil, err
+		}
+		input = &output
+		state = ChainRunStateQueued
+	} else {
+		// An explicit play can take back a flow node an earlier run died holding.
+		board, err = r.reclaim(handle, board, flowNodeID)
+		if err != nil {
+			return nil, err
+		}
+		flowNode = board.FlowNode(flowNodeID)
+		if flowNode == nil {
+			return nil, &httpkit.HTTPError{Status: http.StatusNotFound, Msg: "no such flow node on this board: " + flowNodeID}
+		}
 	}
 
 	r.Mu.Lock()
-	if held := r.holder(handle, flowNode.ID); held != nil {
+	if held := r.holder(handle, flowNode.ID); held != nil && input == nil {
+		resuming := flowNode.IsAI() && flowNode.Status == pkgBoards.FlowNodeStatusInterrupted &&
+			held.State == ChainRunStateSuspended && held.Chat == flowNode.Chat
 		r.Mu.Unlock()
+		if resuming {
+			return r.ResumeNow(id, held.Id)
+		}
 		return nil, &httpkit.HTTPError{
 			Status: http.StatusConflict,
 			Msg:    "“" + held.Name + "” is already playing this flow node",
 		}
 	}
 	run := &ChainRun{
-		Id:             "run-" + idgen.NowMillisStr() + "-" + idgen.RandID()[:4],
-		Name:           chainRunName(name),
-		Handle:         handle,
-		Owner:          id,
-		RootFlowNodeID: flowNode.ID,
-		FlowNodeID:     flowNode.ID,
-		Chat:           flowNode.Chat,
-		State:          ChainRunStatePlaying,
-		startedAt:      time.Now(),
+		Id:               "run-" + idgen.NowMillisStr() + "-" + idgen.RandID()[:4],
+		Name:             chainRunName(req.Name),
+		Handle:           handle,
+		Owner:            id,
+		RootFlowNodeID:   flowNode.ID,
+		afterPredecessor: arriving,
+		input:            input,
+		FlowNodeID:       flowNode.ID,
+		Chat:             flowNode.ChatForPlay(),
+		State:            state,
+		startedAt:        time.Now(),
 	}
-	execution := r.startLocked(run, board, false)
+	execution := r.startLocked(run, board, playHow{})
 	dto := snapshotOf(run)
 	r.Mu.Unlock()
 
 	pkgBoards.LogChainRun.Info("run started",
-		"user", id.User, "run", run.Id, "name", run.Name, "board", handle, "flowNode", flowNode.ID, "chat", flowNode.Chat)
+		"user", id.User, "run", run.Id, "name", run.Name, "board", handle, "flowNode", flowNode.ID, "chat", dto.Chat)
 	r.runLogs.Create(run.Id, run.Name, handle, flowNode.ID, id.User, run.startedAt)
 	r.announce(nil)
 	go r.loop(run, execution)
 	return dto, nil
 }
 
-// Playable applies card, connection, deployment and agent rules before a run starts.
-func (r *ChainRunner) Playable(board *pkgBoards.BoardContent, flowNode pkgBoards.FlowNode) error {
+func exclusiveArrivalInput(board *pkgBoards.BoardContent, gatewayID, predecessorID string) (json.RawMessage, error) {
+	if predecessorID == "" {
+		return board.Input(gatewayID), nil
+	}
+	for _, predecessor := range board.PredecessorsOf(gatewayID) {
+		if predecessor.ID == predecessorID && predecessor.Status == pkgBoards.FlowNodeStatusDone {
+			return predecessor.Output, nil
+		}
+	}
+	return nil, &httpkit.HTTPError{Status: http.StatusBadRequest, Msg: "the exclusive gateway needs a completed predecessor with a link to it"}
+}
+
+// Playable applies flow node, connection, deployment and agent rules before a run starts.
+func (r *ChainRunner) Playable(board *pkgBoards.BoardContent, flowNode pkgBoards.FlowNode, afterPredecessor bool) error {
+	if err := board.Workflow(flowNode.Workflow).ValidateFiles(); err != nil {
+		return &httpkit.HTTPError{Status: http.StatusBadRequest, Msg: err.Error()}
+	}
 	if err := board.ConnectionError(flowNode.ID); err != nil {
 		return &httpkit.HTTPError{Status: http.StatusBadRequest, Msg: err.Error()}
 	}
 	if !flowNode.Runnable() {
 		return &httpkit.HTTPError{Status: http.StatusBadRequest, Msg: playRefusal(flowNode)}
 	}
+	if flowNode.Type == pkgBoards.FlowNodeTypeLimiter && len(board.SuccessorsOf(flowNode)) != 2 {
+		return &httpkit.HTTPError{Status: http.StatusBadRequest, Msg: playRefusal(flowNode)}
+	}
 	// A Gateway fires only once every branch feeding into it is done: starting one still waiting
 	// is refused at the click, naming what it waits for.
 	if flowNode.IsGateway() {
-		if waiting := waitingBranches(board, flowNode); len(waiting) > 0 {
+		if waiting := board.GatewayWaiting(flowNode, afterPredecessor); len(waiting) > 0 {
 			return &httpkit.HTTPError{Status: http.StatusBadRequest,
 				Msg: "this gateway waits for " + strings.Join(waiting, ", ")}
 		}
 	}
-	// On an AI card the prompt is what the card says — its title, its description or its
+	// On an AI flow node the prompt is what the flow node says — its title, its description or its
 	// success criteria — so one saying none of them has nothing to send. Writing one of them is
-	// what offers the card a turn.
+	// what offers the flow node a turn.
 	if !flowNode.HasWork() {
 		return &httpkit.HTTPError{
 			Status: http.StatusBadRequest,
@@ -182,15 +236,16 @@ func (r *ChainRunner) Playable(board *pkgBoards.BoardContent, flowNode pkgBoards
 	if flowNode.IsAI() && !r.cfg.AllowsPermissionMode(flowNode.Settings.Permission) {
 		return &httpkit.HTTPError{Status: http.StatusBadRequest, Msg: turnevents.BypassDisabledMessage}
 	}
-	// A card pinned to a runner is played there and refused everywhere else — the work happens
-	// where that machine's folders are. Unpinned cards play wherever a Play is pressed.
+	// A flow node pinned to a runner is played there and refused everywhere else — the work happens
+	// where that machine's folders are. Unpinned flow nodes play wherever a Play is pressed.
 	if refusal := r.RunnerRefusal(flowNode); refusal != "" {
 		return &httpkit.HTTPError{Status: http.StatusBadRequest, Msg: refusal}
 	}
-	// And the same question asked of the agent the card names rather than of the deployment. The
-	// boards are one list shared by every machine, so a card may perfectly well name an agent this
+	// And the same question asked of the agent the flow node names rather than of the deployment. The
+	// boards are one list shared by every machine, so a flow node may perfectly well name an agent this
 	// host does not offer, or a mode that agent does not have. Both are refused here, at the click,
-	// where the message can name the card's own words.
+	// where the message can name the flow node's own words.
+	flowNode.Chat = flowNode.ChatForPlay()
 	if refusal := r.AgentRefusal(flowNode); refusal != "" {
 		return &httpkit.HTTPError{Status: http.StatusBadRequest, Msg: refusal}
 	}
@@ -199,7 +254,7 @@ func (r *ChainRunner) Playable(board *pkgBoards.BoardContent, flowNode pkgBoards
 
 // startLocked creates one execution and registers its shared state under Mu.
 // A previous execution must have closed Done before the run can be activated again.
-func (r *ChainRunner) startLocked(run *ChainRun, board *pkgBoards.BoardContent, attach bool) *runExecution {
+func (r *ChainRunner) startLocked(run *ChainRun, board *pkgBoards.BoardContent, how playHow) *runExecution {
 	ctx, cancel := context.WithCancel(context.Background())
 	run.cancel = cancel
 	run.Done = make(chan struct{})
@@ -215,9 +270,14 @@ func (r *ChainRunner) startLocked(run *ChainRun, board *pkgBoards.BoardContent, 
 		r.Runs = append(r.Runs, run)
 	}
 	r.evictLocked()
+	played := make(map[string]bool, len(run.trail))
+	for _, id := range run.trail {
+		played[id] = true
+	}
 	return &runExecution{
 		ctx: ctx, done: run.Done,
-		first: chainStep{flowNodeID: run.FlowNodeID, chat: run.Chat, how: playHow{attach: attach}},
+		first:  chainStep{flowNodeID: run.FlowNodeID, chat: run.Chat, how: how, input: run.input},
+		played: played,
 	}
 }
 
@@ -248,15 +308,21 @@ func (r *ChainRunner) evictLocked() {
 	}
 }
 
-// playRefusal describes the missing requirement of this card type.
+// playRefusal describes the missing requirement of this flow node type.
 func playRefusal(flowNode pkgBoards.FlowNode) string {
 	switch flowNode.Type {
 	case pkgBoards.FlowNodeTypeScheduler:
 		return "this scheduler names no datetime, so there is nothing to wait for"
+	case pkgBoards.FlowNodeTypeBitbucketPRStatus:
+		return "this Bitbucket PR Status flow node needs a pull request ID and a target status"
+	case pkgBoards.FlowNodeTypeBitbucketCommitStatus:
+		return "this Bitbucket Commit Status flow node needs a commit ID and a target status"
 	case pkgBoards.FlowNodeTypeAI:
 		return "this flow node names no agent, effort, permission mode and folder, so nothing can play it"
 	case pkgBoards.FlowNodeTypeGateway:
 		return "this gateway waits for branches that are not done yet"
+	case pkgBoards.FlowNodeTypeLimiter:
+		return "this limiter needs two live successors"
 	}
 	return "this flow node is one somebody does themselves, so nothing here plays it"
 }
@@ -275,15 +341,16 @@ func (r *ChainRunner) Stop(runID string) error {
 		return nil
 	}
 	suspended := run.State == ChainRunStateSuspended
+	queued := run.State == ChainRunStateQueued
 	run.stopping, run.ended = true, true
-	if !suspended {
+	if !suspended && !queued {
 		run.State = chainRunStateStopping
 	}
 	flowNodeID, chat := run.FlowNodeID, run.Chat
 	r.Mu.Unlock()
 
 	r.LogNote(run, flowNodeID, chat, "", "stop requested")
-	if !suspended {
+	if !suspended && !queued {
 		r.LogState(run, flowNodeID, chat, chainRunStateStopping)
 	}
 	if suspended {
@@ -299,16 +366,31 @@ func (r *ChainRunner) Stop(runID string) error {
 	return nil
 }
 
-// Resume reactivates a suspended run on its current card and chat. Its first attempt
-// attaches to the user's turn, or submits the card after ResumeWindow.
+// Resume waits for a separate chat turn before continuing the interrupted task.
 func (r *ChainRunner) Resume(id access.Identity, runID string) (*runstate.HarnessChainRunDto, error) {
+	return r.resume(id, runID, "", &suspendedTurn{awaitMessage: true})
+}
+
+// ResumeNow starts a continuation turn in the interrupted task's conversation.
+func (r *ChainRunner) ResumeNow(id access.Identity, runID string) (*runstate.HarnessChainRunDto, error) {
+	return r.resume(id, runID, "", &suspendedTurn{})
+}
+
+// ResumeWithPrompt uses this message as the interrupted task's next turn.
+func (r *ChainRunner) ResumeWithPrompt(id access.Identity, runID string, req turns.TurnRequest, refuse func(string)) error {
+	_, err := r.resume(id, runID, req.ConversationID, &suspendedTurn{message: &req, refuse: refuse})
+	return err
+}
+
+func (r *ChainRunner) resume(id access.Identity, runID, conversationID string, resumed *suspendedTurn) (*runstate.HarnessChainRunDto, error) {
+	runID = strings.TrimSpace(runID)
 	r.Mu.Lock()
-	run := r.find(strings.TrimSpace(runID))
-	if run == nil || run.State != ChainRunStateSuspended {
+	run := r.find(runID)
+	if run == nil || run.State != ChainRunStateSuspended || (conversationID != "" && run.Chat != conversationID) {
 		r.Mu.Unlock()
-		return nil, &httpkit.HTTPError{Status: http.StatusConflict, Msg: "no suspended chain run to resume"}
+		return nil, &httpkit.HTTPError{Status: http.StatusConflict, Msg: "there is no matching suspended chain run to resume"}
 	}
-	handle, at := run.Handle, run.FlowNodeID
+	handle, at, chat := run.Handle, run.FlowNodeID, run.Chat
 	previous := run.Done
 	r.Mu.Unlock()
 	waitForExecution(previous)
@@ -316,32 +398,40 @@ func (r *ChainRunner) Resume(id access.Identity, runID string) (*runstate.Harnes
 	if err != nil {
 		return nil, err
 	}
-	if err := board.ConnectionError(at); err != nil {
-		return nil, &httpkit.HTTPError{Status: http.StatusBadRequest, Msg: err.Error()}
+	flowNode := board.FlowNode(at)
+	if flowNode == nil {
+		return nil, &httpkit.HTTPError{Status: http.StatusNotFound, Msg: "the interrupted task is no longer on the board"}
+	}
+	if err := r.Playable(board, *flowNode, false); err != nil {
+		return nil, err
+	}
+	if !flowNode.IsAI() || flowNode.Status != pkgBoards.FlowNodeStatusInterrupted || chat == "" || flowNode.Chat != chat {
+		return nil, &httpkit.HTTPError{Status: http.StatusConflict, Msg: "the interrupted task or its conversation has changed"}
+	}
+	if resumed.awaitMessage && r.Hub != nil {
+		resumed.previousTurn = r.Hub.RunningTurn(chat)
 	}
 	r.Mu.Lock()
-	if r.find(strings.TrimSpace(runID)) != run || run.State != ChainRunStateSuspended || run.FlowNodeID != at || run.Done != previous {
+	if r.find(runID) != run || run.State != ChainRunStateSuspended || run.FlowNodeID != at || run.Chat != chat ||
+		run.Done != previous || run.gone || run.ended {
 		r.Mu.Unlock()
 		return nil, &httpkit.HTTPError{Status: http.StatusConflict, Msg: "the suspended chain run has changed"}
 	}
 	run.stopping, run.ended = false, false
 	run.State = ChainRunStatePlaying
 	run.Owner = id
-	execution := r.startLocked(run, nil, true)
-	flowNodeID, chat := run.FlowNodeID, run.Chat
+	execution := r.startLocked(run, board, playHow{suspended: resumed})
 	dto := snapshotOf(run)
 	r.Mu.Unlock()
 
-	pkgBoards.LogChainRun.Info("run resumed", "user", id.User, "run", run.Id, "flowNode", flowNodeID, "chat", chat)
-	r.runLogs.Resumed(run.Id, flowNodeID, chat)
+	pkgBoards.LogChainRun.Info("run resumed", "user", id.User, "run", run.Id, "flowNode", at, "chat", chat)
+	r.runLogs.Resumed(run.Id, at, chat)
 	r.announce(nil)
-	// Attaching rather than prompting: the turn this run picks back up is the one the user is
-	// starting, and its answer is the flow node's.
 	go r.loop(run, execution)
 	return dto, nil
 }
 
-// Restart reactivates an ended run from its root card, keeping its name and registry position.
+// Restart reactivates an ended run from its root flow node, keeping its name and registry position.
 func (r *ChainRunner) Restart(id access.Identity, runID string) (*runstate.HarnessChainRunDto, error) {
 	r.Mu.Lock()
 	run := r.find(strings.TrimSpace(runID))
@@ -369,7 +459,7 @@ func (r *ChainRunner) Restart(id access.Identity, runID string) (*runstate.Harne
 			Msg:    "the flow node this chain run started on is no longer on the board",
 		}
 	}
-	if err := r.Playable(board, *flowNode); err != nil {
+	if err := r.Playable(board, *flowNode, false); err != nil {
 		return nil, err
 	}
 	// Taken back first where the run holding it is gone, as a play takes it: a restart is a play
@@ -399,7 +489,9 @@ func (r *ChainRunner) Restart(id access.Identity, runID string) (*runstate.Harne
 		}
 	}
 	run.Owner = id
-	run.FlowNodeID, run.Chat = flowNode.ID, flowNode.Chat
+	run.FlowNodeID, run.Chat = flowNode.ID, flowNode.ChatForPlay()
+	run.afterPredecessor = false
+	run.input = nil
 	run.trail = nil
 	run.State = ChainRunStatePlaying
 	startedAt := time.Now()
@@ -407,7 +499,7 @@ func (r *ChainRunner) Restart(id access.Identity, runID string) (*runstate.Harne
 	run.retryAt = time.Time{}
 	run.documentAt = time.Time{}
 	run.stopping, run.ended = false, false
-	execution := r.startLocked(run, board, false)
+	execution := r.startLocked(run, board, playHow{})
 	dto := snapshotOf(run)
 	r.Mu.Unlock()
 
@@ -474,7 +566,7 @@ func (r *ChainRunner) abandon(run *ChainRun, kill bool) {
 }
 
 // turnStopped interrupts chain progression when the chat stops its turn.
-// The loop preserves the card and conversation for Resume unless Stop was also requested.
+// The loop preserves the flow node and conversation for Resume unless Stop was also requested.
 func (r *ChainRunner) turnStopped(conversationID string) {
 	r.Mu.Lock()
 	type stoppedHit struct {

@@ -7,7 +7,7 @@ import (
 )
 
 // codexHarnessAt is the Codex harness pointed at a binary of the test's choosing — the same seam
-// claudeAgentAt is, and for the same reason.
+// claudeHarnessAt is, and for the same reason.
 func codexHarnessAt(cfg *runnerconfig.Config, binary string) *codexcli.CodexHarness {
 	harness := codexcli.NewCodexHarness(cfg)
 	harness.Binary = binary

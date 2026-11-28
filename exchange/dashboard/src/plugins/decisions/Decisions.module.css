@@ -89,12 +89,6 @@
     font-size: 12px;
 }
 
-.center {
-    display: flex;
-    justify-content: center;
-    padding: 24px;
-}
-
 .sources {
     display: flex;
     flex-direction: column;

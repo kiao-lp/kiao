@@ -68,7 +68,7 @@ func (a *Agents) newDraft(req NewAgentRequest) (*entities.Agent, error) {
 	}
 	harness, ok := entities.ReadHarness(req.Harness)
 	if !ok {
-		return nil, entities.Invalidf("no agent runs on %q: the harnesses are claude, codex, muse and pi", strings.TrimSpace(req.Harness))
+		return nil, entities.Invalidf("unsupported harness %q. Choose claude, codex, muse or pi.", strings.TrimSpace(req.Harness))
 	}
 	now := a.clock.Now()
 	return &entities.Agent{
@@ -89,10 +89,17 @@ func (a *Agents) Publish(ctx context.Context, id string, expected *int64, actor,
 }
 
 func (a *Agents) Versions(ctx context.Context, id string) ([]entities.AgentVersion, error) {
-	if _, err := a.repo.FindAgent(ctx, id); err != nil {
-		return nil, err
-	}
 	return a.repo.AgentVersions(ctx, id)
+}
+
+// Remote reports what the agent's Git remote holds beyond its working tree.
+func (a *Agents) Remote(ctx context.Context, id string) (*entities.AgentRemote, error) {
+	return a.repo.Remote(ctx, id)
+}
+
+// Pull fast-forwards the agent's working tree to its remote branch.
+func (a *Agents) Pull(ctx context.Context, id string) (*entities.Agent, error) {
+	return a.repo.PullAgent(ctx, id)
 }
 
 // Find is one agent, by id.
@@ -115,7 +122,7 @@ func (a *Agents) Patch(ctx context.Context, id string, patch entities.AgentPatch
 	if patch.Harness != nil {
 		harness, ok := entities.ReadHarness(string(*patch.Harness))
 		if !ok {
-			return nil, entities.Invalidf("no agent runs on %q: the harnesses are claude, codex, muse and pi", strings.TrimSpace(string(*patch.Harness)))
+			return nil, entities.Invalidf("unsupported harness %q. Choose claude, codex, muse or pi.", strings.TrimSpace(string(*patch.Harness)))
 		}
 		patch.Harness = &harness
 	}

@@ -51,9 +51,6 @@ export const FALLBACK_HARNESS_OPTIONS: HarnessOptions = {
     defaultEffort: 'max',
 };
 
-const NO_HARNESS_OPTIONS: HarnessOptions = {
-    harnesses: [], models: [], efforts: [], permissionModes: [],
-};
 const UNKNOWN_HARNESS: HarnessOptionsEntry = { value: '', label: '', models: [], efforts: [], permissionModes: [] };
 
 interface HarnessOptionsState {
@@ -63,7 +60,7 @@ interface HarnessOptionsState {
 }
 
 interface OptionsSnapshot {
-    options: HarnessOptions;
+    options: HarnessOptions | null;
     loading: boolean;
 }
 
@@ -78,7 +75,7 @@ const optionsStore = (client: WorkerClient): OptionsStore => {
     const existing = stores.get(client);
     if (existing) return existing;
 
-    let snapshot: OptionsSnapshot = { options: NO_HARNESS_OPTIONS, loading: true };
+    let snapshot: OptionsSnapshot = { options: null, loading: true };
     let generation = 0;
     let pending: Promise<void> | null = null;
     const listeners = new Set<() => void>();
@@ -89,13 +86,13 @@ const optionsStore = (client: WorkerClient): OptionsStore => {
     const refresh = (event?: Event) => {
         if (!event && pending) return;
         const current = ++generation;
-        publish({ ...snapshot, loading: true });
+        if (snapshot.options === null && !snapshot.loading) publish({ options: null, loading: true });
         const read = client.getHarnessOptions()
             .then(data => {
                 if (current === generation) publish({ options: withHarnesses(data), loading: false });
             })
             .catch(() => {
-                if (current === generation) publish({ options: NO_HARNESS_OPTIONS, loading: false });
+                if (current === generation) publish({ options: null, loading: false });
             })
             .finally(() => { if (pending === read) pending = null; });
         pending = read;
@@ -128,7 +125,7 @@ export const useHarnessOptions = (): HarnessOptionsState => {
     const { options, loading } = useSyncExternalStore(store.subscribe, store.getSnapshot);
 
     return useMemo(() => {
-        const harnesses = options.harnesses ?? FALLBACK_HARNESS_OPTIONS.harnesses!;
+        const harnesses = options?.harnesses ?? [];
         return {
             harnesses,
             loading,

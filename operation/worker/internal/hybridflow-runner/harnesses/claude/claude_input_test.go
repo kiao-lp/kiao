@@ -55,7 +55,7 @@ func TestClaudeWithoutSessionStateStopsAndReapsItsProcess(t *testing.T) {
 		t.Fatal(err)
 	}
 	driver := (&ClaudeHarness{Binary: binary}).Driver()
-	if err := driver.Spawn(harnessapi.HarnessRun{WorkDir: dir, StoreRoot: dir, Prompt: "hello"}); err != nil {
+	if err := driver.Spawn(harnessapi.HarnessRun{WorkDir: dir, DCMSRoot: dir, Prompt: "hello"}); err != nil {
 		t.Fatal(err)
 	}
 	defer driver.Stop()

@@ -32,7 +32,7 @@ func TestStoreInfoResolvesARelativeRoot(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got := newTestService("store").StoreInfo().RootPath
+	got := newTestService("store").StoreInfo().DCMSRoot
 	if !filepath.IsAbs(got) {
 		t.Fatalf("rootPath = %q, want an absolute path", got)
 	}
@@ -336,7 +336,7 @@ func TestSearchNegation(t *testing.T) {
 	}
 }
 
-// TestSearchSkipsDotDirsAndNodeModules matters in production, where the storage root is the git
+// TestSearchSkipsDotDirsAndNodeModules matters in production, where the DCMS root is the git
 // work tree: without the skip every search walks .git.
 func TestSearchSkipsDotDirsAndNodeModules(t *testing.T) {
 	root := t.TempDir()
@@ -787,7 +787,7 @@ func TestCopyWouldRecurse(t *testing.T) {
 		{"src", "dest/src", false},
 		{"src", "srcx/src", false}, // prefix match must respect the segment boundary
 		{"src/a.txt", "dest/a.txt", false},
-		{"", "anything", true}, // the storage root contains every destination
+		{"", "anything", true}, // the DCMS root contains every destination
 	} {
 		if got := copyWouldRecurse(tc.from, tc.to); got != tc.want {
 			t.Errorf("copyWouldRecurse(%q, %q) = %v, want %v", tc.from, tc.to, got, tc.want)
@@ -795,7 +795,7 @@ func TestCopyWouldRecurse(t *testing.T) {
 	}
 }
 
-// A zip of the store root is an archive the user hands on. The state directory sits in that root
+// A zip of the DCMS root is an archive the user hands on. The state directory sits in that root
 // now, so the walk has to leave it out — it holds the migration ledger and verbatim prompt text.
 func TestZipFolderLeavesTheStateDirectoryOut(t *testing.T) {
 	root := t.TempDir()

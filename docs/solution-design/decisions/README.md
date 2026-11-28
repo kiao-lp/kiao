@@ -23,7 +23,7 @@ references together. These numbering conventions belong to this repository.
 
 ## Adding a decision
 
-Take the next ID (`00072`), in this directory for a global decision or in the owning
+Take the next ID (`00076`), in this directory for a global decision or in the owning
 container's decision directory. Add its entry to this index using the skill's conventions.
 
 File-store V001–V018 references describe retired migration history. For current delivery,
@@ -51,7 +51,7 @@ read the [2026-10-20 baseline and upgrade procedure](../../../migrations/cutover
 
 **Read when:** context menu; right-click; appliesTo; extensions; directory rule; async menu.
 
-### [00006 — Internal links stored root-relative, resolved against BASE_URL.](../../../exchange/dashboard/docs/solution-design/decisions/00006-bare-internal-links.md)
+### [00006 — Dashboard resolves DCMS links against BASE_URL.](../../../exchange/dashboard/docs/solution-design/decisions/00006-bare-internal-links.md)
 
 **Read when:** internal link; basename; context path; copied URL; /dashboard prefix; router navigation.
 
@@ -120,11 +120,10 @@ the other ownership rules remain applicable.
 
 ### [00022 — Turns go through HarnessDriver port; Claude CLI is one implementation.](../../../operation/worker/docs/solution-design/decisions/00022-harness-driver-port.md)
 
-**Read when:** new agent; second agent; turn lifecycle; spawn; stream; stub driver; no claude on PATH.
+Read this when adding a harness driver, working on turn lifecycle or streaming, or testing
+without a harness CLI on PATH.
 
 ### [00023 — Wire, routes, UI say agent; old paths aliased.](00023-wire-says-agent.md)
-
-Superseded by [00065](00065-harness-and-workflow-agent.md).
 
 Superseded by [00065](00065-harness-and-workflow-agent.md).
 
@@ -146,7 +145,7 @@ Superseded by [00065](00065-harness-and-workflow-agent.md).
 
 **Read when:** reveal; crosshair; locate file; show in tree; where it sits; mindmap label.
 
-### [00028 — Stored links use leading slashes; rewrites respect token boundaries.](00028-leading-slash-links.md)
+### [00028 — DCMS link repair respects token boundaries.](00028-leading-slash-links.md)
 
 **Read when:** rename rewrote prose; bare path; contents[].path; V007; relative markdown link; template::; unit::; migration rewrite; substring replace; assets/; stack trace in note; shell snippet rewritten.
 
@@ -207,6 +206,8 @@ Superseded by [00071](00071-agent-packages-deliver-skills.md).
 **Read when:** Muse quota strip; unavailable quota; 503 quota; probe turn; newest observation; arrival stamp.
 
 ### [00042 — Board cards are flow nodes on every layer.](00042-flow-nodes-not-tasks.md)
+
+The distinction between a flow node and its canvas representation is recorded in [00072](00072-flow-node-and-card.md).
 
 **Read when:** task vs flow node; Shutdown; Scheduler; Human card; task-templates; clipboard kind; wire break.
 
@@ -306,6 +307,8 @@ Superseded by [00066](00066-madr-decision-records.md).
 
 ### [00065 — Harness names execution tooling; agent names a managed workflow definition.](00065-harness-and-workflow-agent.md)
 
+The current agent definition is recorded in [00073](00073-agent-and-harness-vocabulary.md).
+
 **Read when:** agent ambiguity; harness terminology; platform field; driver naming; conversation metadata upgrade; published agent configurations.
 
 ### [00066 — Decision records use MADR and its optional native metadata.](00066-madr-decision-records.md)
@@ -331,3 +334,22 @@ Superseded by [00066](00066-madr-decision-records.md).
 ### [00071 — Agent publications supply skills to their turns.](00071-agent-packages-deliver-skills.md)
 
 **Read when** skill delivery, agent dependencies, skill versions, plugin skill mapping, legacy skills in the store or home.
+
+### [00072 — Flow nodes and cards name distinct concepts.](00072-flow-node-and-card.md)
+
+**Read when:** naming a board element, a canvas element, or an action that edits or runs a flow node.
+
+### [00073 — Agents assemble resources and harnesses execute turns.](00073-agent-and-harness-vocabulary.md)
+
+Read this when naming agentic resources, their composition or the tooling that executes turns
+and exposes model and permission options.
+
+### [00074 — DCMS root names the directory exposed by the worker.](00074-dcms-root.md)
+
+Read this when naming paths in the document store, setting `KIAO_WORKER_DCMS_ROOT`, or
+describing `/storeInfo` and its `rootPath` field.
+
+### [00075 — DCMS link names a reference resolved from the DCMS root.](00075-dcms-link.md)
+
+Read this when naming document references, clipboard actions or conversions between file API
+paths, DCMS links and Dashboard URLs.

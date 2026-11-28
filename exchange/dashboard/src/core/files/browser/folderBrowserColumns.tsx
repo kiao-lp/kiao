@@ -1,5 +1,6 @@
 import React from 'react';
-import { Dropdown, Button, MenuProps } from 'antd';
+import { IconButton } from '../../ui-foundation/toolbar/IconButton';
+import { Dropdown, MenuProps } from 'antd';
 import type { TableProps } from 'antd';
 import { DownloadOutlined, SwapOutlined, EllipsisOutlined, CopyOutlined } from '@ant-design/icons';
 import type { BrowserRow } from './folderBrowserRows';
@@ -123,7 +124,7 @@ export const buildFolderBrowserColumns = (
             return (
                 <div onClick={e => e.stopPropagation()} data-row-action>
                     <Dropdown menu={{ items }} trigger={['click']}>
-                        <Button type="text" icon={<EllipsisOutlined />} size="small" />
+                        <IconButton label="File actions" icon={<EllipsisOutlined />} />
                     </Dropdown>
                 </div>
             );

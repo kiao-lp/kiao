@@ -29,8 +29,8 @@ export interface DiskUsage {
 }
 
 /**
- * rootPath is the absolute host storage root, fixed for the service process lifetime.
- * Other API paths are relative to this root.
+ * `rootPath` is the absolute host path of the DCMS root, fixed for the worker process lifetime.
+ * File requests take paths relative to the DCMS root.
  */
 export interface StoreInfo {
     rootPath: string;
@@ -105,7 +105,7 @@ export interface StagingArea {
     path: string;
 }
 
-/** Store-relative paths of the files an unzip wrote, in archive order. */
+/** Unzipped files in archive order, with paths relative to the DCMS root. */
 export interface UnzipResult {
     extracted: string[];
 }
@@ -142,12 +142,17 @@ export interface GitFile {
     conflicted: boolean;
 }
 
+export interface GitIdentity {
+    name: string;
+    email: string;
+}
+
 export interface GitStatus {
     /** False when the folder asked about does not belong to a git working tree. */
     repo: boolean;
     /**
-     * Repository root: "" for the store itself, otherwise a store-relative path.
-     * Every {@link GitFile} path is relative to it.
+     * Git worktree path relative to the DCMS root. Empty for a worktree at or above the DCMS root.
+     * Every {@link GitFile} path is relative to the Git worktree.
      */
     root: string;
     branch?: string;

@@ -64,7 +64,7 @@ describe('useCreationCommands', () => {
         expect(executed).toEqual(['units/greetings']);
     });
 
-    it('takes the store root as a target rather than falling back to the browsed folder', () => {
+    it('takes the DCMS root as a target rather than falling back to the browsed folder', () => {
         renderProbe('');
 
         fireEvent.click(screen.getByTestId('run-new-thing'));

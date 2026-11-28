@@ -50,7 +50,7 @@ export const useDuplicateFiles = (): ((paths: string[]) => Promise<void>) => {
     const { knownExtensions } = usePluginListContext();
 
     return useCallback(async (paths: string[]) => {
-        const targets = paths.filter(Boolean); // The store root is not an entry anything can copy.
+        const targets = paths.filter(Boolean); // The DCMS root is not an entry anything can copy.
         if (targets.length === 0) return;
         try {
             const items = await duplicationItems(client, targets, knownExtensions);

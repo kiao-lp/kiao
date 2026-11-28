@@ -16,7 +16,7 @@ test('keeps modals, masks and dropdowns above stack panels', async ({ page }) =>
 
     await page.goto('works');
     await page.locator('.cms-top-banner .anticon-more').click();
-    await page.getByRole('menuitem', { name: /Agents…$/ }).click();
+    await page.getByRole('menuitem', { name: /Agentic resources…$/ }).click();
     const panel = page.getByTestId('central-panel-hybridflow-ui-agents');
     await expect(panel.getByTestId('agent-card')).toBeVisible();
     await panel.getByTestId('new-agent').click();

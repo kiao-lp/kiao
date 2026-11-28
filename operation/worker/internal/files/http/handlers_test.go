@@ -32,9 +32,9 @@ func newFileTestServer(t *testing.T) (*Service, string) {
 	t.Helper()
 	root := t.TempDir()
 	// The state directory is a temp directory of its own rather than <root>/.kiao-config: these tests
-	// list and count the store root, and service state appearing there would break them for a reason
+	// list and count the DCMS root, and service state appearing there would break them for a reason
 	// that has nothing to do with what they assert.
-	cfg := &fileconfig.Config{Config: &coreconfig.Config{AuthMode: "debug", RootPath: root, StatePath: t.TempDir(), MaxUploadBytes: 1 << 20}}
+	cfg := &fileconfig.Config{Config: &coreconfig.Config{AuthMode: "debug", DCMSRoot: root, StatePath: t.TempDir(), MaxUploadBytes: 1 << 20}}
 	storage := &filesystem.Storage{Root: root}
 	return &Service{
 		cfg:     cfg,
@@ -162,8 +162,7 @@ func TestHandlerSearchNameOnlyHitSerialisesEmptyMatches(t *testing.T) {
 	}
 }
 
-// TestHandlerStoreInfo checks the one thing /storeInfo promises: the root it reports is absolute,
-// since a client uses it to name a file to something outside this process.
+// TestHandlerStoreInfo checks the wire field used by clients to build absolute host paths.
 func TestHandlerStoreInfo(t *testing.T) {
 	s, root := newFileTestServer(t)
 
@@ -171,15 +170,17 @@ func TestHandlerStoreInfo(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("storeInfo: status = %d, want 200 (%s)", rec.Code, rec.Body.String())
 	}
-	var got pkgContent.StoreInfoDto
+	var got struct {
+		DCMSRoot string `json:"rootPath"`
+	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatalf("decode: %v (%s)", err, rec.Body.String())
 	}
-	if !filepath.IsAbs(got.RootPath) {
-		t.Errorf("rootPath = %q, want an absolute path", got.RootPath)
+	if !filepath.IsAbs(got.DCMSRoot) {
+		t.Errorf("rootPath = %q, want an absolute path", got.DCMSRoot)
 	}
-	if got.RootPath != root {
-		t.Errorf("rootPath = %q, want the storage root %q", got.RootPath, root)
+	if got.DCMSRoot != root {
+		t.Errorf("rootPath = %q, want the DCMS root %q", got.DCMSRoot, root)
 	}
 }
 

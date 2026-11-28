@@ -2,22 +2,24 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Select, Button, Spin, Modal, message } from 'antd';
-import { SendOutlined, StopOutlined, ExpandAltOutlined, BulbOutlined, BulbFilled } from '@ant-design/icons';
+import { SendOutlined, StopOutlined, BulbOutlined, BulbFilled } from '@ant-design/icons';
 import type {
     HarnessConversation, HarnessOptionsEntry, HarnessPermissionMode,
 } from 'kiao-worker';
-import { markdownLinkDropHandlers, Tooltip, useStickToBottom, VoiceInputButton } from '@kiao-dashboard-core';
+import { IconButton, markdownLinkDropHandlers, Tooltip, useStickToBottom, VoiceInputButton } from '@kiao-dashboard-core';
 import { localizeNoticeDateTimes } from '@kiao-dashboard-kit/date-time';
-import { effortsForAgent } from '../flowNodeSettings';
+import { effortsForSelection } from '../flowNodeSettings';
 import { useChatConversation } from './useChatConversation';
 import type { SendOptions } from './useChatConversation';
 import { useChatChainRuns } from './ChatChainRuns-ctx';
 import type { ConversationRuntime } from './chatConversationReducer';
 import { ChatMessageList } from './ChatMessageList';
+import { ChatConversationDetails } from './ChatConversationDetails';
 import { ChatBackgroundTasks } from './ChatBackgroundTasks';
 import { ChatPermissionRequests } from './ChatPermissionRequests';
 import { ChatQuestions } from './ChatQuestions';
 import { ChatErrorNotice } from './ChatErrorNotice';
+import { ChatResponseTokenLimit } from './ChatResponseTokenLimit';
 import {
     ChatAttachButton, ChatAttachmentStrip, filesFromDrop, filesFromPaste, useChatAttachments,
 } from './ChatAttachments';
@@ -73,25 +75,28 @@ export interface ChatConversationPaneProps {
     promptRef?: React.RefObject<HTMLTextAreaElement>;
 
     onFork: (source: HarnessConversation, messageId?: string, text?: string) => void;
+
+    responseTokenLimit?: string;
+
+    changeResponseTokenLimit: (id: string | null, limit: string | undefined) => void;
 }
 
 export const ChatConversationPane: React.FC<ChatConversationPaneProps> = ({
     paneKey, conversationId, conversation, currentPath, harnesses, optionsFor,
-    restoredPrompt, onRequestAgent, canStart, promptRef, onFork,
+    restoredPrompt, onRequestAgent, canStart, promptRef, onFork, responseTokenLimit, changeResponseTokenLimit,
 }) => {
     const {
-        messages, running, background, permissionRequests, questionRequests, lastError,
+        conversation: detail, messages, running, background, permissionRequests, questionRequests, lastError,
         notice: driverNotice,
         loading: transcriptLoading, send, sendBetween, sendFollowUp, clearQueue, queue, stop, decidePermission, answerQuestions,
     } = useChatConversation(conversationId);
-    const { runs, stop: stopRun, resume: resumeRun } = useChatChainRuns();
+    const { runs, stop: stopRun } = useChatChainRuns();
     const suspendedHere = useMemo(
         () => runs.find(candidate => candidate.state === 'suspended' && candidate.chat === conversationId),
         [runs, conversationId],
     );
     const [prompt, setPrompt] = useState('');
     const [overrides, setOverrides] = useState<{ id: string | null; options: SendOptions } | null>(null);
-    const [expandedModalOpen, setExpandedModalOpen] = useState(false);
     const [authPending, setAuthPending] = useState(false);
     const [delivery, setDelivery] = useState<'steer' | 'followUp'>('steer');
     const files = useChatAttachments();
@@ -107,7 +112,7 @@ export const ChatConversationPane: React.FC<ChatConversationPaneProps> = ({
     const needsAgent = !!conversation && (!(snapshot?.commit || snapshot?.draftId) || !harnessAvailable);
     const chosen = overrides?.id === conversationId ? overrides.options : undefined;
     const effort = chosen?.effort ?? conversation?.effort ?? '';
-    const efforts = effortsForAgent(own, conversation ?? undefined, undefined, model);
+    const efforts = effortsForSelection(own, conversation ?? undefined, undefined, model);
     const effortOptions = effort && !efforts.some(option => option.value === effort)
         ? [...efforts, { value: effort, label: effort }]
         : efforts;
@@ -138,7 +143,6 @@ export const ChatConversationPane: React.FC<ChatConversationPaneProps> = ({
     const boxPurpose = running
         ? 'Add to what the turn is doing…'
         : conversationId ? 'Continue the conversation…' : 'Write a message…';
-    const promptPlaceholder = `${boxPurpose} (Ctrl+Enter)`;
 
     const sendHelp = running
         ? 'The running turn reads this at its next step, keeping its current settings.'
@@ -151,7 +155,6 @@ export const ChatConversationPane: React.FC<ChatConversationPaneProps> = ({
     const stick = useStickToBottom(messages);
     const ownTextareaRef = useRef<HTMLTextAreaElement>(null);
     const textareaRef = promptRef ?? ownTextareaRef;
-    const expandedTextareaRef = useRef<HTMLTextAreaElement>(null);
 
     const [promptHeight, setPromptHeight] = useState<number | null>(null);
     // Where the drag started, in the pointer's coordinates and in the box's.
@@ -232,26 +235,10 @@ export const ChatConversationPane: React.FC<ChatConversationPaneProps> = ({
     }, [lastError]);
 
 
-    const askAboutTheRun = (): Promise<void> | null => {
-        // Null rather than a resolved promise: an ordinary message must not wait a tick on a question nobody is being asked.
-        if (!conversationId || !suspendedHere) return null;
-        const runId = suspendedHere.id;
-        return new Promise<void>(resolve => Modal.confirm({
-            title: 'Carry on with the board?',
-            content: 'The board’s play stopped with this conversation. Sending this message can pick '
-                + 'it back up: what the harness answers is filed under the flow node that was playing, and the '
-                + 'chain carries on from there.',
-            okText: 'Yes, carry on',
-            cancelText: 'No, this message only',
-            onOk: () => resumeRun(runId).finally(resolve),
-            onCancel: () => { stopRun(runId); resolve(); },
-        }));
-    };
-
     const checkingAuth = useRef(false);
     const sendTarget = useRef('');
     sendTarget.current = JSON.stringify([
-        conversationId, harness, prompt, running, effort, permissionMode, thinking, canCompose,
+        conversationId, harness, prompt, running, effort, permissionMode, thinking, responseTokenLimit, canCompose,
         files.attachments.map(file => [file.key, file.stored?.id, file.error]),
     ]);
     const doSend = async () => {
@@ -278,23 +265,40 @@ export const ChatConversationPane: React.FC<ChatConversationPaneProps> = ({
             if (delivery === 'followUp' && capabilities?.followUp) sendFollowUp(text); else sendBetween(text);
             return;
         }
-        const attachments = files.ids;
+        const messageOptions = {
+            attachments: files.ids,
+            ...(responseTokenLimit && { responseTokenLimit }),
+        };
         if (!conversationId) {
             onRequestAgent?.(created => {
                 setPrompt('');
                 files.clear();
                 stick.follow();
-                setPendingPrompt({ id: created.id, text, opts: { attachments } });
+                if (responseTokenLimit) {
+                    changeResponseTokenLimit(created.id, responseTokenLimit);
+                    changeResponseTokenLimit(null, undefined);
+                }
+                setPendingPrompt({ id: created.id, text, opts: messageOptions });
             });
             return;
         }
         setPrompt('');
         files.clear();
         stick.follow();
-        const opts = { ...sendOptions, attachments };
-        const asked = askAboutTheRun();
-        if (asked) void asked.then(() => send(text, opts));
-        else send(text, opts);
+        const opts = { ...sendOptions, ...messageOptions };
+        if (!suspendedHere) {
+            send(text, opts);
+            return;
+        }
+        const runId = suspendedHere.id;
+        Modal.confirm({
+            title: 'Carry on with the board?',
+            content: 'Use this message as the task’s next turn and continue the chain after it succeeds.',
+            okText: 'Yes, carry on',
+            cancelText: 'No, this message only',
+            onOk: () => send(text, { ...opts, resumeRunId: runId }),
+            onCancel: () => { stopRun(runId); send(text, opts); },
+        });
     };
 
     // Files arriving from a paste, a drop or the picker.
@@ -336,14 +340,6 @@ export const ChatConversationPane: React.FC<ChatConversationPaneProps> = ({
         }
     };
 
-    const handleExpandedKeyDown = (e: React.KeyboardEvent) => {
-        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-            e.preventDefault();
-            setExpandedModalOpen(false);
-            doSend();
-        }
-    };
-
     return (
         <div
             className={`chat-pane${dragOver ? ' chat-pane--drag-over' : ''}`}
@@ -356,17 +352,6 @@ export const ChatConversationPane: React.FC<ChatConversationPaneProps> = ({
                 <div className="chat-drop-overlay">Drop to attach to your next message</div>
             )}
 
-            {snapshot && <details data-testid="conversation-agent-version">
-                <summary>{[
-                    snapshot.name, snapshot.draftId ? 'Local draft' : snapshot.version && `v${snapshot.version}`,
-                    snapshot.harness, conversation.model,
-                ].filter(Boolean).join(' · ')}</summary>
-                <div>Agent {snapshot.agentId}</div>
-                {!snapshot.draftId && <div>Published {snapshot.publishedAt}</div>}
-                {conversation.profileId && <div>Execution profile: {conversation.profileId}</div>}
-                <pre style={{ whiteSpace: 'pre-wrap' }}>{snapshot.instructions || 'No standing instructions'}</pre>
-            </details>}
-
             {/* Message history — the spinner only ever stands in for a transcript on its way ── */}
             {conversationId && transcriptLoading ? (
                 <div className="chat-messages-loading"><Spin size="small" /></div>
@@ -376,6 +361,14 @@ export const ChatConversationPane: React.FC<ChatConversationPaneProps> = ({
                     stick={stick}
                     folder={conversation?.folder ?? currentPath}
                     conversationId={conversationId}
+                    intro={conversation && (
+                        <ChatConversationDetails
+                            key={conversation.id}
+                            conversation={conversation}
+                            detail={detail}
+                            harnessOptions={own}
+                        />
+                    )}
                     onFork={conversation && !running
                         ? message => onFork(conversation, message.id, message.content)
                         : undefined}
@@ -439,7 +432,7 @@ export const ChatConversationPane: React.FC<ChatConversationPaneProps> = ({
                     onKeyDown={handleKeyDown}
                     onPaste={handlePaste}
                     {...linkDrop}
-                    placeholder={promptPlaceholder}
+                    placeholder={`${boxPurpose} (Ctrl+Enter)`}
                     aria-label={running ? 'Message for the running turn' : 'Message for the agent'}
                     disabled={!canCompose}
                     rows={3}
@@ -481,28 +474,25 @@ export const ChatConversationPane: React.FC<ChatConversationPaneProps> = ({
                                 aria-label="Permission mode"
                             />
                         </Tooltip>
-                        <Tooltip title={thinking ? 'Turn extended thinking off' : 'Turn extended thinking on'}>
-                            <Button
-                                size="small"
-                                type={thinking ? 'primary' : 'default'}
-                                icon={thinking ? <BulbFilled /> : <BulbOutlined />}
-                                onClick={() => changeTurnSettings({ thinking: !thinking })}
-                                disabled={running}
-                                aria-pressed={thinking}
-                                aria-label="Toggle extended thinking"
-                            />
-                        </Tooltip>
+                        <IconButton
+                            label="Toggle extended thinking"
+                            tooltip={thinking ? 'Turn extended thinking off' : 'Turn extended thinking on'}
+                            type={thinking ? 'primary' : 'default'}
+                            icon={thinking ? <BulbFilled /> : <BulbOutlined />}
+                            onClick={() => changeTurnSettings({ thinking: !thinking })}
+                            disabled={running}
+                            aria-pressed={thinking}
+                        />
                     </>}
+                    {canCompose && <ChatResponseTokenLimit
+                        value={responseTokenLimit}
+                        onChange={limit => changeResponseTokenLimit(conversationId, limit)}
+                        disabled={running}
+                    />}
 
                     <div className="chat-buttons">
 
                         <ChatAttachButton onFiles={takeFiles} disabled={running || !canCompose} />
-                        <Button aria-label="Open in large editor"
-                            size="small"
-                            icon={<ExpandAltOutlined />}
-                            onClick={() => setExpandedModalOpen(true)}
-                            disabled={!canCompose}
-                        />
                         <VoiceInputButton value={prompt} onChange={setPrompt} disabled={!canCompose} />
 
                         {running && (
@@ -531,50 +521,6 @@ export const ChatConversationPane: React.FC<ChatConversationPaneProps> = ({
                     </div>
                 </div>
             </div>
-
-            <Modal
-                title="Edit message"
-                open={expandedModalOpen}
-                onCancel={() => setExpandedModalOpen(false)}
-                width="80%"
-                centered
-                afterOpenChange={(open) => {
-                    if (open) expandedTextareaRef.current?.focus();
-                }}
-                footer={[
-                    <Button key="close" onClick={() => setExpandedModalOpen(false)}>
-                        Close
-                    </Button>,
-                    <Button
-                        key="send"
-                        type="primary"
-                        icon={<SendOutlined />}
-                        disabled={!canSend}
-                        onClick={() => {
-                            setExpandedModalOpen(false);
-                            doSend();
-                        }}
-                    >
-                        Send (Ctrl+Enter)
-                    </Button>,
-                ]}
-            >
-                <ChatAttachmentStrip
-                    attachments={files.attachments}
-                    onRemove={files.remove}
-                    disabled={running}
-                />
-                <textarea
-                    ref={expandedTextareaRef}
-                    className="chat-textarea-expanded"
-                    value={prompt}
-                    onChange={e => setPrompt(e.target.value)}
-                    onKeyDown={handleExpandedKeyDown}
-                    onPaste={handlePaste}
-                    {...linkDrop}
-                    placeholder={boxPurpose}
-                />
-            </Modal>
         </div>
     );
 };

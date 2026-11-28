@@ -35,8 +35,8 @@ type HarnessRun struct {
 	Prompt string
 	// WorkDir is absolute and symlink-resolved to prevent escaping the store.
 	WorkDir string
-	// StoreRoot is absolute; empty means resolution failed. Work may span the whole store.
-	StoreRoot string
+	// DCMSRoot is the resolved absolute path of the DCMS root. Empty means resolution failed.
+	DCMSRoot string
 
 	Model     string
 	ProfileID string
@@ -63,6 +63,8 @@ type HarnessRun struct {
 	MCPConfig string
 	// MCPToken is a per-turn callback credential, revoked when the turn settles; empty if unused.
 	MCPToken string
+	// MCPUnavailable names servers the native configuration must not reintroduce.
+	MCPUnavailable []string
 
 	// Trace is append-only for drivers; the hub closes it when Events ends.
 	// Methods are nil-safe and trace failures must not fail a turn.

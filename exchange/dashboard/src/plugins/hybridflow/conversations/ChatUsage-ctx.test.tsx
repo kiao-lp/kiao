@@ -79,7 +79,7 @@ describe('the quota, read by hand', () => {
         expect(asked.filter(harness => harness === 'claude')).toHaveLength(1);
     });
 
-    // Two engines are two accounts, and the figures must not cross.
+    // The test uses a different account for each harness.
     it('reads each harness on its own', async () => {
         answers.claude = windowsOf(11);
         answers.codex = windowsOf(77);

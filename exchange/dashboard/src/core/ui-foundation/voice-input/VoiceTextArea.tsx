@@ -1,66 +1,31 @@
-import React, { MouseEvent, useState } from 'react';
+import React from 'react';
 import { Input } from 'antd';
-import { AudioOutlined } from '@ant-design/icons';
 import type { TextAreaProps } from 'antd/es/input';
-import { useVoiceInput as useVoiceInputContext } from './VoiceInputContext';
-import { useVoiceInputHook } from './useVoiceInputHook';
+import classNames from 'classnames';
+import { VoiceInputButton } from './VoiceInputButton';
+import { useVoiceField } from './useVoiceField';
 import './VoiceInput.css';
 
-export interface VoiceTextAreaProps extends TextAreaProps { }
+export type VoiceTextAreaProps = TextAreaProps;
 
-const stopEvent = (event: MouseEvent) => {
-    event.stopPropagation();
-    event.preventDefault();
-};
-
-export const VoiceTextArea: React.FC<VoiceTextAreaProps> = (props) => {
-    const { defaultValue, value, onChange, className, style, ...restProps } = props;
-    const { language } = useVoiceInputContext();
-
-    const isControlled = value !== undefined;
-    const [internalValue, setInternalValue] = useState<string | number | readonly string[] | undefined>(defaultValue);
-
-    const effectiveValue = isControlled ? value : internalValue;
-
-    const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-        if (!isControlled) {
-            setInternalValue(e.target.value);
-        }
-        if (onChange) {
-            onChange(e);
-        }
-    };
-
-    const { showMic, listening, toggleListening } = useVoiceInputHook(
-        handleChange as any, effectiveValue, language, !props.disabled && !props.readOnly);
-
-    if (!showMic) {
-        return <Input.TextArea className={className} style={style} {...restProps} value={effectiveValue} onChange={handleChange} />;
-    }
+export const VoiceTextArea: React.FC<VoiceTextAreaProps> = ({
+    value, defaultValue, onChange, className, style, ...props
+}) => {
+    const field = useVoiceField({ value, defaultValue, onChange });
+    const textarea = { ...props, value: field.value, onChange: field.onChange };
 
     return (
-        <div
-            className={`voice-input-wrapper ${className || ''}`}
-            style={style}
-        >
-            <Input.TextArea
-                {...restProps}
-                value={effectiveValue}
-                onChange={handleChange}
-                className="voice-textarea-inner"
-                style={{ resize: style?.resize }}
-            />
-            <div className="voice-textarea-controls">
-                <span
-                    onMouseDown={stopEvent}
-                    onMouseUp={stopEvent}
-                    onClick={toggleListening}
-                    className="voice-input-mic-icon"
-                    aria-label="Voice Input"
-                >
-                    <AudioOutlined className={listening ? 'voice-input-mic-active' : 'voice-input-mic-inactive'} />
-                </span>
-            </div>
-        </div>
+        <VoiceInputButton value={field.text} onChange={field.dictate} disabled={props.readOnly || props.disabled}>
+            {button => button ? (
+                <div className={classNames('voice-input-wrapper', className)} style={style}>
+                    <Input.TextArea
+                        {...textarea}
+                        className="voice-textarea-inner"
+                        style={{ resize: style?.resize, fontFamily: style?.fontFamily }}
+                    />
+                    {button}
+                </div>
+            ) : <Input.TextArea {...textarea} className={className} style={style} />}
+        </VoiceInputButton>
     );
 };

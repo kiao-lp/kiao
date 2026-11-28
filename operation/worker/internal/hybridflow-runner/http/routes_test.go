@@ -95,7 +95,7 @@ func TestTheSocketAnswersOnEveryPath(t *testing.T) {
 // A side port nothing answers leaves its route unmounted — under *every* name. An alias is another
 // name for a route that exists, never a route of its own.
 func TestAnUnansweredSidePortIsUnmountedUnderEveryName(t *testing.T) {
-	cfg := &runnerconfig.Config{Config: &coreconfig.Config{AuthMode: "debug", RootPath: t.TempDir()}}
+	cfg := &runnerconfig.Config{Config: &coreconfig.Config{AuthMode: "debug", DCMSRoot: t.TempDir()}}
 	hub := assembly.NewEngine(cfg, nil)
 	// With every harness lacking side ports, the quota route must be unmounted.
 	hub.Harnesses.Set(harnessapi.HarnessClaude, &stubHarness{})

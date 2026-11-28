@@ -46,7 +46,7 @@ func readWindows(t *testing.T, rec *httptest.ResponseRecorder) []harnessapi.Harn
 }
 
 // Each harness answers about its own account, and the two do not cross.
-func TestUsageAnswersAboutTheAgentAskedFor(t *testing.T) {
+func TestUsageAnswersForTheRequestedHarness(t *testing.T) {
 	svc := usageServiceFor(t, oneWindow(11), oneWindow(77))
 
 	for path, want := range map[string]int{
@@ -71,7 +71,7 @@ func TestUsageAnswersAboutTheAgentAskedFor(t *testing.T) {
 // A harness with no quota to report is a 404 — "this service does not do that" — and so is a name this
 // deployment has never heard of. Neither is a 503: nothing failed, and the panel shows the quota as
 // unavailable rather than as a figure belonging to somebody else.
-func TestUsageIsNotFoundForAnAgentWithNoAccountToReport(t *testing.T) {
+func TestUsageIsNotFoundForAHarnessWithoutAnAccount(t *testing.T) {
 	svc := usageServiceFor(t, oneWindow(11), nil)
 
 	for _, path := range []string{"/hybridflow-runner/usage?harness=codex", "/hybridflow-runner/usage?harness=nobody"} {
@@ -128,8 +128,8 @@ func TestUsagePrefersTheRefreshPort(t *testing.T) {
 }
 
 // The route is mounted as long as *one* harness has an account to report. It answers per harness, and a
-// silent engine is no reason to take the endpoint off the air for the other one.
-func TestUsageStaysMountedWhileOneAgentHasAnAccount(t *testing.T) {
+// silent harness is no reason to take the endpoint off the air for the other one.
+func TestUsageStaysMountedWhileOneHarnessHasAnAccount(t *testing.T) {
 	svc := usageServiceFor(t, nil, oneWindow(5))
 	if !svc.offersUsage() {
 		t.Fatal("a harness with a quota must keep the endpoint mounted")

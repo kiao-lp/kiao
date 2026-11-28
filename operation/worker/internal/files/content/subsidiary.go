@@ -81,7 +81,7 @@ func moveSubsidiaries(oldMainAbs, newMainAbs string) {
 	oldPaths := subsidiaryPaths(oldMainAbs)
 	newPaths := subsidiaryPaths(newMainAbs)
 	for i := range oldPaths {
-		if _, err := os.Stat(oldPaths[i]); err == nil {
+		if info, err := os.Lstat(oldPaths[i]); err == nil && !info.IsDir() {
 			if err := os.Rename(oldPaths[i], newPaths[i]); err != nil {
 				logSubsidiary.Warn("failed to move subsidiary", "from", oldPaths[i], "to", newPaths[i], "error", err)
 			}
@@ -91,13 +91,23 @@ func moveSubsidiaries(oldMainAbs, newMainAbs string) {
 
 // copySubsidiaries copies every existing subsidiary alongside the copy of its main file, so a
 // duplicated entry keeps the same companion family as the original.
-func copySubsidiaries(srcMainAbs, dstMainAbs string) {
-	srcPaths := subsidiaryPaths(srcMainAbs)
-	dstPaths := subsidiaryPaths(dstMainAbs)
-	for i := range srcPaths {
-		if _, err := os.Stat(srcPaths[i]); err == nil {
-			if err := pkgFilesystem.CopyRegularFile(srcPaths[i], dstPaths[i]); err != nil {
-				logSubsidiary.Warn("failed to copy subsidiary", "from", srcPaths[i], "to", dstPaths[i], "error", err)
+func copySubsidiaries(storage *filesystem.Storage, from, to string) {
+	from, to = filesystem.NormaliseVirtual(from), filesystem.NormaliseVirtual(to)
+	for _, suffix := range subsidiarySuffixes {
+		src, err := storage.Resolve(from + suffix)
+		if err != nil {
+			continue
+		}
+		dst, err := storage.Resolve(to + suffix)
+		if err != nil {
+			continue
+		}
+		if info, err := os.Lstat(dst); err == nil && !info.Mode().IsRegular() {
+			continue
+		}
+		if info, err := os.Stat(src); err == nil && info.Mode().IsRegular() {
+			if err := pkgFilesystem.CopyRegularFile(src, dst); err != nil {
+				logSubsidiary.Warn("failed to copy subsidiary", "from", src, "to", dst, "error", err)
 			}
 		}
 	}

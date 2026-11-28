@@ -1,7 +1,6 @@
 package playback
 
 import (
-	"encoding/json"
 	"fmt"
 	httpkit "kiao/worker/internal/core/http"
 	pkgBoards "kiao/worker/internal/hybridflow-runner/boards"
@@ -43,7 +42,7 @@ func (b *gatewayRaceBoards) Board(string) (*pkgBoards.BoardContent, error) {
 	return board, nil
 }
 
-func (b *gatewayRaceBoards) Start(_, _, run string) (*pkgBoards.BoardContent, error) {
+func (b *gatewayRaceBoards) Start(_, _, run string, _ ...bool) (*pkgBoards.BoardContent, error) {
 	b.mu.Lock()
 	b.claims++
 	if b.node.Run != "" {
@@ -62,14 +61,14 @@ func (b *gatewayRaceBoards) Start(_, _, run string) (*pkgBoards.BoardContent, er
 	}
 }
 
-func (b *gatewayRaceBoards) Finish(_, _, run, status string, _ ...json.RawMessage) (*pkgBoards.BoardContent, error) {
+func (b *gatewayRaceBoards) Finish(_, _, run string, result pkgBoards.PlayResult) (*pkgBoards.BoardContent, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.node.Run != run {
 		return nil, fmt.Errorf("completion without the gateway claim")
 	}
 	b.finishes++
-	b.node.Run, b.node.Status = "", status
+	b.node.Run, b.node.Status = "", result.Status
 	return b.boardLocked(), nil
 }
 

@@ -11,24 +11,24 @@ supersedes: []
 superseded_by: []
 ---
 
-# 00006 — Internal links stored root-relative, resolved against BASE_URL.
+# 00006 — Dashboard resolves DCMS links against BASE_URL.
 
 ## Context and Problem Statement
 
-Store links must survive domain and mount changes and remain recognizable by `LinkFixer`.
+DCMS links must survive domain and mount changes and remain recognizable by `LinkFixer`.
 
 ## Considered Options
 
-* Store root-relative links and resolve them against `BASE_URL` for display.
+* Write DCMS links and resolve them against `BASE_URL` for display.
 
 Other considered options were not recorded.
 
 ## Decision Outcome
 
-Chosen option: "Store root-relative links and resolve them against `BASE_URL` for display",
+Chosen option: "Write DCMS links and resolve them against `BASE_URL` for display",
 because the stored reference remains independent of deployment location.
 
-New writes use store-root paths with a leading slash, such as `/units/abc/cadre.md`.
+New writes use DCMS links such as `/units/abc/cadre.md`.
 `navigation/internal-links.ts` resolves display hrefs against `import.meta.env.BASE_URL`;
 resolution is idempotent, so an existing mount prefix still displays correctly.
 `InternalLinkNavigator` routes internal anchor clicks.

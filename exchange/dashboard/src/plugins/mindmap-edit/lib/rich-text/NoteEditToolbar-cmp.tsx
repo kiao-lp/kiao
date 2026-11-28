@@ -1,5 +1,6 @@
 import React, { SyntheticEvent, useMemo } from 'react';
-import { Select, Button } from 'antd';
+import { IconButton } from '@kiao-dashboard-core';
+import { Select } from 'antd';
 import {
     VerticalAlignTopOutlined,
     VerticalAlignMiddleOutlined,
@@ -116,14 +117,7 @@ export const NoteEditToolbar: React.FC<NoteEditToolbarProps> = ({ note, onPatch,
                 onChange={(v) => onPatch({ zIndex: v })}
                 aria-label="Z-index"
             />
-            <Button
-                size="small"
-                type="text"
-                danger
-                icon={<DeleteOutlined />}
-                onClick={onDelete}
-                aria-label="Delete note"
-            />
+            <IconButton label="Delete note" danger icon={<DeleteOutlined />} onClick={onDelete} />
         </div>
     );
 };

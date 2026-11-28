@@ -34,7 +34,7 @@ func (s *Service) HandleListActions(w http.ResponseWriter, r *http.Request) {
 
 // HandleRunAction forwards a run request to the action's provider.
 //
-// The path is resolved against the storage root before anything leaves this process: an action is
+// The path is resolved against the DCMS root before anything leaves this process: an action is
 // an operation on a file of *this* store, and forwarding an unchecked path would make the service
 // a confused deputy for whatever the provider does with it.
 func (s *Service) HandleRunAction(w http.ResponseWriter, r *http.Request) {
@@ -49,7 +49,7 @@ func (s *Service) HandleRunAction(w http.ResponseWriter, r *http.Request) {
 		httpkit.WriteError(w, r, &httpkit.HTTPError{Status: http.StatusNotFound, Msg: "unknown action: " + req.ID})
 		return
 	}
-	if _, err := filesystem.ResolvePath(s.cfg.RootPath, req.Path); err != nil {
+	if _, err := filesystem.ResolvePath(s.cfg.DCMSRoot, req.Path); err != nil {
 		httpkit.WriteError(w, r, err) // core.ErrOutsideRoot → 400
 		return
 	}

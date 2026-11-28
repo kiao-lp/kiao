@@ -11,6 +11,7 @@ import { useNavigation } from '../navigation/NavigationModel';
 import { useContextMenuItemsAt } from '../context-menu/ContextMenuRegistry-ctx';
 import { creationTargetOf, useMenuItemsWithNew } from '../context-menu/useMenuItemsWithNew';
 import { useIsCoarsePointer, dispatchContextMenuAt } from '../../ui-foundation/interactions/useLongPress';
+import type { ContextMenuPoint } from '../../ui-foundation/interactions/ContextMenu';
 import { draggedPaths, draggedSelection, writeDraggedFiles } from '../dnd/dragPaths';
 import type { BrowserRow } from './folderBrowserRows';
 
@@ -27,10 +28,8 @@ const joinPath = (folder: string, name: string): string => {
 
 export interface FolderRowMenu {
     items: MenuProps['items'];
-    open: boolean;
-    setOpen: (open: boolean) => void;
-    pos: { x: number; y: number };
-    anchorRef: React.RefObject<HTMLDivElement>;
+    anchor: ContextMenuPoint | null;
+    onClose: () => void;
 }
 
 export interface FolderRowProps {
@@ -62,13 +61,12 @@ export const useFolderRowProps = (visiblePaths: string[]): FolderRowProps => {
     const listingRef = useRef(listing);
     listingRef.current = listing;
 
-    // Per-row context menu uses a single controlled Dropdown (avoids per-row mount churn).
-    const [rowMenuOpen, setRowMenuOpen] = useState(false);
-    const [rowMenuPos, setRowMenuPos] = useState({ x: 0, y: 0 });
-    const [rowMenuTarget, setRowMenuTarget] = useState<{ path: string; isDirectory: boolean } | null>(null);
-    const rowMenuAnchorRef = useRef<HTMLDivElement>(null);
+    // One menu serves the whole table.
+    const [rowMenuTarget, setRowMenuTarget] = useState<{
+        path: string; isDirectory: boolean; anchor: ContextMenuPoint;
+    } | null>(null);
 
-    useEffect(() => { setRowMenuOpen(false); }, [currentPath]);
+    useEffect(() => { setRowMenuTarget(null); }, [currentPath]);
 
     const rowMenuCtx = useMemo(() => {
         if (!rowMenuTarget) return null;
@@ -146,9 +144,8 @@ export const useFolderRowProps = (visiblePaths: string[]): FolderRowProps => {
 
         handlers.onContextMenu = (e) => {
             e.preventDefault();
-            setRowMenuTarget({ path, isDirectory: isFolder });
-            setRowMenuPos({ x: e.clientX, y: e.clientY });
-            setRowMenuOpen(true);
+            e.stopPropagation();
+            setRowMenuTarget({ path, isDirectory: isFolder, anchor: { x: e.clientX, y: e.clientY } });
             if (isFolder) void clipboard.refreshTextFiles();
         };
 
@@ -217,10 +214,8 @@ export const useFolderRowProps = (visiblePaths: string[]): FolderRowProps => {
         onRow,
         rowMenu: {
             items: rowMenuItems,
-            open: rowMenuOpen,
-            setOpen: setRowMenuOpen,
-            pos: rowMenuPos,
-            anchorRef: rowMenuAnchorRef,
+            anchor: rowMenuTarget?.anchor ?? null,
+            onClose: () => setRowMenuTarget(null),
         },
     };
 };

@@ -48,10 +48,10 @@ func TestFlowNodeReadingIsForgiving(t *testing.T) {
 	if flowNodes[5].Status != "" {
 		t.Errorf("status = %q, want `ready` held as no status", flowNodes[5].Status)
 	}
-	// The user's own word for a card held up by something off the board: nothing here writes it and
+	// The user's own word for a flow node held up by something off the board: nothing here writes it and
 	// nothing here clears it, so the whole of what this end owes it is to carry it.
 	if flowNodes[6].Status != flowNodeStatusBlocked {
-		t.Errorf("status = %q, want a blocked card kept blocked", flowNodes[6].Status)
+		t.Errorf("status = %q, want a blocked flow node kept blocked", flowNodes[6].Status)
 	}
 	if !flowNodes[0].Settings.empty() || flowNodes[0].Settings.playable() {
 		t.Errorf("settings = %+v, want an empty object read as no settings at all", flowNodes[0].Settings)
@@ -71,7 +71,7 @@ func TestFlowNodeReadingIsForgiving(t *testing.T) {
 	}
 }
 
-// Everything that says nothing is left out, so a card stays a thing a person reads.
+// Everything that says nothing is left out, so a flow node stays a thing a person reads.
 func TestFlowNodeWritesNothingItDoesNotHave(t *testing.T) {
 	data, err := json.Marshal(FlowNode{ID: "flow-node-1", Title: "Plain"})
 	if err != nil {
@@ -88,7 +88,7 @@ func TestFlowNodeRunIsReadAndWritten(t *testing.T) {
 		t.Fatal(err)
 	}
 	if held.Run != "run-1" {
-		t.Errorf("run = %q, want the run holding the card", held.Run)
+		t.Errorf("run = %q, want the run holding the flow node", held.Run)
 	}
 	data, err := json.Marshal(held)
 	if err != nil {
@@ -102,7 +102,7 @@ func TestFlowNodeRunIsReadAndWritten(t *testing.T) {
 		t.Fatal(err)
 	}
 	if strings.Contains(string(free), `"run"`) {
-		t.Errorf("flow node = %s, want no claim on a free card", free)
+		t.Errorf("flow node = %s, want no claim on a free flow node", free)
 	}
 }
 
@@ -132,19 +132,19 @@ func TestBoardBoardEdits(t *testing.T) {
 	if flowNode.Status != FlowNodeStatusDone {
 		t.Errorf("status = %q, want the flow node marked done", flowNode.Status)
 	}
-	// The description stays where it is: what the turn said is in the conversation the card names.
+	// The description stays where it is: what the turn said is in the conversation the flow node names.
 	if flowNode.Body != "The objective." {
 		t.Errorf("body = %q, want the description kept", flowNode.Body)
 	}
 	// Played again, as it stands: the description was never taken away, so nothing has to be
 	// written back before the next play.
 	if !board.Start("flow-node-1") || board.FlowNode("flow-node-1").Status != FlowNodeStatusRunning {
-		t.Error("start must mark the card taken again for its next play")
+		t.Error("start must mark the flow node taken again for its next play")
 	}
 	if !board.complete("flow-node-1") || board.FlowNode("flow-node-1").Status != FlowNodeStatusDone {
-		t.Error("complete must mark the card done again")
+		t.Error("complete must mark the flow node done again")
 	}
-	// A card nobody sends a prompt for is marked all the same.
+	// A flow node nobody sends a prompt for is marked all the same.
 	if !board.Start("flow-node-2") || board.FlowNode("flow-node-2").Status != FlowNodeStatusRunning {
 		t.Error("start must mark the flow node a play has taken")
 	}
@@ -169,10 +169,10 @@ func TestBoardBoardHoldsAndReopensOnePlay(t *testing.T) {
 
 	board.Start("flow-node-1")
 	if !board.Hold("flow-node-1") || board.FlowNode("flow-node-1").Status != FlowNodeStatusWaitingRefresh {
-		t.Fatal("hold must say the card is waiting for the limit to refresh rather than being worked on")
+		t.Fatal("hold must say the flow node is waiting for the limit to refresh rather than being worked on")
 	}
 	if !board.Reopen("flow-node-1") || board.FlowNode("flow-node-1").Status != FlowNodeStatusRunning {
-		t.Fatal("reopen must put the card back to being worked on once the limit has lifted")
+		t.Fatal("reopen must put the flow node back to being worked on once the limit has lifted")
 	}
 	if !board.complete("flow-node-1") || board.FlowNode("flow-node-1").Status != FlowNodeStatusDone {
 		t.Error("complete must mark the flow node done")
@@ -182,8 +182,8 @@ func TestBoardBoardHoldsAndReopensOnePlay(t *testing.T) {
 	}
 }
 
-// Every ending keeps its description: the card still asks what it was asking, so it is played again
-// as it stands. What the turn said is in the conversation the card names.
+// Every ending keeps its description: the flow node still asks what it was asking, so it is played again
+// as it stands. What the turn said is in the conversation the flow node names.
 func TestEndingsKeepTheDescriptionToBeAskedAgain(t *testing.T) {
 	board := readBoard(t, boardFixture)
 	if !board.fail("flow-node-1") {
@@ -195,13 +195,13 @@ func TestEndingsKeepTheDescriptionToBeAskedAgain(t *testing.T) {
 }
 
 // The prompt contains the description, falling back to the title, followed by success criteria.
-// A title used to name the card must not be duplicated in a description-based prompt.
+// A title used to name the flow node must not be duplicated in a description-based prompt.
 func TestFlowNodePromptIsTheDescriptionAlone(t *testing.T) {
 	prompt := FlowNodePrompt(FlowNode{Title: " Write the plan ", Body: "## Objective\n\nDo it.\n"})
 	if prompt != "## Objective\n\nDo it." {
 		t.Errorf("prompt = %q, want the description and nothing else", prompt)
 	}
-	// A card with an empty box is still asked on its name: the title stands in for the missing
+	// A flow node with an empty box is still asked on its name: the title stands in for the missing
 	// description.
 	titled := FlowNode{Title: "Bare"}
 	if got := FlowNodePrompt(titled); got != "Bare" {
@@ -238,8 +238,8 @@ func TestFlowNodePromptIsTheDescriptionAlone(t *testing.T) {
 	}
 }
 
-// The type a card is read as where it says none: a named agent makes it an agent's, a named
-// model beside no agent is what a card written before managed agents says, and nothing at all is
+// The type a flow node is read as where it says none: a named agent makes it an agent's, a named
+// model beside no agent is what a flow node written before managed agents says, and nothing at all is
 // a person's.
 func TestFlowNodeTypeOf(t *testing.T) {
 	cases := []struct {
@@ -251,7 +251,7 @@ func TestFlowNodeTypeOf(t *testing.T) {
 		{"explicit", FlowNodeTypeAI, FlowNodeSettings{}, FlowNodeTypeAI},
 		{"explicit human", flowNodeTypeHuman, FlowNodeSettings{Agent: "agent-1"}, flowNodeTypeHuman},
 		{"agent", "", FlowNodeSettings{Agent: "agent-1"}, FlowNodeTypeAI},
-		{"legacy engine and model", "", FlowNodeSettings{Agent: "claude", Model: "opus"}, FlowNodeTypeAI},
+		{"legacy harness and model", "", FlowNodeSettings{Agent: "claude", Model: "opus"}, FlowNodeTypeAI},
 		{"legacy model alone", "", FlowNodeSettings{Model: "opus"}, FlowNodeTypeAI},
 		{"nothing", "", FlowNodeSettings{}, flowNodeTypeHuman},
 	}
@@ -277,10 +277,10 @@ func TestBoardSettingsFolder(t *testing.T) {
 	if !full.playable() {
 		t.Error("a flow node naming all four settings is playable")
 	}
-	// Legacy engine/model cards remain playable; the model is not part of the required settings.
+	// Legacy harness/model flow nodes remain playable; the model is not part of the required settings.
 	legacy := FlowNodeSettings{Agent: "claude", Model: "opus", Effort: "high", Permission: "manual", Folder: "/"}
 	if !legacy.playable() {
-		t.Error("a legacy card naming an engine and a model is playable")
+		t.Error("a legacy flow node naming a harness and a model is playable")
 	}
 	for _, missing := range []FlowNodeSettings{
 		{Effort: "high", Permission: "manual", Folder: "/"},
@@ -369,16 +369,16 @@ func TestFlowNodeTypeIsRead(t *testing.T) {
 		}
 	}
 	if flowNodes[1].At != "2026-09-03T22:00" {
-		t.Errorf("at = %q, want the datetime the card says", flowNodes[1].At)
+		t.Errorf("at = %q, want the datetime the flow node says", flowNodes[1].At)
 	}
 	// The three the board plays to itself are the three it can take without a turn.
 	if !flowNodes[0].Runnable() || !flowNodes[1].Runnable() || !flowNodes[5].Runnable() || flowNodes[3].Runnable() {
-		t.Error("a Shutdown, an answered Scheduler and a Gateway are runnable; a Human card is not")
+		t.Error("a Shutdown, an answered Scheduler and a Gateway are runnable; a Human flow node is not")
 	}
 }
 
-// A field nothing shows and nothing can reach would sit on the card marking it as broken
-// with no control to fix it on, so what a card says is read against the type it is.
+// A field nothing shows and nothing can reach would sit on the flow node marking it as broken
+// with no control to fix it on, so what a flow node says is read against the type it is.
 func TestFlowNodeFieldsAreReadAgainstTheType(t *testing.T) {
 	board := readBoard(t, `{"flowNodes":[
 		{"id":"flow-node-1","title":"Human","onSuccess":{"flowNode":"flow-node-9","mode":"continue","compact":true}},
@@ -389,13 +389,13 @@ func TestFlowNodeFieldsAreReadAgainstTheType(t *testing.T) {
 	flowNodes := board.FlowNodes
 	for _, flowNode := range flowNodes {
 		if flowNode.OnSuccess.Mode != TransitionEnd {
-			t.Errorf("%q: mode = %q, want a card that is not AI claiming no conversation",
+			t.Errorf("%q: mode = %q, want a flow node that is not AI claiming no conversation",
 				flowNode.Title, flowNode.OnSuccess.Mode)
 		}
 	}
 	// The chain is untouched on every type but a Shutdown, which ends the board.
 	if flowNodes[0].OnSuccess.FlowNode != "flow-node-9" || flowNodes[1].OnSuccess.FlowNode != "flow-node-9" {
-		t.Error("a chain is the order somebody wrote down whoever plays the cards")
+		t.Error("a chain is the order somebody wrote down whoever plays the flow nodes")
 	}
 	if flowNodes[2].OnSuccess.FlowNode != "" {
 		t.Errorf("onSuccess = %+v, want nothing named after a Shutdown", flowNodes[2].OnSuccess)
@@ -417,7 +417,7 @@ func TestBoardRetiredShutdownBoxIsDropped(t *testing.T) {
 		t.Fatalf("encode: %v", err)
 	}
 	if strings.Contains(string(written), "shutdown") || strings.Contains(string(written), "settings") {
-		t.Errorf("flow node = %s, want the retired key gone from the card", written)
+		t.Errorf("flow node = %s, want the retired key gone from the flow node", written)
 	}
 }
 
@@ -438,7 +438,7 @@ func TestBoardTransitionModeIsAlwaysWritten(t *testing.T) {
 		t.Fatalf("encode: %v", err)
 	}
 	if !strings.Contains(string(alone), `"onSuccess":{"mode":"end","compact":true}`) {
-		t.Errorf("flow node = %s, want what the card says about its chat with no flow node after it", alone)
+		t.Errorf("flow node = %s, want what the flow node says about its chat with no flow node after it", alone)
 	}
 	quiet, err := json.Marshal(FlowNode{ID: "t", Title: "Nothing to say",
 		OnSuccess: FlowNodeSuccess{Mode: TransitionEnd}})
@@ -450,7 +450,7 @@ func TestBoardTransitionModeIsAlwaysWritten(t *testing.T) {
 	}
 }
 
-// The tags a card wears are read here for one reason: a board read back must still say what it
+// The tags a flow node wears are read here for one reason: a board read back must still say what it
 // said. Nothing in the service reads what they say — the words are the board's, and their colours
 // are the store's, in `kiao-user-config/tags.json`.
 func TestBoardTagsAreReadAndKept(t *testing.T) {
@@ -469,7 +469,7 @@ func TestBoardTagsAreReadAndKept(t *testing.T) {
 	}
 }
 
-// The criteria and the complexity are a task's, like the description: read where the card is
+// The criteria and the complexity are a task's, like the description: read where the flow node is
 // one, dropped where it is not, and written back after the body, before the settings.
 func TestBoardCriteriaAreReadAndKept(t *testing.T) {
 	five := 5
@@ -509,9 +509,9 @@ func TestBoardCriteriaAreReadAndKept(t *testing.T) {
 	}
 }
 
-// Written before the body, which is the length of the card, and not written at all for a card
+// Written before the body, which is the length of the flow node, and not written at all for a flow node
 // wearing none.
-func TestBoardTagsAreWrittenOnlyWhereACardWearsOne(t *testing.T) {
+func TestBoardTagsAreWrittenOnlyWhereAFlowNodeWearsOne(t *testing.T) {
 	filed, err := json.Marshal(FlowNode{ID: "t", Title: "Plan", Tags: []string{"bug"}, Body: "Text"})
 	if err != nil {
 		t.Fatalf("encode: %v", err)
@@ -524,12 +524,12 @@ func TestBoardTagsAreWrittenOnlyWhereACardWearsOne(t *testing.T) {
 		t.Fatalf("encode: %v", err)
 	}
 	if strings.Contains(string(bare), "tags") {
-		t.Errorf("flow node = %s, want nothing said about a card wearing none", bare)
+		t.Errorf("flow node = %s, want nothing said about a flow node wearing none", bare)
 	}
 }
 
 // Where a card sits on the board is read with it. Nothing here reads it — it is the board's, like
-// the tags — and it travels with the card like they do.
+// the tags — and it travels with the flow node like they do.
 func TestBoardSpotIsReadAndKept(t *testing.T) {
 	board := readBoard(t, `{"flowNodes":[
 		{"id":"flow-node-1","title":"Placed","spot":{"x":320,"y":160.4}},
@@ -538,9 +538,9 @@ func TestBoardSpotIsReadAndKept(t *testing.T) {
 	]}`)
 	flowNodes := board.FlowNodes
 	if flowNodes[0].Spot == nil || flowNodes[0].Spot.X != 320 || flowNodes[0].Spot.Y != 160 {
-		t.Errorf("placed card = %v, want the point it was written at, rounded", flowNodes[0].Spot)
+		t.Errorf("placed flow node = %v, want the point it was written at, rounded", flowNodes[0].Spot)
 	}
-	// A card nobody has placed, and one whose point cannot be read, are the same thing: no point.
+	// A flow node nobody has placed, and one whose point cannot be read, are the same thing: no point.
 	// Reading is forgiving here as it is everywhere in this format.
 	for _, flowNode := range flowNodes[1:] {
 		if flowNode.Spot != nil {
@@ -560,12 +560,47 @@ func TestBoardSpotIsReadAndKept(t *testing.T) {
 		t.Fatalf("encode: %v", err)
 	}
 	if strings.Contains(string(bare), "spot") {
-		t.Errorf("flow node = %s, want nothing said about a card nobody has placed", bare)
+		t.Errorf("flow node = %s, want nothing said about a flow node nobody has placed", bare)
 	}
 }
 
-// A Gateway names its branches the list way: the single card beside them is read as none, and the
-// list is kept cleaned — trimmed, emptied of empties, each kept once in the order said. One card
+// How large a card is drawn is the board's too: read with the card and written back where the
+// board writes it, while a flow node nobody resized says nothing.
+func TestBoardSizeIsReadAndKept(t *testing.T) {
+	board := readBoard(t, `{"flowNodes":[
+		{"id":"flow-node-1","title":"Sized","size":{"w":260,"h":140.4}},
+		{"id":"flow-node-2","title":"Wide","size":{"w":300}},
+		{"id":"flow-node-3","title":"Nonsense","size":{"w":0,"h":80}}
+	]}`)
+	flowNodes := board.FlowNodes
+	if flowNodes[0].Size == nil || flowNodes[0].Size.W != 260 || flowNodes[0].Size.H != 140 {
+		t.Errorf("sized flow node = %v, want the dimensions rounded", flowNodes[0].Size)
+	}
+	if flowNodes[1].Size == nil || flowNodes[1].Size.W != 300 || flowNodes[1].Size.H != 0 {
+		t.Errorf("wide flow node = %v, want the width alone", flowNodes[1].Size)
+	}
+	if flowNodes[2].Size != nil {
+		t.Errorf("nonsense size = %v, want none", flowNodes[2].Size)
+	}
+
+	filed, err := json.Marshal(flowNodes[0])
+	if err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+	if string(filed) != `{"id":"flow-node-1","title":"Sized","size":{"w":260,"h":140}}` {
+		t.Errorf("flow node = %s, want the dimensions written back", filed)
+	}
+	wide, err := json.Marshal(flowNodes[1])
+	if err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+	if string(wide) != `{"id":"flow-node-2","title":"Wide","size":{"w":300}}` {
+		t.Errorf("flow node = %s, want the width alone", wide)
+	}
+}
+
+// A Gateway names its branches the list way: the single flow node beside them is read as none, and the
+// list is kept cleaned — trimmed, emptied of empties, each kept once in the order said. One flow node
 // follows every other kind, so a list said on one of those is read as none.
 func TestGatewayBranchesAreReadAgainstTheType(t *testing.T) {
 	board := readBoard(t, `{"flowNodes":[
@@ -583,18 +618,18 @@ func TestGatewayBranchesAreReadAgainstTheType(t *testing.T) {
 		t.Errorf("gateway: branches = %q, want the two cleaned, in order", join.OnSuccess.FlowNodes)
 	}
 	if join.OnSuccess.Mode != TransitionEnd {
-		t.Errorf("gateway: mode = %q, want a card with no conversation claiming none", join.OnSuccess.Mode)
+		t.Errorf("gateway: mode = %q, want a flow node with no conversation claiming none", join.OnSuccess.Mode)
 	}
 	if len(work.OnSuccess.FlowNodes) != 0 {
-		t.Errorf("ai: branches = %q, want none on a card that is no gateway", work.OnSuccess.FlowNodes)
+		t.Errorf("ai: branches = %q, want none on a flow node that is no gateway", work.OnSuccess.FlowNodes)
 	}
 	if work.OnSuccess.FlowNode != "flow-node-9" {
 		t.Errorf("ai: single = %q, want the chain kept", work.OnSuccess.FlowNode)
 	}
 }
 
-// What feeds into a card and what follows it: the join reads both namings — the single card and a
-// Gateway's own branches — and the fork reads the branches in order, leaving out cards that left
+// What feeds into a flow node and what follows it: the join reads both namings — the single flow node and a
+// Gateway's own branches — and the fork reads the branches in order, leaving out flow nodes that left
 // the board.
 func TestBoardPredecessorsAndSuccessors(t *testing.T) {
 	board := readBoard(t, `{"flowNodes":[
@@ -607,7 +642,7 @@ func TestBoardPredecessorsAndSuccessors(t *testing.T) {
 	]}`)
 	preds := board.PredecessorsOf("g")
 	if len(preds) != 2 || preds[0].ID != "a" || preds[1].ID != "g1" {
-		t.Errorf("predecessors = %v, want the single card and the gateway naming it", idsOf(preds))
+		t.Errorf("predecessors = %v, want the single flow node and the gateway naming it", idsOf(preds))
 	}
 	succs := board.SuccessorsOf(*board.FlowNode("g"))
 	if len(succs) != 2 || succs[0].ID != "b" || succs[1].ID != "c" {
@@ -615,11 +650,11 @@ func TestBoardPredecessorsAndSuccessors(t *testing.T) {
 	}
 	first := board.SuccessorsOf(*board.FlowNode("g1"))
 	if len(first) != 1 || first[0].ID != "g" {
-		t.Errorf("successors = %v, want the card still there and not the one gone", idsOf(first))
+		t.Errorf("successors = %v, want the flow node still there and not the one gone", idsOf(first))
 	}
 	single := board.SuccessorsOf(*board.FlowNode("a"))
 	if len(single) != 1 || single[0].ID != "g" {
-		t.Errorf("successors = %v, want the one card named the single way", idsOf(single))
+		t.Errorf("successors = %v, want the one flow node named the single way", idsOf(single))
 	}
 }
 

@@ -1,12 +1,6 @@
 import React from 'react';
+import { IconButton } from '../../../ui-foundation/toolbar/IconButton';
 
 export const ExtractBlockButton: React.FC<{ onClick: () => void; title?: string }> = ({ onClick, title = 'Extract' }) => (
-    <button
-        type="button"
-        onClick={onClick}
-        className="code-extract-btn"
-        aria-label={title}
-    >
-        ⤓
-    </button>
+    <IconButton type="plain" label={title} icon="⤓" className="code-extract-btn" onClick={onClick} />
 );

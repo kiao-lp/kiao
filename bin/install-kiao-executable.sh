@@ -136,9 +136,8 @@ echo "   executable -> $COMMAND"
 
 # --- 1. What bin/build-all.sh has already produced ---------------------------
 # Only the SPA needs the reference libraries and the dependency tree; --skip-spa reuses its bundle
-# and the Go builds that remain depend on nothing outside operation/worker and
-# bin/kiao-launcher. The kiao-mcp bundle is needed either way — --skip-spa skips the SPA, not the
-# turns' servers.
+# and the Go builds that remain use the worker, its shared Git identity package and the launcher.
+# The kiao-mcp bundle is needed either way — --skip-spa skips the SPA, not the turns' servers.
 if [ "$SKIP_SPA" -eq 0 ]; then
     "$SCRIPT_DIR/require-build-all.sh" reference dashboard-deps kiao-mcp
 else
@@ -320,7 +319,7 @@ fi
 # upgrade then reaches the executable without touching $BINDIR at all.
 ln -sfn "$LIBDIR/bin/kiao" "$COMMAND"
 
-# The pre-rename install, retired: the toolbox — a JDK, an agent CLI installed from the
+# The pre-rename install, retired: the toolbox — a JDK, a harness CLI installed from the
 # panel — moves into the new directory, and the binaries built under the old name go. The
 # old executable goes too, so `kiao-dcms` stops resolving rather than running the old parts.
 if [ "$LEGACY_LIBDIR" != "$LIBDIR" ] && [ -d "$LEGACY_LIBDIR" ]; then

@@ -194,7 +194,7 @@ func TestPatchRefusesAnEmptiedNameAndAnUnknownHarness(t *testing.T) {
 	}
 }
 
-// Deleting an agent touches no card: a flow node naming it still says which agent it wanted, and
+// Deleting an agent touches no flow node: a flow node naming it still says which agent it wanted, and
 // the next play says it is gone rather than failing on a reference nobody can see.
 func TestDeleteLeavesTheFlowNodesNamingIt(t *testing.T) {
 	boards, flowNodes, agents, _ := newCore()
@@ -208,7 +208,7 @@ func TestDeleteLeavesTheFlowNodesNamingIt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cards, err := flowNodes.Create(ctx, board.ID, []services.NewFlowNodeRequest{{
+	nodes, err := flowNodes.Create(ctx, board.ID, []services.NewFlowNodeRequest{{
 		Title: "Play it", Body: "Go.",
 		Settings: entities.TaskSettings{
 			Agent: made.ID, Effort: "high", Permission: "bypassPermissions", Folder: "/",
@@ -220,12 +220,12 @@ func TestDeleteLeavesTheFlowNodesNamingIt(t *testing.T) {
 	if err := agents.Delete(ctx, made.ID, "alex"); err != nil {
 		t.Fatal(err)
 	}
-	card, err := flowNodes.Find(ctx, cards[0].ID)
+	flowNode, err := flowNodes.Find(ctx, nodes[0].ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if card.Settings().Agent != made.ID {
-		t.Errorf("the card names %q, want the deleted agent still named", card.Settings().Agent)
+	if flowNode.Settings().Agent != made.ID {
+		t.Errorf("the flow node names %q, want the deleted agent still named", flowNode.Settings().Agent)
 	}
 }
 

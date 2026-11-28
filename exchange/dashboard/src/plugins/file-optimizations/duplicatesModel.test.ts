@@ -29,7 +29,7 @@ describe('where a copy is and what it is called', () => {
         expect(nameOf('units/abc/logo.png')).toBe('logo.png');
     });
 
-    it('treats the store root as a folder like any other, with a name of its own to show', () => {
+    it('treats the DCMS root as a folder like any other, with a name of its own to show', () => {
         expect(folderOf('logo.png')).toBe('');
         expect(nameOf('logo.png')).toBe('logo.png');
         expect(folderLabel('')).toBe('/');
@@ -57,7 +57,7 @@ describe('what a group answers by itself', () => {
         expect(presetChoice([file('a/logo.png'), file('b/logo.png')])).toEqual({ name: 'logo.png' });
     });
 
-    it('presets the store root as a location', () => {
+    it('presets the DCMS root as a location', () => {
         expect(presetChoice([file('one.png'), file('two.png')])).toEqual({ folder: '' });
     });
 
@@ -77,7 +77,7 @@ describe('what would be kept', () => {
         expect(targetOf({ folder: 'assets/img', name: 'logo.png' })).toBe('assets/img/logo.png');
     });
 
-    it('keeps a file chosen for the store root at the root, with no leading slash', () => {
+    it('keeps a file chosen for the DCMS root at the root, with no leading slash', () => {
         expect(targetOf({ folder: '', name: 'logo.png' })).toBe('logo.png');
     });
 
@@ -89,7 +89,7 @@ describe('what would be kept', () => {
         expect(canKeepOnlyOne({ folder: 'a', name: 'logo.png' })).toBe(true);
     });
 
-    it('lets the store root be a chosen location', () => {
+    it('lets the DCMS root be a chosen location', () => {
         expect(canKeepOnlyOne({ folder: '', name: 'logo.png' })).toBe(true);
     });
 });

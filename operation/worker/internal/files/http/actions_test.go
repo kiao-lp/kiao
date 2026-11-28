@@ -134,7 +134,7 @@ func TestLoadActionCatalogMissingFileIsAnError(t *testing.T) {
 
 // A misconfigured manifest must surface at startup, not as a silently missing menu entry.
 func TestConfigValidateReportsBadActionManifest(t *testing.T) {
-	cfg := &fileconfig.Config{Config: &coreconfig.Config{RootPath: t.TempDir(), AuthMode: "debug"}, ActionsPath: writeManifest(t, `{`)}
+	cfg := &fileconfig.Config{Config: &coreconfig.Config{DCMSRoot: t.TempDir(), AuthMode: "debug"}, ActionsPath: writeManifest(t, `{`)}
 	if problems := cfg.Validate(); len(problems) == 0 {
 		t.Error("Validate() = no problems, want the manifest error")
 	}
@@ -429,6 +429,6 @@ func TestRunActionTraversalIsRefusedBeforeProxying(t *testing.T) {
 		t.Errorf("status = %d, want 400", rec.Code)
 	}
 	if reached {
-		t.Error("the provider was called with a path outside the storage root")
+		t.Error("the provider was called with a path outside the DCMS root")
 	}
 }

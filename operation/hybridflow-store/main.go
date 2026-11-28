@@ -1,4 +1,4 @@
-// hybridflow-store keeps the boards and the cards filed on them, in PostgreSQL.
+// hybridflow-store keeps the boards and the flow nodes filed on them, in PostgreSQL.
 //
 // It is the **composition root** and nothing else: it reads the environment, opens the database,
 // brings the schema up to date, wires the adapters to the core's services, and serves. Every rule
@@ -7,7 +7,7 @@
 //
 //	operation/hybridflow-store/
 //	├── core/
-//	│   ├── entities/   the domain — boards, cards, agents, runners
+//	│   ├── entities/   the domain — boards, flow nodes, agents, runners
 //	│   ├── ports/      what the core asks of the outside world
 //	│   └── services/   the rules, written against the ports
 //	├── adapters/
@@ -36,6 +36,7 @@ import (
 	"kiao/hybridflow-store/adapters/auth"
 	"kiao/hybridflow-store/adapters/httpapi"
 	"kiao/hybridflow-store/adapters/postgres"
+	"kiao/hybridflow-store/core/entities"
 	"kiao/hybridflow-store/core/services"
 	"kiao/hybridflow-store/lib/config"
 	"kiao/hybridflow-store/lib/logging"
@@ -92,9 +93,9 @@ func main() {
 		AgentAPI:             agentStore.Proxy(),
 		Executions:           services.NewExecutions(postgres.NewExecutionStore(pool), boardStore),
 		Boards:               services.NewBoards(boardStore, clock, ids),
-		FlowNodes:            services.NewFlowNodes(boardStore, agentStore, runnerStore, boardStore, boardStore, clock, ids),
-		FlowNodeClasses:      services.NewFlowNodeClasses(boardStore, boardStore, agentStore, runnerStore, boardStore, clock, ids),
-		Workflows:            services.NewWorkflows(boardStore, boardStore, boardStore, clock, ids),
+		BoardFolders:         services.NewFolders(entities.BoardFolderScope, postgres.NewFolderStore(pool), ids),
+		FlowNodes:            services.NewFlowNodes(boardStore, agentStore, runnerStore, boardStore, clock, ids),
+		Workflows:            services.NewWorkflows(boardStore, boardStore, clock, ids),
 		Runners:              services.NewRunners(runnerStore, clock, ids),
 		Usage:                services.NewUsage(usageStore, boardStore, clock, ids),
 		Changes:              changeStore,

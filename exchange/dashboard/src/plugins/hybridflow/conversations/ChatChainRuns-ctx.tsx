@@ -11,7 +11,7 @@ export interface ChatChainRunsValue {
 
     runs: HarnessChainRun[];
 
-    play: (path: string, flowNodeId: string, name: string) => void;
+    play: (path: string, flowNodeId: string, name: string, afterPredecessor?: boolean, predecessorId?: string) => void;
 
     stop: (runId: string) => void;
 
@@ -71,8 +71,8 @@ export const ChatChainRunsProvider: React.FC<{ children?: ReactNode }> = ({ chil
         return () => { dropped = true; };
     }, [watching, client]);
 
-    const play = useCallback((path: string, flowNodeId: string, name: string) => {
-        client.playChainRun(path, flowNodeId, name)
+    const play = useCallback((path: string, flowNodeId: string, name: string, afterPredecessor?: boolean, predecessorId?: string) => {
+        client.playChainRun(path, flowNodeId, name, afterPredecessor, predecessorId)
             .catch(error => message.error(`The flow node could not be played: ${errorText(error)}`));
     }, [client]);
 
@@ -83,7 +83,7 @@ export const ChatChainRunsProvider: React.FC<{ children?: ReactNode }> = ({ chil
 
     const resume = useCallback(async (runId: string) => {
         try {
-            await client.resumeChainRun(runId);
+            await client.resumeChainRun(runId, true);
         } catch (error) {
             message.error(`The play could not be resumed: ${errorText(error)}`);
         }

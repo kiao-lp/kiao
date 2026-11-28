@@ -2,7 +2,7 @@ package entities
 
 import "testing"
 
-// The type a card is read as where it says none: a named agent makes it an agent's, a named model
+// The type a flow node is read as where it says none: a named agent makes it an agent's, a named model
 // beside no agent is what a board written before managed agents says, and nothing at all is a
 // person's.
 func TestReadFlowNodeType(t *testing.T) {
@@ -15,7 +15,7 @@ func TestReadFlowNodeType(t *testing.T) {
 		{"explicit", "ai", TaskSettings{}, FlowNodeAI},
 		{"explicit human", "human", TaskSettings{Agent: "id-1"}, FlowNodeHuman},
 		{"agent", "", TaskSettings{Agent: "id-1"}, FlowNodeAI},
-		{"legacy engine and model", "", TaskSettings{Agent: "claude", Model: "opus"}, FlowNodeAI},
+		{"legacy harness and model", "", TaskSettings{Agent: "claude", Model: "opus"}, FlowNodeAI},
 		{"legacy model alone", "", TaskSettings{Model: "opus"}, FlowNodeAI},
 		{"nothing", "", TaskSettings{}, FlowNodeHuman},
 		{"unknown word", "hal", TaskSettings{}, FlowNodeHuman},
@@ -27,16 +27,16 @@ func TestReadFlowNodeType(t *testing.T) {
 	}
 }
 
-// An AI card is played where it names all four of its settings. The legacy model is no part of
-// the answer: a card naming an agent, an effort, a permission mode and a folder is complete with
+// An AI flow node is played where it names all four of its settings. The legacy model is no part of
+// the answer: a flow node naming an agent, an effort, a permission mode and a folder is complete with
 // or without one.
 func TestTaskSettingsComplete(t *testing.T) {
 	full := TaskSettings{Agent: "id-1", Effort: "high", Permission: "bypassPermissions", Folder: "/"}
 	if !full.Complete() {
-		t.Error("a card naming all four is not complete")
+		t.Error("a flow node naming all four is not complete")
 	}
 	if full.Empty() {
-		t.Error("a card naming all four is empty")
+		t.Error("a flow node naming all four is empty")
 	}
 	for name, settings := range map[string]TaskSettings{
 		"no agent":     {Effort: "high", Permission: "bypassPermissions", Folder: "/"},
@@ -46,15 +46,15 @@ func TestTaskSettingsComplete(t *testing.T) {
 		"legacy alone": {Agent: "claude", Model: "opus"},
 	} {
 		if settings.Complete() {
-			t.Errorf("%s: a card missing a setting is complete", name)
+			t.Errorf("%s: a flow node missing a setting is complete", name)
 		}
 	}
 	if (!TaskSettings{}.Empty()) {
-		t.Error("a card naming nothing is not empty")
+		t.Error("a flow node naming nothing is not empty")
 	}
-	// A legacy model is still something a card says, even though nothing writes it any more.
+	// A legacy model is still something a flow node says, even though nothing writes it any more.
 	if (TaskSettings{Model: "opus"}).Empty() {
-		t.Error("a card naming only a legacy model is empty")
+		t.Error("a flow node naming only a legacy model is empty")
 	}
 }
 
@@ -75,9 +75,9 @@ func TestTransitionModeReadsTheWordThatSplit(t *testing.T) {
 	}
 }
 
-// What a card says about its chat is read against its type, the retired word included: a card that
+// What a flow node says about its chat is read against its type, the retired word included: a flow node that
 // is not AI has no conversation to shorten or to hand on.
-func TestTransitionForTheCardsType(t *testing.T) {
+func TestTransitionForTheFlowNodesType(t *testing.T) {
 	said := Transition{Mode: LegacyTransitionCompact}
 	if got := said.For(FlowNodeAI); got.Mode != TransitionContinue || !got.Compact {
 		t.Errorf("ai = %+v, want the old word read as both answers", got)
@@ -88,8 +88,8 @@ func TestTransitionForTheCardsType(t *testing.T) {
 }
 
 // The chain is read against the type too, and there the answer is the Shutdown's: the board ends
-// where the machine goes off, so a card drawn out of one is a chain nothing could follow.
-func TestNextForTheCardsType(t *testing.T) {
+// where the machine goes off, so a flow node drawn out of one is a chain nothing could follow.
+func TestNextForTheFlowNodesType(t *testing.T) {
 	for _, flowNodeType := range []FlowNodeType{FlowNodeAI, FlowNodeHuman, FlowNodeScheduler} {
 		if got := NextFor("flow-node-9", flowNodeType); got != "flow-node-9" {
 			t.Errorf("%s: next = %q, want the chain kept", flowNodeType, got)
@@ -103,12 +103,12 @@ func TestNextForTheCardsType(t *testing.T) {
 	}
 }
 
-// The branches are a Gateway's alone: one card follows every other kind, named the single way.
+// The branches are a Gateway's alone: one flow node follows every other kind, named the single way.
 // What a Gateway keeps is cleaned — trimmed, emptied of empties, each kept once in the order said.
-func TestNextsForTheCardsType(t *testing.T) {
+func TestNextsForTheFlowNodesType(t *testing.T) {
 	for _, flowNodeType := range []FlowNodeType{FlowNodeAI, FlowNodeHuman, FlowNodeShutdown, FlowNodeScheduler} {
 		if got := NextsFor([]string{"flow-node-9"}, flowNodeType); got != nil {
-			t.Errorf("%s: nexts = %q, want nothing for a list on a card that is no gateway", flowNodeType, got)
+			t.Errorf("%s: nexts = %q, want nothing for a list on a flow node that is no gateway", flowNodeType, got)
 		}
 	}
 	got := NextsFor([]string{" b ", "", "b", "a"}, FlowNodeGateway)
@@ -121,7 +121,7 @@ func TestNextsForTheCardsType(t *testing.T) {
 	}
 }
 
-// Which kinds of card are **tasks** — work somebody does, and the two that carry one.
+// Which kinds of flow node are **tasks** — work somebody does, and the two that carry one.
 func TestOnlyTheTwoKindsOfWorkAreTasks(t *testing.T) {
 	for _, flowNodeType := range []FlowNodeType{FlowNodeAI, FlowNodeHuman} {
 		if !flowNodeType.IsTask() {
@@ -138,8 +138,8 @@ func TestOnlyTheTwoKindsOfWorkAreTasks(t *testing.T) {
 	}
 }
 
-// A card that is no task has nothing to send, and says so rather than panicking on a nil task.
-func TestACardWithNoTaskHasNoPrompt(t *testing.T) {
+// A flow node that is no task has nothing to send, and says so rather than panicking on a nil task.
+func TestAFlowNodeWithNoTaskHasNoPrompt(t *testing.T) {
 	shutdown := FlowNode{Type: FlowNodeShutdown}
 	if shutdown.Prompt() != "" || shutdown.ConversationID() != "" || !shutdown.Settings().Empty() {
 		t.Errorf("a Shutdown answers %q / %q / %+v, want nothing at all",

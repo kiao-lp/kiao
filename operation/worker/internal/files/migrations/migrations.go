@@ -40,7 +40,7 @@ type sourceLedger struct {
 
 type ledgerData struct {
 	FormatVersion int                      `json:"formatVersion"`
-	DataRoot      string                   `json:"dataRoot"`
+	DCMSRoot      string                   `json:"dataRoot"`
 	Sources       map[string]*sourceLedger `json:"sources"`
 }
 
@@ -89,7 +89,7 @@ func RunMigrations(cfg *fileconfig.Config) error {
 			}
 		}
 	}
-	ledger, err := loadLedger(cfg.StatePath, cfg.RootPath, sources[0])
+	ledger, err := loadLedger(cfg.StatePath, cfg.DCMSRoot, sources[0])
 	if err != nil {
 		return err
 	}
@@ -149,9 +149,10 @@ func migrationFailure(cfg *fileconfig.Config, err error) error {
 func applyOne(cfg *fileconfig.Config, node, sourceID string, script fileconfig.MigrationScript, baseDir string, ledger *migrationLedger) error {
 	logMigrate.Info("applying migration", "source", sourceID, "script", script.FileName)
 	start := time.Now()
-	result := process.RunProc([]string{node, script.Path, cfg.RootPath}, cfg.RootPath, cfg.MigrationsTimeout,
+	result := process.RunProc([]string{node, script.Path, cfg.DCMSRoot}, cfg.DCMSRoot, cfg.MigrationsTimeout,
 		map[string]string{
-			"KIAO_DATA_ROOT":         cfg.RootPath,
+			"KIAO_DATA_ROOT":         cfg.DCMSRoot,
+			"KIAO_WORKER_STATE_PATH": cfg.StatePath,
 			"KIAO_MIGRATION_VERSION": strconv.Itoa(script.Version),
 			"KIAO_MIGRATION_SOURCE":  sourceID,
 			"KIAO_MIGRATION_LIB":     filepath.Join(baseDir, "lib"),
@@ -223,12 +224,12 @@ func fileChecksum(path string) (string, error) {
 	return "sha256:" + hex.EncodeToString(sum[:]), nil
 }
 
-func loadLedger(statePath, dataRoot string, base fileconfig.MigrationSource) (*migrationLedger, error) {
+func loadLedger(statePath, dcmsRoot string, base fileconfig.MigrationSource) (*migrationLedger, error) {
 	ledger := &migrationLedger{file: filepath.Join(statePath, MigrationLedgerFile),
-		data: ledgerData{FormatVersion: migrationLedgerFormat, DataRoot: dataRoot, Sources: map[string]*sourceLedger{}}}
+		data: ledgerData{FormatVersion: migrationLedgerFormat, DCMSRoot: dcmsRoot, Sources: map[string]*sourceLedger{}}}
 	data, err := os.ReadFile(ledger.file)
 	if os.IsNotExist(err) {
-		legacyFile := filepath.Join(dataRoot, ".kiao", "migrations.json")
+		legacyFile := filepath.Join(dcmsRoot, ".kiao", "migrations.json")
 		if _, legacyErr := os.Stat(legacyFile); legacyErr == nil {
 			return nil, fmt.Errorf("older migration ledger at %s requires the pre-cutover upgrade; this is not a fresh store", legacyFile)
 		} else if !os.IsNotExist(legacyErr) {
@@ -249,7 +250,7 @@ func loadLedger(statePath, dataRoot string, base fileconfig.MigrationSource) (*m
 		var legacy struct {
 			SchemaVersion int           `json:"schemaVersion"`
 			Applied       []ledgerEntry `json:"applied"`
-			DataRoot      string        `json:"dataRoot"`
+			DCMSRoot      string        `json:"dataRoot"`
 		}
 		if err := json.Unmarshal(data, &legacy); err != nil {
 			return nil, err
@@ -270,8 +271,8 @@ func loadLedger(statePath, dataRoot string, base fileconfig.MigrationSource) (*m
 		if legacy.Applied[len(legacy.Applied)-1].Script != base.LegacyLastScript {
 			return nil, fmt.Errorf("legacy migration ledger belongs to a different history; use the pre-cutover release")
 		}
-		if legacy.DataRoot != "" && legacy.DataRoot != dataRoot {
-			return nil, fmt.Errorf("legacy migration ledger belongs to %s, not %s; relocate it explicitly before cutover", legacy.DataRoot, dataRoot)
+		if legacy.DCMSRoot != "" && legacy.DCMSRoot != dcmsRoot {
+			return nil, fmt.Errorf("legacy migration ledger belongs to %s, not %s; relocate it explicitly before cutover", legacy.DCMSRoot, dcmsRoot)
 		}
 		logMigrate.Info("retiring legacy applied migration history", "source", base.ID, "baseline", base.Baseline)
 		return ledger, nil
@@ -282,8 +283,8 @@ func loadLedger(statePath, dataRoot string, base fileconfig.MigrationSource) (*m
 	if err := json.Unmarshal(data, &ledger.data); err != nil {
 		return nil, err
 	}
-	if ledger.data.Sources == nil || ledger.data.DataRoot != dataRoot {
-		return nil, fmt.Errorf("migration ledger has no sources or belongs to a different data root; relocate it explicitly before startup")
+	if ledger.data.Sources == nil || ledger.data.DCMSRoot != dcmsRoot {
+		return nil, fmt.Errorf("migration ledger has no sources or belongs to a different DCMS root; relocate it explicitly before startup")
 	}
 	for id, state := range ledger.data.Sources {
 		if !fileconfig.MigrationSourceID.MatchString(id) || state == nil {

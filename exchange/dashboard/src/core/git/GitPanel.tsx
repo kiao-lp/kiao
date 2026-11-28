@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
+import { IconButton } from '../ui-foundation/toolbar/IconButton';
 import { Button, Dropdown, Input, Popconfirm, Select, Spin, Space } from 'antd';
 import { Tooltip } from '../ui-foundation/feedback/Tooltip';
+import { InProgressFeedback } from '../ui-foundation/feedback/InProgressFeedback';
+import { NameDialog } from '../ui-foundation/forms/NameDialog';
 import {
     BranchesOutlined,
     PlusOutlined,
@@ -16,7 +19,9 @@ import {
     FolderOutlined,
     CloudOutlined,
     RollbackOutlined,
+    SettingOutlined,
 } from '@ant-design/icons';
+import { useToolsMenu } from '../dashboard-ui/top-banner/ToolsMenu-ctx';
 import { useGitDiff } from './GitDiff-ctx';
 import { useNavTreeStore } from '../files/nav-bar/NavTreeStore-ctx';
 import { useGitStatus } from './useGitStatus';
@@ -24,7 +29,7 @@ import { useGitActions } from './useGitActions';
 import { useGitBranches } from './useGitBranches';
 import { GitFileRow } from './GitFileRow';
 import { GitConsolidateModal } from './GitConsolidateModal';
-import { GitCreateBranchModal } from './GitCreateBranchModal';
+import { GitConfigurationPanel } from './GitConfigurationPanel';
 import './GitPanel.css';
 
 /**
@@ -38,11 +43,12 @@ import './GitPanel.css';
  * store, not about wherever the browser happened to stop (see GitSyncMonitor).
  */
 export const GitPanelContent: React.FC = () => {
+    const openPanel = useToolsMenu()?.openPanel;
     const { openDiff } = useGitDiff();
     const { focusedPath } = useNavTreeStore();
     const { status, loading, error, refresh } = useGitStatus(focusedPath);
     const {
-        busy, commitMsg, setCommitMsg,
+        active, commitMsg, setCommitMsg,
         stage, unstage, revert, stageAll, unstageAll, revertAll, commit, consolidate, push, pull, sync, checkout, createBranch,
     } = useGitActions(status, refresh, focusedPath);
     const branches = useGitBranches(focusedPath);
@@ -50,20 +56,40 @@ export const GitPanelContent: React.FC = () => {
     const [createOpen, setCreateOpen] = useState(false);
     const [stagedOpen, setStagedOpen] = useState(true);
     const [changesOpen, setChangesOpen] = useState(true);
+    const busy = active !== null || loading;
 
+    const configurationButton = (
+        <IconButton
+            label="Git configuration"
+            tooltip
+            icon={<SettingOutlined />}
+            disabled={!openPanel} onClick={() => openPanel?.({
+                id: 'git-configuration',
+                title: 'Git configuration',
+                content: <GitConfigurationPanel />,
+            })}
+        />
+    );
+    let emptyState: React.ReactNode;
     if (loading && !status) {
-        return <div className="git-panel-center"><Spin /></div>;
-    }
-    if (error) {
-        return (
-            <div className="git-panel-center">
+        emptyState = <Spin />;
+    } else if (error) {
+        emptyState = (
+            <>
                 <p>{error}</p>
-                <Button size="small" icon={<ReloadOutlined />} onClick={refresh}>Retry</Button>
+                <Button size="small" icon={<ReloadOutlined />} loading={loading} onClick={refresh}>Retry</Button>
+            </>
+        );
+    } else if (status && !status.repo) {
+        emptyState = 'This folder is not in a git repository.';
+    }
+    if (emptyState) {
+        return (
+            <div className="git-panel">
+                <div className="git-panel-head git-panel-head-unscoped">{configurationButton}</div>
+                <div className="git-panel-center">{emptyState}</div>
             </div>
         );
-    }
-    if (status && !status.repo) {
-        return <div className="git-panel-center">This folder is not in a git repository.</div>;
     }
 
     const files = status?.files ?? [];
@@ -71,17 +97,17 @@ export const GitPanelContent: React.FC = () => {
     const changedFiles = files.filter(f => f.unstaged);
 
     // Polymorph push/pull/sync button.
-    let syncBtn: { label: string; sub?: string; icon: React.ReactNode; action: () => void } | null = null;
+    let syncBtn: { label: string; operation: string; sub?: string; icon: React.ReactNode; action: () => void } | null = null;
     if (status?.hasUpstream) {
         if (status.ahead > 0 && status.behind > 0) {
-            syncBtn = { label: 'Sync', sub: `↓${status.behind} ↑${status.ahead}`, icon: <SyncOutlined />, action: sync };
+            syncBtn = { label: 'Sync', operation: 'Sync', sub: `↓${status.behind} ↑${status.ahead}`, icon: <SyncOutlined />, action: sync };
         } else if (status.ahead > 0) {
-            syncBtn = { label: 'Push', sub: `↑${status.ahead}`, icon: <CloudUploadOutlined />, action: push };
+            syncBtn = { label: 'Push', operation: 'Push', sub: `↑${status.ahead}`, icon: <CloudUploadOutlined />, action: push };
         } else if (status.behind > 0) {
-            syncBtn = { label: 'Pull', sub: `↓${status.behind}`, icon: <DownloadOutlined />, action: pull };
+            syncBtn = { label: 'Pull', operation: 'Pull', sub: `↓${status.behind}`, icon: <DownloadOutlined />, action: pull };
         }
     } else if (status?.branch) {
-        syncBtn = { label: 'Publish', icon: <CloudUploadOutlined />, action: push };
+        syncBtn = { label: 'Publish', operation: 'Push', icon: <CloudUploadOutlined />, action: push };
     }
 
     // The branch on HEAD always heads the list, even before the list has been read: it is what the
@@ -117,22 +143,22 @@ export const GitPanelContent: React.FC = () => {
                     onChange={value => { if (value !== current) checkout(value); }}
                     />
                 </Tooltip>
-                <Button
-                    type="text"
-                    size="small"
+                <IconButton
+                    label="Create new branch"
                     icon={<PlusOutlined />}
                     onClick={() => setCreateOpen(true)}
-                    aria-label="Create new branch"
                     disabled={busy}
                 />
-                <Button
-                    type="text"
-                    size="small"
-                    icon={<ReloadOutlined spin={busy} />}
+                {configurationButton}
+                <IconButton
+                    label="Refresh"
+                    icon={<ReloadOutlined />}
+                    loading={loading && active === null}
+                    disabled={busy}
                     onClick={refresh}
-                    aria-label="Refresh"
                 />
             </div>
+            {active && <InProgressFeedback label={`Running Git action “${active}”…`} />}
 
             {/* Which repository answered — shown only when it is not the store's own, since that
                 is the one case where the panel's contents would otherwise be unexplained. */}
@@ -145,6 +171,7 @@ export const GitPanelContent: React.FC = () => {
             <Input.TextArea
                 className="git-commit-msg"
                 value={commitMsg}
+                disabled={busy}
                 onChange={e => setCommitMsg(e.target.value)}
                 placeholder={`Message (commit on ${current || 'HEAD'})`}
                 autoSize={{ minRows: 2, maxRows: 6 }}
@@ -159,6 +186,7 @@ export const GitPanelContent: React.FC = () => {
                         type="primary"
                         block
                         disabled={busy || stagedFiles.length === 0}
+                        loading={active === 'Commit' || active === 'Commit (amend)'}
                         onClick={() => commit(false)}
                     >
                         Commit
@@ -174,7 +202,7 @@ export const GitPanelContent: React.FC = () => {
                             onClick: ({ key }) => commit(key === 'amend'),
                         }}
                     >
-                        <Button size="small" type="primary" icon={<DownOutlined />} />
+                        <IconButton label="Commit options" type="primary" icon={<DownOutlined />} aria-haspopup="menu" />
                     </Dropdown>
                 </Space.Compact>
 
@@ -183,7 +211,8 @@ export const GitPanelContent: React.FC = () => {
                         className="git-sync-btn"
                         size="small"
                         icon={syncBtn.icon}
-                        loading={busy}
+                        loading={active === syncBtn.operation}
+                        disabled={busy}
                         onClick={syncBtn.action}
                     >
                         {syncBtn.label}{syncBtn.sub ? <span className="git-sync-sub"> {syncBtn.sub}</span> : null}
@@ -206,11 +235,9 @@ export const GitPanelContent: React.FC = () => {
                     </button>
                     <span className="git-section-head-right">
                         {stagedFiles.length > 0 && (
-                            <Button
-                                type="text"
-                                size="small"
+                            <IconButton
+                                label="Unstage all changes"
                                 icon={<MinusOutlined />}
-                                aria-label="Unstage all changes"
                                 disabled={busy}
                                 onClick={unstageAll}
                             />
@@ -223,6 +250,7 @@ export const GitPanelContent: React.FC = () => {
                         key={`s:${f.path}`}
                         file={f}
                         staged
+                        disabled={busy}
                         onOpen={path => openDiff(path, focusedPath, status?.root ?? '')}
                         onStage={stage}
                         onUnstage={unstage}
@@ -254,19 +282,15 @@ export const GitPanelContent: React.FC = () => {
                                     okButtonProps={{ danger: true }}
                                     onConfirm={revertAll}
                                 >
-                                    <Button
-                                        type="text"
-                                        size="small"
+                                    <IconButton
+                                        label="Discard all changes"
                                         icon={<RollbackOutlined />}
-                                        aria-label="Discard all changes"
                                         disabled={busy}
                                     />
                                 </Popconfirm>
-                                <Button
-                                    type="text"
-                                    size="small"
+                                <IconButton
+                                    label="Stage all changes"
                                     icon={<PlusOutlined />}
-                                    aria-label="Stage all changes"
                                     disabled={busy}
                                     onClick={stageAll}
                                 />
@@ -277,7 +301,7 @@ export const GitPanelContent: React.FC = () => {
                             trigger={['click']}
                             menu={{
                                 items: [
-                                    { key: 'pull', label: 'Pull', icon: <DownloadOutlined /> },
+                                    { key: 'pull', label: 'Pull', icon: <DownloadOutlined />, disabled: busy },
                                     { type: 'divider' },
                                     {
                                         key: 'consolidate',
@@ -294,7 +318,7 @@ export const GitPanelContent: React.FC = () => {
                                 },
                             }}
                         >
-                            <Button type="text" size="small" icon={<MoreOutlined />} aria-label="More actions" />
+                        <IconButton label="More actions" icon={<MoreOutlined />} disabled={busy} />
                         </Dropdown>
                     </span>
                 </div>
@@ -303,6 +327,7 @@ export const GitPanelContent: React.FC = () => {
                         key={`c:${f.path}`}
                         file={f}
                         staged={false}
+                        disabled={busy}
                         onOpen={path => openDiff(path, focusedPath, status?.root ?? '')}
                         onStage={stage}
                         onUnstage={unstage}
@@ -320,20 +345,21 @@ export const GitPanelContent: React.FC = () => {
                 upstream={status?.hasUpstream ? status.upstream : undefined}
                 busy={busy}
                 onConfirm={async (message, pushRemote) => {
-                    await consolidate(message, pushRemote);
-                    setConsolidateOpen(false);
+                    if (await consolidate(message, pushRemote)) setConsolidateOpen(false);
                 }}
                 onCancel={() => setConsolidateOpen(false)}
             />
 
-            <GitCreateBranchModal
+            <NameDialog
                 open={createOpen}
+                title="Create branch"
+                label="New branch name"
+                okText="Create"
+                description="Starts a branch at the current commit and switches to it."
+                placeholder="feature/my-branch"
                 busy={busy}
-                onConfirm={async (name) => {
-                    await createBranch(name);
-                    setCreateOpen(false);
-                }}
-                onCancel={() => setCreateOpen(false)}
+                onSubmit={createBranch}
+                onClose={() => setCreateOpen(false)}
             />
         </div>
     );

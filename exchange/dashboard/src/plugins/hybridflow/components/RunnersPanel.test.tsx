@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from 'src/test/render';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { WorkerClientMockProvider } from 'kiao-worker';
 import type { WorkerClient } from 'kiao-worker';

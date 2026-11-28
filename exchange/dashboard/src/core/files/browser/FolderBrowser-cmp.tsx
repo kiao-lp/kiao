@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo } from 'react';
-import { Table, Dropdown } from 'antd';
+import { Table } from 'antd';
 import type { TableProps } from 'antd';
 import { parentPath, FileDto, WorkerClient } from 'src/core/files/service';
 import { useFileBrowsingPersistenceContext } from '../core/FileBrowsingPersistence-ctx';
@@ -12,7 +12,7 @@ import { BrowserRow, fileToItem } from './folderBrowserRows';
 import { buildFolderBrowserColumns } from './folderBrowserColumns';
 import { useFolderRowProps } from './useFolderRowProps';
 import { useDuplicateFiles } from '../core/useDuplicateFiles';
-import { KEEP_MENU_IN_VIEWPORT } from '../../ui-foundation/interactions/menuPlacement';
+import { ContextMenu } from '../../ui-foundation/interactions/ContextMenu';
 
 export type FolderBrowserProps = {
   exclude?: (file: FileDto) => boolean;
@@ -106,19 +106,7 @@ export const FolderBrowserCmp: React.FC<FolderBrowserProps> = ({ exclude = () =>
       </EmptyAreaContextMenu>
       <FileUploadArea path={currentPath} />
 
-      <Dropdown
-        menu={{ items: rowMenu.items }}
-        open={rowMenu.open}
-        onOpenChange={rowMenu.setOpen}
-        // Context-menu triggers also enable outside-click dismissal for the controlled menu.
-        trigger={['contextMenu']}
-        {...KEEP_MENU_IN_VIEWPORT}
-      >
-        <div
-          ref={rowMenu.anchorRef}
-          style={{ position: 'fixed', left: rowMenu.pos.x, top: rowMenu.pos.y, width: 1, height: 1, pointerEvents: 'none' }}
-        />
-      </Dropdown>
+      <ContextMenu {...rowMenu} />
     </>
   );
 };

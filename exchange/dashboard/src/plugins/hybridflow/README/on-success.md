@@ -16,19 +16,21 @@ document:
 }
 ```
 
-Links use stable node IDs, so moving a card does not change the chain. AI, Human and Scheduler
-nodes can name one successor; Gateway names a list in `flowNodes`. Shutdown, Note and Value
+Links use stable node IDs, so moving a card does not change the chain. AI, Human, Scheduler and
+Bitbucket events can name one successor. Gateways link their successors in `flowNodes`. An exclusive
+gateway evaluates `routes` in order to select one of those successors. Shutdown, Note and Value
 have no successors. Chat actions belong to AI only.
 
 ## The transition mode
 
 | Mode | Conversation used by the successor |
 | --- | --- |
-| `end` | Its existing chat, or a new one; no handoff from this task |
-| `continue` | A fork of this task's chat, including transcript and agent session |
+| `end` | A linked chat for a Ready task, or a new chat for an unlinked or Done task |
+| `continue` | A new fork of this task's current conversation, including its transcript and, where compatible, its native harness session |
 
-The current task retains its own conversation. Before playing a successor in a fork, the runner
-writes that conversation ID onto it, so stopping and restarting from that card reuses the fork.
+The current task retains its own conversation. The runner links the new fork to the successor
+before sending its prompt. A suspended run resumes in that fork. Replaying the completed
+successor replaces its previous link.
 
 ## Compact
 

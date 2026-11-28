@@ -1,7 +1,6 @@
 /** Three-way merge by id. base is the last service state, ours is on screen, theirs is the service now. */
 
-import { FlowNodeClass } from './flowNodeClass';
-import { BoardContent, FlowNode, Workflow, WorkflowClass } from './boardContent';
+import { BoardContent, FlowNode, Workflow } from './boardContent';
 
 const same = (a: unknown, b: unknown): boolean => a === b || JSON.stringify(a) === JSON.stringify(b);
 
@@ -13,14 +12,26 @@ const mergeFlowNode = (base: FlowNode, ours: FlowNode, theirs: FlowNode): FlowNo
     type: pick(base.type, ours.type, theirs.type),
     at: pick(base.at, ours.at, theirs.at),
     duration: pick(base.duration, ours.duration, theirs.duration),
+    pullRequestId: pick(base.pullRequestId, ours.pullRequestId, theirs.pullRequestId),
+    pullRequestStatus: pick(base.pullRequestStatus, ours.pullRequestStatus, theirs.pullRequestStatus),
+    commitId: pick(base.commitId, ours.commitId, theirs.commitId),
+    commitStatus: pick(base.commitStatus, ours.commitStatus, theirs.commitStatus),
+    maxPasses: pick(base.maxPasses, ours.maxPasses, theirs.maxPasses),
+    remainingPasses: theirs.remainingPasses,
     spot: pick(base.spot, ours.spot, theirs.spot),
+    size: pick(base.size, ours.size, theirs.size),
     tags: pick(base.tags, ours.tags, theirs.tags),
     note: pick(base.note, ours.note, theirs.note),
     value: pick(base.value, ours.value, theirs.value),
     valueType: pick(base.valueType, ours.valueType, theirs.valueType),
+    roleId: pick(base.roleId ?? '', ours.roleId ?? '', theirs.roleId),
+    roleKind: pick(base.roleKind ?? 'human', ours.roleKind ?? 'human', theirs.roleKind),
+    people: pick(base.people ?? [], ours.people ?? [], theirs.people),
+    description: pick(base.description ?? '', ours.description ?? '', theirs.description),
     outputType: pick(base.outputType, ours.outputType, theirs.outputType),
     output: pick(base.output, ours.output, theirs.output),
     body: pick(base.body, ours.body, theirs.body),
+    multiPartTemplate: pick(base.multiPartTemplate, ours.multiPartTemplate, theirs.multiPartTemplate),
     criteria: pick(base.criteria, ours.criteria, theirs.criteria),
     complexity: pick(base.complexity, ours.complexity, theirs.complexity),
     settings: pick(base.settings, ours.settings, theirs.settings),
@@ -28,32 +39,12 @@ const mergeFlowNode = (base: FlowNode, ours: FlowNode, theirs: FlowNode): FlowNo
     archived: pick(base.archived, ours.archived, theirs.archived),
     chat: pick(base.chat, ours.chat, theirs.chat),
     onSuccess: pick(base.onSuccess, ours.onSuccess, theirs.onSuccess),
-    classVersion: pick(base.classVersion, ours.classVersion, theirs.classVersion),
+    routes: pick(base.routes, ours.routes, theirs.routes),
     workflow: pick(base.workflow, ours.workflow, theirs.workflow),
 });
 
-const mergeFlowNodeClass = (base: FlowNodeClass, ours: FlowNodeClass, theirs: FlowNodeClass): FlowNodeClass => ({
-    id: ours.id,
-    title: pick(base.title, ours.title, theirs.title),
-    instantiable: pick(base.instantiable, ours.instantiable, theirs.instantiable),
-    type: pick(base.type, ours.type, theirs.type),
-    tags: pick(base.tags, ours.tags, theirs.tags),
-    at: pick(base.at, ours.at, theirs.at),
-    duration: pick(base.duration, ours.duration, theirs.duration),
-    spot: pick(base.spot, ours.spot, theirs.spot),
-    onSuccess: pick(base.onSuccess, ours.onSuccess, theirs.onSuccess),
-    permission: pick(base.permission, ours.permission, theirs.permission),
-    runner: pick(base.runner, ours.runner, theirs.runner),
-    note: pick(base.note, ours.note, theirs.note),
-    workflowClass: pick(base.workflowClass, ours.workflowClass, theirs.workflowClass),
-    versions: pick(base.versions, ours.versions, theirs.versions),
-});
-
-/** For a newly created class, keeps local fields and takes versions from the service. */
-const mergeNewFlowNodeClass = (mine: FlowNodeClass, yours: FlowNodeClass): FlowNodeClass => ({
-    ...mine,
-    versions: yours.versions,
-});
+const mergeNewFlowNode = (ours: FlowNode, theirs: FlowNode): FlowNode =>
+    ours.type === 'limiter' ? { ...ours, remainingPasses: theirs.remainingPasses } : ours;
 
 const byId = <T extends { id: string }>(items: T[]): Map<string, T> => new Map(items.map(item => [item.id, item]));
 
@@ -108,38 +99,20 @@ const arrange = <T>(base: string[], ours: string[], theirs: string[], kept: Map<
 };
 
 const mergeWorkflow = (base: Workflow, ours: Workflow, theirs: Workflow): Workflow => ({
-    id: ours.id,
-    name: pick(base.name, ours.name, theirs.name),
-});
-
-const mergeWorkflowClass = (
-    base: WorkflowClass, ours: WorkflowClass, theirs: WorkflowClass,
-): WorkflowClass => ({
-    id: ours.id,
+    ...theirs,
     name: pick(base.name, ours.name, theirs.name),
 });
 
 export const mergeBoardContent = (base: BoardContent, ours: BoardContent, theirs: BoardContent): BoardContent => {
-    const flowNodes = survivors(byId(base.flowNodes), byId(ours.flowNodes), byId(theirs.flowNodes), mergeFlowNode);
-    const classes = survivors(
-        byId(base.flowNodeClasses ?? []), byId(ours.flowNodeClasses ?? []),
-        byId(theirs.flowNodeClasses ?? []), mergeFlowNodeClass, mergeNewFlowNodeClass);
+    const flowNodes = survivors(
+        byId(base.flowNodes), byId(ours.flowNodes), byId(theirs.flowNodes), mergeFlowNode, mergeNewFlowNode);
     const workflows = survivors(
         byId(base.workflows ?? []), byId(ours.workflows ?? []),
         byId(theirs.workflows ?? []), mergeWorkflow);
-    const workflowClasses = survivors(
-        byId(base.workflowClasses ?? []), byId(ours.workflowClasses ?? []),
-        byId(theirs.workflowClasses ?? []), mergeWorkflowClass);
     return {
         flowNodes: arrange(idsOf(base.flowNodes), idsOf(ours.flowNodes), idsOf(theirs.flowNodes), flowNodes),
-        flowNodeClasses: arrange(
-            idsOf(base.flowNodeClasses ?? []), idsOf(ours.flowNodeClasses ?? []),
-            idsOf(theirs.flowNodeClasses ?? []), classes),
         workflows: arrange(
             idsOf(base.workflows ?? []), idsOf(ours.workflows ?? []),
             idsOf(theirs.workflows ?? []), workflows),
-        workflowClasses: arrange(
-            idsOf(base.workflowClasses ?? []), idsOf(ours.workflowClasses ?? []),
-            idsOf(theirs.workflowClasses ?? []), workflowClasses),
     };
 };

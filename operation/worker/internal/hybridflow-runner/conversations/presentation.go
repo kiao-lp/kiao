@@ -36,6 +36,15 @@ func ConversationDtoOf(meta ConversationMeta, running bool) HarnessConversationD
 	}
 }
 
+func (s *ConversationStore) Locations(id string) HarnessConversationLocationsDto {
+	return HarnessConversationLocationsDto{
+		ConversationDirectory: s.ConvDir(id),
+		MetadataFile:          s.metaPath(id),
+		TranscriptFile:        s.transcriptPath(id),
+		TurnTracesDirectory:   s.turnTracesDir(id),
+	}
+}
+
 // messageDto is one transcript record as it reaches a client. The two shapes are kept separate on
 // purpose: the record is what this service chose to store, the DTO is what the wire promises.
 //

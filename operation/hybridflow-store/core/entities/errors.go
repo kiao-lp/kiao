@@ -8,11 +8,11 @@ import (
 
 var (
 	ErrNotFound = errors.New("not found")
-	ErrInvalid = errors.New("invalid")
+	ErrInvalid  = errors.New("invalid")
 	// ErrConflict requires rereading the row before retrying a conditional write.
-	ErrConflict = errors.New("conflict")
-	ErrNameTaken = errors.New("board name is taken")
-	ErrAgentNameTaken = errors.New("agent name is taken")
+	ErrConflict        = errors.New("conflict")
+	ErrNameTaken       = errors.New("board name is taken")
+	ErrAgentNameTaken  = errors.New("agent name is taken")
 	ErrRunnerNameTaken = errors.New("runner name is taken")
 )
 
@@ -31,13 +31,11 @@ func Conflictf(format string, args ...any) error {
 type ChangeScope string
 
 const (
-	ScopeBoard         ChangeScope = "board"
-	ScopeFlowNode      ChangeScope = "flowNode"
-	ScopeFlowNodeClass ChangeScope = "flowNodeClass"
-	ScopeWorkflow      ChangeScope = "workflow"
-	ScopeWorkflowClass ChangeScope = "workflowClass"
-	ScopeAgent         ChangeScope = "agent"
-	ScopeRunner        ChangeScope = "runner"
+	ScopeBoard    ChangeScope = "board"
+	ScopeFlowNode ChangeScope = "flowNode"
+	ScopeWorkflow ChangeScope = "workflow"
+	ScopeAgent    ChangeScope = "agent"
+	ScopeRunner   ChangeScope = "runner"
 )
 
 const (
@@ -57,15 +55,12 @@ type Change struct {
 	// board-scoped feeds filter on it.
 	BoardID    string
 	FlowNodeID string
-	// FlowNodeClassID identifies the class even for changes to its versions.
-	FlowNodeClassID string
 	// Agent changes have no BoardID and appear only in the global feed.
 	AgentID string
 	// Runner changes have no BoardID and appear only in the global feed.
 	RunnerID string
 	// Workflow and workflow-class changes also set BoardID.
-	WorkflowID      string
-	WorkflowClassID string
+	WorkflowID string
 	// Actor is the authenticated identity or the run that caused the change.
 	Actor string
 	// Revision lets clients skip changes they already hold.

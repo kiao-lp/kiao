@@ -11,7 +11,7 @@ document:
 ## Permissions
 
 This section describes Claude's control protocol; [harness capabilities](/operation/worker/PROTOCOL/harnesses.md#harnesses)
-cover the other engines.
+cover the other harnesses.
 
 The CLI is spawned with `--permission-prompt-tool stdio` **in every mode**, which routes each tool
 call it would prompt a human about onto the SDK control protocol — a `can_use_tool` request on its
@@ -222,7 +222,7 @@ Conversation and turn policy:
   is not the turn's owner are refused with `error{not_permitted}`. Subscribing and reading stay open —
   visibility is the registry's call — and an empty owner or an empty caller (debug auth mode) permits,
   so a single-user deployment is unaffected.
-- **The folder bounds where a turn starts, not what it may touch.** The whole store root is handed to
+- **The folder bounds where a turn starts, not what it may touch.** The whole DCMS root is handed to
   the CLI as `--add-dir`, so a turn started in one folder reaches every other without asking — the
   store is one tree and the work crosses it. Nothing is granular here: containment is the permission
   mode and the human answering it, and in `bypassPermissions` no tool call is asked about at all.

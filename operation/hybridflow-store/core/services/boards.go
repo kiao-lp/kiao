@@ -52,7 +52,8 @@ func NewBoards(repo ports.BoardRepository, clock ports.Clock, ids ports.IDs) *Bo
 
 // NewBoardRequest is what creating a board asks for.
 type NewBoardRequest struct {
-	Name string
+	Name     string
+	FolderID string
 }
 
 // Create makes a board. The slug is derived from the name and made unique by suffix, so two boards
@@ -64,7 +65,7 @@ func (b *Boards) Create(ctx context.Context, req NewBoardRequest, actor string) 
 	}
 	now := b.clock.Now()
 	board := &entities.Board{
-		ID: b.ids.NewID(), Name: name,
+		ID: b.ids.NewID(), Name: name, FolderID: req.FolderID,
 		CreatedAt: now, UpdatedAt: now, Revision: 1,
 	}
 	// The slug is unique in the database, so a collision comes back as one and is answered by
@@ -99,7 +100,7 @@ func (b *Boards) List(ctx context.Context, includeArchived bool) ([]entities.Boa
 }
 
 // Find is one board, by id or by slug. **Both, through one call**, because the
-// client that has a URL holds a slug and the client that has a card holds an id, and neither should
+// client that has a URL holds a slug and the client that has a flow node holds an id, and neither should
 // have to know which the other uses.
 func (b *Boards) Find(ctx context.Context, handle string) (*entities.Board, error) {
 	board, err := b.repo.FindBoard(ctx, handle)

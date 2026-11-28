@@ -63,35 +63,33 @@
 
 /* Task cards: diagram box fill, 8px radius, whole border in the status colour. */
 .card {
-    position: relative;
     /* Keep title-only cards tall enough for the chain knob. */
     min-height: 48px;
     padding: 6px;
     border: 1.5px solid var(--muted);
     border-radius: 8px;
-    background: var(--diagram-box-fill);
-    color: var(--text);
+    background: var(--card-surface-fill);
     text-align: left;
-    cursor: pointer;
-    /* Clicks and drags act on the card rather than selecting its title. */
-    user-select: none;
-}
-
-.card:hover {
-    background: var(--state-pointed-bg);
-}
-
-.card:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 1px;
-}
-
-.cardSelected {
-    background: var(--state-selected-bg);
 }
 
 .noteCard {
     min-height: 0;
+}
+
+.noteScroll {
+    max-height: 100%;
+    overflow: auto;
+}
+
+/* Keep the scrollbar visible on systems with overlay scrollbars. */
+.noteScroll::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+.noteScroll::-webkit-scrollbar-thumb {
+    background: var(--muted);
+    border-radius: 5px;
 }
 
 .noteBody > div > :first-child {
@@ -100,32 +98,6 @@
 
 .noteBody > div > :last-child {
     margin-bottom: 0;
-}
-
-.cardClass {
-    border-style: dotted;
-    border-width: 2px;
-}
-
-.cardClassRef {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    margin-top: 4px;
-    font-size: 12px;
-    color: var(--muted);
-}
-
-.cardClassUnlink {
-    border: none;
-    background: none;
-    padding: 0 2px;
-    color: var(--muted);
-    cursor: pointer;
-}
-
-.cardClassUnlink:hover {
-    color: var(--text);
 }
 
 .cardDraft {
@@ -454,15 +426,10 @@
     background: var(--bg);
 }
 
-/* The sheet uses zoomed screen pixels so scroll bounds match the scaled board. */
-.boardSheet {
-    position: relative;
-}
-
-/* Cards and arrows share canvas coordinates; scale from the top left to preserve alignment. */
-.boardScaled {
-    position: relative;
-    transform-origin: top left;
+.menuIcon {
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
 }
 
 /* The board's one relation layer: above the workflow backgrounds and below the cards —
@@ -506,11 +473,58 @@
     z-index: 2;
 }
 
-/* Workflow rectangles wear the package look of the unified diagram palette (see
-   kiao-diagram.ts in kiao-style): the group fill under a dashed outline, the way
-   archdia draws the packages of the Flows view. Class rectangles stay dotted,
-   the way class cards stay dotted beside task cards. The back layer of the board:
-   the relations draw above them — see .boardLinks. */
+.cardSized {
+    height: 100%;
+    box-sizing: border-box;
+    overflow: hidden;
+}
+
+/* The four edges of a selected card; each one changes the dimension it faces. */
+.resizeEdge {
+    position: absolute;
+    z-index: 3;
+    background: transparent;
+    touch-action: none;
+}
+
+.resizeEdge:hover,
+.resizeEdgeActive {
+    background: var(--accent);
+}
+
+.resizeEdgeTop {
+    top: -4px;
+    left: 10px;
+    right: 10px;
+    height: 8px;
+    cursor: ns-resize;
+}
+
+.resizeEdgeRight {
+    top: 10px;
+    right: -4px;
+    bottom: 10px;
+    width: 8px;
+    cursor: ew-resize;
+}
+
+.resizeEdgeBottom {
+    left: 10px;
+    right: 10px;
+    bottom: -4px;
+    height: 8px;
+    cursor: ns-resize;
+}
+
+.resizeEdgeLeft {
+    top: 10px;
+    left: -4px;
+    bottom: 10px;
+    width: 8px;
+    cursor: ew-resize;
+}
+
+/* Workflow rectangles sit below the connections and cards. */
 .workflowRect {
     position: absolute;
     z-index: 0;
@@ -518,11 +532,6 @@
     border-radius: 8px;
     background: var(--diagram-group-bg);
     cursor: grab;
-}
-
-.workflowRectClass {
-    border-style: dotted;
-    border-width: 2px;
 }
 
 .workflowRectSelected {
@@ -541,6 +550,15 @@
     font-weight: 600;
     color: var(--muted);
     pointer-events: none;
+}
+
+.workflowInvalidMark {
+    color: var(--flow-node-error);
+    margin-inline-end: 4px;
+}
+
+.workflowInvalid {
+    color: var(--flow-node-error);
 }
 
 .boardCardMoving {
@@ -658,8 +676,30 @@
     grid-column: 1 / -1;
 }
 
-.metaRowWrap {
-    flex-wrap: wrap;
+.gatewayRoutes,
+.gatewayRouteList,
+.gatewayRouteFields {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+}
+
+.gatewayRoutes > button {
+    align-self: flex-start;
+}
+
+.gatewayRouteHelp {
+    font-size: 12px;
+}
+
+.gatewayRoute {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: start;
+    padding: 4px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
 }
 
 .metaSelect {
@@ -724,7 +764,7 @@
     font-size: 9px;
 }
 
-.nodePanel :global(.ant-input) {
+.nodePanel :global(.ant-input):not(:where(.descriptionTemplate *)) {
     font-size: 11px;
     line-height: 1.45;
 }
@@ -815,12 +855,74 @@
     font-weight: 600;
 }
 
+.workflowField,
+.workflowSection {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.workflowSection {
+    min-height: 0;
+}
+
+.workflowSections {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-rows: minmax(0, 3fr) minmax(0, 7fr);
+    gap: 8px;
+}
+
+.workflowFiles {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+}
+
+.workflowFolderDrop:global(.ant-input),
+.workflowFilesDrop {
+    border-color: var(--accent);
+    background: var(--state-pointed-bg);
+}
+
+.workflowFiles ul {
+    padding: 0;
+    margin: 0;
+    list-style: none;
+}
+
+.workflowFiles li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-inline: 6px;
+}
+
+.workflowFiles li > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.workflowDropHint {
+    padding: 6px;
+    color: var(--muted);
+}
+
 .panelEditor {
     flex: 1;
     min-height: 0;
     border: 1px solid var(--border);
     border-radius: 4px;
     overflow: hidden;
+}
+
+.descriptionTemplate {
+    overflow: auto;
+    padding: 8px;
 }
 
 /* The box fills the bordered frame the markdown editor used to be, the frame carrying the border.
@@ -830,20 +932,10 @@
     padding: 8px;
 }
 
-/* Prose, at the size the version body is written at — the panel's own input size is for its controls. */
+/* Keep description typography separate from the panel controls. */
 .nodePanel .panelDescription {
     font-size: 14px;
     line-height: 1.5;
-}
-
-.panelVersions {
-    flex: 1;
-    min-height: 0;
-}
-
-.panelVersionBody {
-    flex: 1;
-    resize: none;
 }
 
 .panelHint {
@@ -887,33 +979,31 @@
 }
 
 .symbol {
-    position: relative;
     display: flex;
     flex-direction: column;
     align-items: stretch;
     /* Keep the shape flush with the node top: shapeAnchor in boardSpots.ts targets it there. */
     padding: 0 8px 8px;
-    color: var(--text);
     text-align: center;
-    cursor: pointer;
-    user-select: none;
-}
-
-.symbol:hover .symbolEvent,
-.symbol:hover .symbolGateway {
-    background: var(--state-pointed-bg);
-}
-
-.symbol:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 1px;
     border-radius: 4px;
 }
 
-.symbolSelected .symbolEvent,
-.symbolSelected .symbolGateway {
-    background: var(--state-selected-bg);
+.symbol[data-selected] .symbolEvent,
+.symbol[data-selected] .symbolGateway {
     box-shadow: 0 0 0 2px var(--accent);
+}
+
+.symbolRole {
+    display: inline-flex;
+    color: var(--muted);
+}
+
+.symbol:hover .symbolRole {
+    color: var(--text);
+}
+
+.symbol[data-selected] .symbolRole {
+    color: var(--accent);
 }
 
 /* Heights must match EVENT_WRAP_HEIGHT and GATEWAY_WRAP_HEIGHT in boardSpots.ts. */
@@ -943,7 +1033,7 @@
     box-sizing: border-box;
     border: 2px solid var(--symbol-ring, var(--border));
     border-radius: 50%;
-    background: var(--diagram-box-fill);
+    background: var(--card-surface-fill);
     color: var(--muted);
     font-size: 32px;
     line-height: 1;
@@ -962,7 +1052,7 @@
     box-sizing: border-box;
     border: 2px solid var(--symbol-ring, var(--border));
     border-radius: 0;
-    background: var(--diagram-box-fill);
+    background: var(--card-surface-fill);
     color: var(--muted);
     transform: rotate(45deg);
 }
@@ -974,14 +1064,15 @@
     transform: rotate(-45deg);
 }
 
+.limiterPassCount {
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+}
+
 .symbolPlaying .symbolEvent,
 .symbolPlaying .symbolGateway {
     color: var(--accent);
-}
-
-.symbolClass .symbolEvent,
-.symbolClass .symbolGateway {
-    border-style: dotted;
 }
 
 .symbolDraft {
@@ -1082,6 +1173,9 @@
 }
 
 .symbolTitle {
+    padding-inline: 4px;
+    border-radius: 4px;
+    background: var(--bg);
     font-weight: normal;
     overflow-wrap: anywhere;
 }
@@ -1091,13 +1185,11 @@
     margin-top: 4px;
 }
 
-.symbolLabel .cardClassRef,
 .symbolLabel .cardState,
 .symbolLabel .cardChips {
     justify-content: center;
 }
 
-/* A scheduler keeps its clock glyph and offers the task-sized play beside the circle. */
 .symbolPlay {
     position: absolute;
     left: calc(50% - 55px);

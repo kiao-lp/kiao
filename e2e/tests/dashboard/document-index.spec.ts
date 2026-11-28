@@ -8,7 +8,7 @@ import { test, expect, APIRequestContext, Page, workerApi } from '../harness';
  * subsidiary rules that keep the index out of the listing and offer it as a companion instead.
  *
  * The fixtures are written by the test rather than committed, in a folder of its own. That is not
- * tidiness: the suite shares one store per Playwright worker, another spec searches the store root, and a
+ * tidiness: the suite shares one store per Playwright worker, another spec searches the DCMS root, and a
  * search *also* writes indexes — so a document that has been sitting there is a document that may
  * already be indexed, and "1 document indexed" would be true or false depending on the order the
  * specs ran in.

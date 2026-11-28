@@ -1,6 +1,7 @@
 import React from 'react';
 import { Button } from 'antd';
 import { ReloadOutlined } from '@ant-design/icons';
+import { AsyncList } from '@kiao-dashboard-core';
 import type { HarnessLoginOffer } from 'kiao-worker';
 import { useHarnessOptions } from '../useHarnessOptions';
 import { useChatUsage } from './ChatUsage-ctx';
@@ -39,24 +40,20 @@ const ChatUsageSection: React.FC<{ harness: string; label: string; login?: Harne
 export const ChatUsageTab: React.FC = () => {
     const { harnesses, loading } = useHarnessOptions();
 
-    if (!loading && harnesses.length === 0) {
-        return (
-            <div className="chat-usage-tab chat-usage-tab--empty">
-                No harness is enabled and available. Enable or install Claude Code, Codex, Muse or
-                Pi in the configuration panel, and this tab will show their usage.
-            </div>
-        );
-    }
     return (
         <div className="chat-usage-tab">
-            {harnesses.map(entry => (
-                <ChatUsageSection
-                    key={entry.value}
-                    harness={entry.value}
-                    label={entry.label || entry.value}
-                    login={entry.login}
-                />
-            ))}
+            <AsyncList loading={loading && !harnesses.length}
+                empty={!harnesses.length && ('No harness is enabled and available. Enable or install Claude Code, '
+                    + 'Codex, Muse or Pi in the configuration panel, and this tab will show their usage.')}>
+                {harnesses.map(entry => (
+                    <ChatUsageSection
+                        key={entry.value}
+                        harness={entry.value}
+                        label={entry.label || entry.value}
+                        login={entry.login}
+                    />
+                ))}
+            </AsyncList>
         </div>
     );
 };

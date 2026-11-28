@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { createSimpleContext } from 'react-concise';
 import {
-    CommandContext, Clipboard, usePluginHotkeys, useSelectionContext, useCleanSelectionAndPointing,
+    CommandContext, Clipboard, ConfirmationDialog, usePluginHotkeys, useSelectionContext, useCleanSelectionAndPointing,
     useFileBrowsingPersistenceContext
 } from '@kiao-dashboard-core';
 
@@ -9,7 +9,6 @@ import { useMindmapStateContext, useMindmapMode } from '../state';
 import { randomWord } from '../hooks/randomWord';
 import { useDeleteElements } from '../hooks/useDeleteElement';
 import { clipboardMindmap, copiedMindmap, elementsOf, pastedElements } from '../lib/mindmap-clipboard';
-import { CutConfirmModal } from '../components/CutConfirmModal-cmp';
 
 /** A name for a pasted element, of the kind its prefix says — how every element here is named. */
 const freshId = (prefix: string) => prefix + randomWord(8);
@@ -129,7 +128,24 @@ export const useMindmapClipboard = (): MindmapClipboardValue => {
 
 const CutModal: React.FC = () => {
     const { pendingCut, confirmCut, cancelCut } = hookBasedContext.useContext();
-    return <CutConfirmModal pending={pendingCut} onConfirm={confirmCut} onCancel={cancelCut} />;
+    const count = pendingCut?.length ?? 0;
+    return (
+        <ConfirmationDialog
+            open={pendingCut !== null}
+            title="Cut"
+            description={<>
+                <p data-testid="cut-confirm-message">
+                    {count === 1
+                        ? 'One element is on the clipboard. Delete it from this map?'
+                        : `${count} elements are on the clipboard. Delete them from this map?`}
+                </p>
+                <p>Paste first if you like — this will wait.</p>
+            </>}
+            cancelText="Keep"
+            onConfirm={confirmCut}
+            onCancel={cancelCut}
+        />
+    );
 };
 
 export const MindmapClipboardProvider: React.FC<{ children?: React.ReactNode }> = ({ children }) => (

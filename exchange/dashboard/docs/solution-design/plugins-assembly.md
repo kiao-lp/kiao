@@ -166,7 +166,7 @@ lends the remaining dependencies.
 **The assembly owns verification.** The project keeps its source, tests and fixtures. Its
 `tsconfig.json` extends the assembly's; it carries no Vitest or Playwright configuration. Assembly
 unit-test globs include its tests but exclude the lent `node_modules` and its Playwright `e2e/`.
-The build typechecks it; the e2e harness runs its own project and seeds its fixtures. Unit tests
+The build typechecks it. The end-to-end runner runs the plugin’s tests and seeds its fixtures. Unit tests
 stay beside source, e2e specs in the project's `e2e/`, and fixtures in `e2e/files/`.
 
 Build sites derive external project paths via an assembly-owned script. A copied local list leaves server and executable builds without plugins and without catalogue rows to report.
@@ -187,7 +187,7 @@ build/
 
 The e2e seed at `e2e/data/files-template/.kiao-config/dashboard.json` pins the complete plugin
 set the suite exercises. A plugin omitted from it is not tested. `VITE_PLUGIN_PATHS` names
-external projects whose `e2e/` tests and fixtures the harness also includes.
+external projects whose `e2e/` tests and fixtures the Playwright setup also includes.
 
 ## Sources
 

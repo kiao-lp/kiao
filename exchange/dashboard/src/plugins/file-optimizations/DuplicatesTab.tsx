@@ -133,6 +133,7 @@ export interface DuplicatesTabProps {
     duplicates: DuplicateGroup[];
     scanned: number;
     truncated: boolean;
+    blocked?: boolean;
     keepOnlyOne: (plan: Consolidation[]) => Promise<ConsolidationOutcome[]>;
 }
 
@@ -159,9 +160,10 @@ const PlanReview: React.FC<{ plan: Consolidation[] }> = ({ plan }) => (
 );
 
 /** Groups are hash-verified identical bytes. One button runs all fully chosen groups. */
-export const DuplicatesTab: React.FC<DuplicatesTabProps> = ({ duplicates, scanned, truncated, keepOnlyOne }) => {
+export const DuplicatesTab: React.FC<DuplicatesTabProps> = ({ duplicates, scanned, truncated, blocked = false, keepOnlyOne }) => {
     const [choices, setChoices] = useState<Record<string, KeepChoice>>({});
     const [busy, setBusy] = useState(false);
+    const disabled = busy || blocked;
     const wasted = useMemo(() => totalWasted(duplicates), [duplicates]);
     const plan = useMemo(() => chosenConsolidations(duplicates, choices), [duplicates, choices]);
 
@@ -235,7 +237,7 @@ export const DuplicatesTab: React.FC<DuplicatesTabProps> = ({ duplicates, scanne
                     type="primary"
                     size="small"
                     icon={<MergeCellsOutlined />}
-                    disabled={plan.length === 0 || busy}
+                    disabled={plan.length === 0 || disabled}
                     loading={busy}
                     onClick={() => confirm(plan)}
                 >
@@ -258,7 +260,7 @@ export const DuplicatesTab: React.FC<DuplicatesTabProps> = ({ duplicates, scanne
                     group={group}
                     choice={choiceOf(group, choices)}
                     onChoose={choice => setChoices(prev => ({ ...prev, [group.hash]: choice }))}
-                    busy={busy}
+                    busy={disabled}
                 />
             ))}
         </div>

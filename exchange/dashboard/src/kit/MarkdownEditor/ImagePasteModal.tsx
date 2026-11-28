@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Input, Modal, Radio, Select, Slider, Typography, message } from 'antd';
 import { ImagePreview } from '@kiao-dashboard-core';
 import {
@@ -41,6 +41,14 @@ const FORMAT_OPTIONS: { value: ImageOutputFormat; label: string }[] = [
 
 const DEFAULT_QUALITY = 0.85;
 
+interface Conversion {
+    image: File;
+    format: ImageOutputFormat;
+    quality: number;
+    result?: ConvertedImage;
+    error?: string;
+}
+
 export const ImagePasteModal: React.FC<ImagePasteModalProps> = ({
     image,
     defaultDirectory,
@@ -53,8 +61,9 @@ export const ImagePasteModal: React.FC<ImagePasteModalProps> = ({
     const [quality, setQuality] = useState(DEFAULT_QUALITY);
     const [path, setPath] = useState('');
     const [originalUrl, setOriginalUrl] = useState<string | undefined>(undefined);
-    const [converted, setConverted] = useState<ConvertedImage | null>(null);
+    const [conversion, setConversion] = useState<Conversion | null>(null);
     const [busy, setBusy] = useState(false);
+    const inserting = useRef(false);
 
     useEffect(() => {
         if (!image) return;
@@ -66,33 +75,36 @@ export const ImagePasteModal: React.FC<ImagePasteModalProps> = ({
     }, [image, defaultDirectory, documentName]);
 
     useEffect(() => {
-        if (!image) {
-            setOriginalUrl(undefined);
-            return;
-        }
-        blobToDataUrl(image).then(setOriginalUrl).catch(() => setOriginalUrl(undefined));
+        setOriginalUrl(undefined);
+        if (!image) return;
+        let current = true;
+        blobToDataUrl(image).then(url => { if (current) setOriginalUrl(url); }).catch(() => {});
+        return () => { current = false; };
     }, [image]);
 
     useEffect(() => {
         if (!image) {
-            setConverted(null);
+            setConversion(null);
             return;
         }
         let cancelled = false;
-        setConverted(null);
         convertImage(image, format, quality)
             .then((result) => {
-                if (cancelled) return;
-                setConverted(result);
+                if (!cancelled) setConversion({ image, format, quality, result });
             })
-            .catch((err) => {
-                console.error('Image conversion failed', err);
-                if (!cancelled) message.error(`Image conversion failed: ${err.message || err}`);
+            .catch((cause: unknown) => {
+                if (!cancelled) setConversion({ image, format, quality, error: cause instanceof Error ? cause.message : String(cause) });
             });
         return () => {
             cancelled = true;
         };
     }, [image, format, quality]);
+
+    const current = conversion?.image === image && conversion.format === format && conversion.quality === quality ? conversion : null;
+    const converted = current?.result;
+    const conversionError = current?.error;
+    const converting = image !== null && !converted && !conversionError;
+    const canInsert = !!converted && (storage === 'embed' || !!path.trim());
 
     const handleFormatChange = (next: ImageOutputFormat) => {
         setFormat(next);
@@ -101,7 +113,8 @@ export const ImagePasteModal: React.FC<ImagePasteModalProps> = ({
     };
 
     const handleOk = async () => {
-        if (!converted) return;
+        if (!converted || !canInsert || inserting.current) return;
+        inserting.current = true;
         setBusy(true);
         try {
             await onConfirm({
@@ -114,6 +127,7 @@ export const ImagePasteModal: React.FC<ImagePasteModalProps> = ({
             console.error('Failed to insert image', err);
             message.error(`Failed to insert image: ${err.message || err}`);
         } finally {
+            inserting.current = false;
             setBusy(false);
         }
     };
@@ -122,7 +136,7 @@ export const ImagePasteModal: React.FC<ImagePasteModalProps> = ({
     const resultCaption = converted
         ? `${formatBytes(converted.blob.size)} — ${dimensions}` +
           (storage === 'embed' ? ` (≈ ${formatBytes(base64Size(converted.blob))} as base64)` : '')
-        : 'Converting…';
+        : converting ? 'Converting…' : '';
     const showQuality = format === 'image/jpeg' || format === 'image/webp';
 
     return (
@@ -130,11 +144,15 @@ export const ImagePasteModal: React.FC<ImagePasteModalProps> = ({
             title="Paste image"
             open={image !== null}
             onOk={handleOk}
-            onCancel={onCancel}
+            onCancel={() => { if (!inserting.current) onCancel(); }}
+            closable={!busy}
+            cancelButtonProps={{ disabled: busy }}
             okText="Insert"
             okButtonProps={{
-                loading: busy,
-                disabled: !converted || (storage === 'file' && path.trim() === ''),
+                loading: busy || converting,
+                disabled: busy || !canInsert,
+                'aria-label': 'Insert',
+                'aria-busy': busy || converting,
             }}
             width={640}
             destroyOnHidden
@@ -152,11 +170,13 @@ export const ImagePasteModal: React.FC<ImagePasteModalProps> = ({
                         caption={resultCaption}
                     />
                 </div>
+                {conversionError && <Typography.Text type="danger" role="alert">Image conversion failed. {conversionError}</Typography.Text>}
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                     <Typography.Text strong>Storage</Typography.Text>
                     <Radio.Group
                         value={storage}
+                        disabled={busy}
                         onChange={(e) => setStorage(e.target.value)}
                         options={[
                             { value: 'file', label: 'Image file next to the document' },
@@ -166,6 +186,7 @@ export const ImagePasteModal: React.FC<ImagePasteModalProps> = ({
                     {storage === 'file' && (
                         <Input
                             value={path}
+                            disabled={busy}
                             onChange={(e) => setPath(e.target.value)}
                             placeholder="path/to/image.png"
                             data-testid="image-paste-path"
@@ -178,6 +199,8 @@ export const ImagePasteModal: React.FC<ImagePasteModalProps> = ({
                         <Typography.Text strong>Format</Typography.Text>
                         <Select
                             value={format}
+                            aria-label="Image format"
+                            disabled={busy}
                             onChange={handleFormatChange}
                             options={FORMAT_OPTIONS.map((o) =>
                                 o.value === 'original' && image?.type ? { ...o, label: `Original (${image.type})` } : o,
@@ -189,6 +212,7 @@ export const ImagePasteModal: React.FC<ImagePasteModalProps> = ({
                         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
                             <Typography.Text strong>Quality</Typography.Text>
                             <Slider
+                                disabled={busy}
                                 min={0.1}
                                 max={1}
                                 step={0.05}

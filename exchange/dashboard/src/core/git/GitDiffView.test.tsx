@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 const h = vi.hoisted(() => ({
     original: 'line one\n',
@@ -20,11 +20,12 @@ vi.mock('../ui-foundation/code-editor/TextComparison', async () => {
         TextComparison: forwardRef<unknown, {
             original: string;
             modified: string;
+            modifiedReadOnly?: boolean;
             onModifiedChange?: (text: string) => void;
-        }>(({ original, modified, onModifiedChange }, _ref) => (
+        }>(({ original, modified, modifiedReadOnly, onModifiedChange }, _ref) => (
             <>
                 <textarea aria-label="Head pane" value={original} readOnly />
-                <textarea aria-label="Working tree pane" value={modified}
+                <textarea aria-label="Working tree pane" value={modified} readOnly={modifiedReadOnly}
                     onChange={event => onModifiedChange?.(event.target.value)} />
             </>
         )),
@@ -69,7 +70,7 @@ const Area: React.FC = () => (
     </CentralStackProvider>
 );
 
-const Harness: React.FC<{ area: boolean }> = ({ area }) => (
+const GitDiffFixture: React.FC<{ area: boolean }> = ({ area }) => (
     <GitDiffProvider>
         <Opener />
         {area && <Area />}
@@ -87,7 +88,7 @@ beforeEach(() => {
 
 describe('GitDiffStackPanel', () => {
     it('opens the diff over the area when the git panel names a file', async () => {
-        render(<Harness area />);
+        render(<GitDiffFixture area />);
 
         fireEvent.click(screen.getByTestId('open-a'));
 
@@ -99,7 +100,7 @@ describe('GitDiffStackPanel', () => {
     });
 
     it('retargets the one panel when another file is opened', async () => {
-        render(<Harness area />);
+        render(<GitDiffFixture area />);
         fireEvent.click(screen.getByTestId('open-a'));
         await screen.findByTestId(panelId);
 
@@ -111,7 +112,7 @@ describe('GitDiffStackPanel', () => {
     });
 
     it('closes through the floating cross, and opens again after', async () => {
-        render(<Harness area />);
+        render(<GitDiffFixture area />);
         fireEvent.click(screen.getByTestId('open-a'));
         await screen.findByTestId(panelId);
 
@@ -124,7 +125,7 @@ describe('GitDiffStackPanel', () => {
     });
 
     it('closes when the target is cleared in code', async () => {
-        render(<Harness area />);
+        render(<GitDiffFixture area />);
         fireEvent.click(screen.getByTestId('open-a'));
         await screen.findByTestId(panelId);
 
@@ -134,7 +135,7 @@ describe('GitDiffStackPanel', () => {
     });
 
     it('restores unsaved edits after the area is remounted', async () => {
-        const { rerender } = render(<Harness area />);
+        const { rerender } = render(<GitDiffFixture area />);
         fireEvent.click(screen.getByTestId('open-a'));
         const pane = await screen.findByLabelText('Working tree pane');
 
@@ -143,9 +144,9 @@ describe('GitDiffStackPanel', () => {
 
         // A navigation: the area — and the panel with it — goes away and comes back, while the
         // app-level target stays.
-        rerender(<Harness area={false} />);
+        rerender(<GitDiffFixture area={false} />);
         expect(screen.queryByTestId(panelId)).toBeNull();
-        rerender(<Harness area />);
+        rerender(<GitDiffFixture area />);
 
         expect(await screen.findByLabelText('Working tree pane'))
             .toHaveValue('line one\nline two\nline three\n');
@@ -153,7 +154,7 @@ describe('GitDiffStackPanel', () => {
     });
 
     it('drops the draft when the tree moved under it', async () => {
-        const { rerender } = render(<Harness area />);
+        const { rerender } = render(<GitDiffFixture area />);
         fireEvent.click(screen.getByTestId('open-a'));
         const pane = await screen.findByLabelText('Working tree pane');
         fireEvent.change(pane, { target: { value: 'line one\nline two\nline three\n' } });
@@ -161,28 +162,41 @@ describe('GitDiffStackPanel', () => {
         // The file was reverted elsewhere while the diff was away: what was typed was against
         // other lines.
         h.working = 'entirely rewritten\n';
-        rerender(<Harness area={false} />);
-        rerender(<Harness area />);
+        rerender(<GitDiffFixture area={false} />);
+        rerender(<GitDiffFixture area />);
 
         expect(await screen.findByLabelText('Working tree pane')).toHaveValue('entirely rewritten\n');
         expect(screen.getByRole('button', { name: /save/i })).toBeDisabled();
     });
 
     it('saves the pane back through the client', async () => {
-        render(<Harness area />);
+        let finish!: (result: { ok: boolean; output: string }) => void;
+        h.gitSave.mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+        const { rerender } = render(<GitDiffFixture area />);
         fireEvent.click(screen.getByTestId('open-a'));
         const pane = await screen.findByLabelText('Working tree pane');
         fireEvent.change(pane, { target: { value: 'line one\nline two\nline three\n' } });
 
-        fireEvent.click(screen.getByRole('button', { name: /save/i }));
+        const save = screen.getByRole('button', { name: 'Save' });
+        fireEvent.click(save);
+        expect(save).toHaveAttribute('aria-busy', 'true');
+        expect(pane).toHaveAttribute('readonly');
 
         await waitFor(() => expect(h.gitSave)
             .toHaveBeenCalledWith('notes.md', 'line one\nline two\nline three\n', ''));
+        rerender(<GitDiffFixture area={false} />);
+        rerender(<GitDiffFixture area />);
+        expect(await screen.findByLabelText('Working tree pane')).toHaveAttribute('readonly');
+        expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+
+        h.working = 'line one\nline two\nline three\n';
+        await act(async () => { finish({ ok: true, output: '' }); });
         await waitFor(() => expect(screen.getByRole('button', { name: /save/i })).toBeDisabled());
+        expect(await screen.findByLabelText('Working tree pane')).not.toHaveAttribute('readonly');
     });
 
     it('becomes clean again when edits are undone to the loaded text', async () => {
-        render(<Harness area />);
+        render(<GitDiffFixture area />);
         fireEvent.click(screen.getByTestId('open-a'));
         const pane = await screen.findByLabelText('Working tree pane');
         fireEvent.change(pane, { target: { value: 'unsaved edit' } });
@@ -192,7 +206,7 @@ describe('GitDiffStackPanel', () => {
     });
 
     it('keeps a draft on reload when the working tree is unchanged', async () => {
-        render(<Harness area />);
+        render(<GitDiffFixture area />);
         fireEvent.click(screen.getByTestId('open-a'));
         const pane = await screen.findByLabelText('Working tree pane');
         fireEvent.change(pane, { target: { value: 'unsaved edit' } });
@@ -203,21 +217,21 @@ describe('GitDiffStackPanel', () => {
 
     it('keeps the draft and allows retry after a failed save', async () => {
         h.gitSave.mockResolvedValueOnce({ ok: false, output: 'Write failed' });
-        const { rerender } = render(<Harness area />);
+        const { rerender } = render(<GitDiffFixture area />);
         fireEvent.click(screen.getByTestId('open-a'));
         const pane = await screen.findByLabelText('Working tree pane');
         fireEvent.change(pane, { target: { value: 'unsaved edit' } });
         fireEvent.click(screen.getByRole('button', { name: /save/i }));
         await waitFor(() => expect(h.gitSave).toHaveBeenCalled());
         await screen.findByText('Write failed');
-        rerender(<Harness area={false} />);
-        rerender(<Harness area />);
+        rerender(<GitDiffFixture area={false} />);
+        rerender(<GitDiffFixture area />);
         expect(await screen.findByLabelText('Working tree pane')).toHaveValue('unsaved edit');
         expect(screen.getByRole('button', { name: /save/i })).toBeEnabled();
     });
 
     it('saves to the repository the diff was opened from', async () => {
-        render(<Harness area />);
+        render(<GitDiffFixture area />);
         fireEvent.click(screen.getByTestId('open-c'));
         const pane = await screen.findByLabelText('Working tree pane');
         fireEvent.change(pane, { target: { value: 'nested edit' } });
@@ -226,7 +240,7 @@ describe('GitDiffStackPanel', () => {
     });
 
     it('opens the working-tree file in place and closes the diff', async () => {
-        render(<Harness area />);
+        render(<GitDiffFixture area />);
         fireEvent.click(screen.getByTestId('open-a'));
         await screen.findByTestId(panelId);
 
@@ -237,7 +251,7 @@ describe('GitDiffStackPanel', () => {
     });
 
     it('opens a nested repository file by its store path', async () => {
-        render(<Harness area />);
+        render(<GitDiffFixture area />);
         fireEvent.click(screen.getByTestId('open-c'));
         await screen.findByTestId(panelId);
 

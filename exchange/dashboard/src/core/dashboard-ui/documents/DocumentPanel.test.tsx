@@ -86,7 +86,7 @@ const PushProbe: React.FC = () => {
     </>;
 };
 
-const Harness: React.FC<{ content?: React.ReactNode }> = ({ content }) => (
+const DocumentPanelFixture: React.FC<{ content?: React.ReactNode }> = ({ content }) => (
     <ToolBarsProvider>
         <CentralStackProvider>
             <DocumentContentProvider value={{ content: content ?? <div data-testid="doc-content" />, areaRef: areaRef.fn }}>
@@ -229,7 +229,7 @@ describe('the document panel', () => {
     });
 
     it('draws the layout content with the stack and the mode followers over it', () => {
-        render(<Harness />);
+        render(<DocumentPanelFixture />);
 
         const area = document.querySelector('.cms-document-area');
         expect(area).not.toBeNull();
@@ -246,27 +246,27 @@ describe('the document panel', () => {
     });
 
     it('reads the layout content live rather than capturing it in the registration', () => {
-        const { rerender } = render(<Harness content={<div data-testid="doc-v1" />} />);
+        const { rerender } = render(<DocumentPanelFixture content={<div data-testid="doc-v1" />} />);
         expect(screen.getByTestId('doc-v1')).toBeInTheDocument();
 
-        rerender(<Harness content={<div data-testid="doc-v2" />} />);
+        rerender(<DocumentPanelFixture content={<div data-testid="doc-v2" />} />);
 
         expect(screen.queryByTestId('doc-v1')).toBeNull();
         expect(screen.getByTestId('doc-v2')).toBeInTheDocument();
     });
 
     it('closes a file back to its folder, and draws no cross for a folder', () => {
-        const { rerender } = render(<Harness />);
+        const { rerender } = render(<DocumentPanelFixture />);
         fireEvent.click(screen.getByTestId('close-document'));
         expect(nav.open).toHaveBeenCalledWith('');
 
         navigate('docs', true);
-        rerender(<Harness />);
+        rerender(<DocumentPanelFixture />);
         expect(screen.queryByTestId('close-document')).toBeNull();
     });
 
     it('is mounted even while another tab of the centre is showing', () => {
-        render(<Harness />);
+        render(<DocumentPanelFixture />);
         fireEvent.click(screen.getByTestId('layout-cell-git-center'));
         fireEvent.click(screen.getByTestId('tool-bar-center').querySelectorAll('.ant-tabs-tab')[1]);
         expect(screen.getByTestId('active-center')).toHaveTextContent('git');
@@ -276,14 +276,14 @@ describe('the document panel', () => {
     });
 
     it('preserves toolbar state when the document metadata changes', () => {
-        const { rerender } = render(<Harness />);
+        const { rerender } = render(<DocumentPanelFixture />);
         fireEvent.click(screen.getByTestId('layout-cell-git-center'));
         fireEvent.click(screen.getByTestId('tool-bar-center').querySelectorAll('.ant-tabs-tab')[1]);
 
         const saved = structuredClone(state.global);
         for (const [path, isDirectory] of [['b.md', false], ['docs', true], ['a.md', false]] as const) {
             navigate(path, isDirectory);
-            rerender(<Harness />);
+            rerender(<DocumentPanelFixture />);
 
             expect(screen.getByTestId('active-center')).toHaveTextContent('git');
             expect(state.global).toEqual(saved);
@@ -291,7 +291,7 @@ describe('the document panel', () => {
     });
 
     it('stays behind another central tab for a panel hosted there', () => {
-        render(<Harness />);
+        render(<DocumentPanelFixture />);
         fireEvent.click(screen.getByTestId('layout-cell-git-center'));
         fireEvent.click(screen.getByTestId('tool-bar-center').querySelectorAll('.ant-tabs-tab')[1]);
         expect(screen.getByTestId('active-center')).toHaveTextContent('git');
@@ -303,7 +303,7 @@ describe('the document panel', () => {
     });
 
     it('comes back in front with a panel pushed over it', () => {
-        render(<Harness />);
+        render(<DocumentPanelFixture />);
         fireEvent.click(screen.getByTestId('layout-cell-git-center'));
         fireEvent.click(screen.getByTestId('tool-bar-center').querySelectorAll('.ant-tabs-tab')[1]);
         expect(screen.getByTestId('active-center')).toHaveTextContent('git');

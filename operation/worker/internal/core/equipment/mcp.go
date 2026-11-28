@@ -24,3 +24,11 @@ const (
 	MCPStdio = "stdio"
 	MCPHTTP  = "http"
 )
+
+type MCPDiagnostic struct {
+	Server    string `json:"server"`
+	Available bool   `json:"available"`
+	Stage     string `json:"stage,omitempty"`
+	Message   string `json:"message,omitempty"`
+	Tools     int    `json:"tools,omitempty"`
+}

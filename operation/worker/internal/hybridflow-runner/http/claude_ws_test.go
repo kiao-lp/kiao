@@ -65,7 +65,7 @@ func TestSubscribeToUnknownConversationAnswersNotRunning(t *testing.T) {
 // TestWebSocketRequiresAuthInProd ensures the WS endpoint is gated by the same role check as the
 // REST endpoints when not in debug mode.
 func TestWebSocketRequiresAuthInProd(t *testing.T) {
-	cfg := &runnerconfig.Config{Config: &coreconfig.Config{AuthMode: "prod", RootPath: t.TempDir(),
+	cfg := &runnerconfig.Config{Config: &coreconfig.Config{AuthMode: "prod", DCMSRoot: t.TempDir(),
 		IssuerURI: "https://issuer.example/realms/kiao", JwkSetURI: "https://issuer.example/jwks"}}
 	hub := assembly.NewEngine(cfg, nil)
 	srv := &Service{cfg: cfg, hub: hub}
@@ -970,6 +970,26 @@ func TestPromptRejectsUnknownPermissionMode(t *testing.T) {
 	}
 }
 
+func TestPromptRejectsAnInvalidResponseTokenLimit(t *testing.T) {
+	srv := newSocketTestServer(t, nil)
+	ts := httptest.NewServer(srv.handler())
+	defer ts.Close()
+	conn := dialClaude(t, ts.URL)
+	defer conn.Close()
+	readFrame(t, conn) // hello
+
+	for _, limit := range []string{"0", "25\nWrite more", strings.Repeat("9", 23)} {
+		sendFrame(t, conn, map[string]any{
+			"type": "prompt", "conversationId": "conv-1700000000000-abcd", "prompt": "hi",
+			"responseTokenLimit": limit,
+		})
+		msg := readFrame(t, conn)
+		if msg["type"] != "error" || msg["code"] != turnevents.ErrCodeBadResponseTokenLimit {
+			t.Errorf("limit %q: reply = %v, want %s", limit, msg, turnevents.ErrCodeBadResponseTokenLimit)
+		}
+	}
+}
+
 // TestPromptRefusesBypassWhenTheServiceDisallowsIt covers both ways a turn could end up running
 // unasked on a service that switched bypass off: the mode sent with the prompt, and the mode the
 // conversation already stores — which is what an omitted field resolves to, and which a store
@@ -1051,9 +1071,9 @@ func TestClaudeHubRejectsWhenAtCapacity(t *testing.T) {
 // in whatever the service's own working directory happens to be.
 func TestPromptRefusesAFolderThatIsGone(t *testing.T) {
 	store, cfg := newTurnRegistry(t)
-	mustMkdir(t, cfg.RootPath, "units")
+	mustMkdir(t, cfg.DCMSRoot, "units")
 	conversation := mustCreateConversation(t, store, "units")
-	if err := os.RemoveAll(filepath.Join(cfg.RootPath, "units")); err != nil {
+	if err := os.RemoveAll(filepath.Join(cfg.DCMSRoot, "units")); err != nil {
 		t.Fatal(err)
 	}
 	srv := newSocketTestServerWith(t, cfg, store)
@@ -1603,7 +1623,7 @@ func TestATurnRunsEndToEndOnAnHarnessWithNoCLI(t *testing.T) {
 	srv := newSocketTestServerWith(t, cfg, store)
 	harness := &stubHarness{}
 	srv.hub.Harnesses.Set(harnessapi.HarnessClaude, harness)
-	mustMkdir(t, cfg.RootPath, "units")
+	mustMkdir(t, cfg.DCMSRoot, "units")
 	conversation := mustCreateConversation(t, store, "units")
 
 	ts := httptest.NewServer(srv.handler())
@@ -1691,6 +1711,66 @@ func TestATurnRunsEndToEndOnAnHarnessWithNoCLI(t *testing.T) {
 	}
 }
 
+func TestResponseTokenLimitScopesTheModelPromptToOneTurn(t *testing.T) {
+	store, cfg := newTurnRegistry(t)
+	srv := newSocketTestServerWith(t, cfg, store)
+	harness := &stubHarness{}
+	srv.hub.Harnesses.Set(harnessapi.HarnessClaude, harness)
+	conversation := mustCreateConversation(t, store, "")
+
+	ts := httptest.NewServer(srv.handler())
+	defer ts.Close()
+	conn := dialClaude(t, ts.URL)
+	defer conn.Close()
+	readFrame(t, conn) // hello
+
+	for _, test := range []struct {
+		name, prompt, limit, instruction string
+	}{
+		{"limited", "Say hello", "5", "For this turn, use at most 5 tokens total"},
+		{"unlimited", "Tell me more", "", ""},
+		{"large", "Say hello", "1771124240896309575375", "For this turn, use at most 1771124240896309575375 tokens total"},
+		{"slash command", "/compact", "5", ""},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			frame := map[string]any{"type": "prompt", "conversationId": conversation.ID, "prompt": test.prompt}
+			if test.limit != "" {
+				frame["responseTokenLimit"] = test.limit
+			}
+			sendFrame(t, conn, frame)
+			start := readUntil(t, conn, "start")
+			driver := harness.waitForDriver(t)
+			defer driver.finish(0)
+			composed := driver.spawnedWith().Prompt
+			if test.instruction == "" {
+				if composed != test.prompt {
+					t.Errorf("model prompt = %q, want %q", composed, test.prompt)
+				}
+			} else if !strings.HasPrefix(composed, test.prompt+"\n\n"+test.instruction) {
+				t.Errorf("model prompt = %q, want %q followed by %q", composed, test.prompt, test.instruction)
+			}
+
+			records := mustMessages(t, store, conversation.ID)
+			last := records[len(records)-1]
+			if last.Text != test.prompt || last.ComposedPrompt != composed || last.TurnID != start["turnId"] {
+				t.Errorf("last record = %+v, want the original message and composed prompt recorded separately", last)
+			}
+			sendFrame(t, conn, map[string]any{"type": "subscribe", "conversationIds": []string{conversation.ID}})
+			if sync := readUntil(t, conn, "sync"); sync["userText"] != test.prompt {
+				t.Errorf("sync userText = %q, want %q", sync["userText"], test.prompt)
+			}
+
+			const reply = "Hello! Here is the entire message produced by the harness."
+			driver.text(reply)
+			if output := readUntil(t, conn, "output"); output["data"] != reply {
+				t.Errorf("output = %v, want the complete reply", output)
+			}
+			driver.finish(0)
+			readUntil(t, conn, "done")
+		})
+	}
+}
+
 // The prompt that started a turn, the betweens said into it and the reply that settled it all
 // carry the turn's id — which is what joins a record to the log lines written while it ran. The
 // running marker carries it too, for the settle record of a turn nobody is left to ask about.
@@ -1699,7 +1779,7 @@ func TestTurnRecordsNameTheirTurn(t *testing.T) {
 	srv := newSocketTestServerWith(t, cfg, store)
 	harness := &stubHarness{}
 	srv.hub.Harnesses.Set(harnessapi.HarnessClaude, harness)
-	mustMkdir(t, cfg.RootPath, "units")
+	mustMkdir(t, cfg.DCMSRoot, "units")
 	conversation := mustCreateConversation(t, store, "units")
 
 	ts := httptest.NewServer(srv.handler())
@@ -1738,7 +1818,7 @@ func TestPromptFilesWhatTheModelWasSent(t *testing.T) {
 	srv := newSocketTestServerWith(t, cfg, store)
 	harness := &stubHarness{}
 	srv.hub.Harnesses.Set(harnessapi.HarnessClaude, harness)
-	mustMkdir(t, cfg.RootPath, "units")
+	mustMkdir(t, cfg.DCMSRoot, "units")
 	conversation := mustCreateConversation(t, store, "units")
 
 	job, refusal := srv.hub.StartTurnFor(nil, access.Identity{User: "tester"}, pkgTurns.TurnRequest{
@@ -2069,7 +2149,7 @@ func intPtr(n int) *int { return &n }
 // Claude harness answers all four, which is why the surface is the one it has always been.
 //
 // Every harness is stubbed, because the options endpoint is mounted for *any* harness with something
-// to publish: it answers per harness and one silent engine is no reason to take it off the air.
+// to publish: it answers per harness and one silent harness is no reason to take it off the air.
 func TestAnHarnessAnsweringNoSidePortsHasNoPanels(t *testing.T) {
 	store, cfg := newTurnRegistry(t)
 
@@ -2115,12 +2195,12 @@ func TestAnHarnessAnsweringNoSidePortsHasNoPanels(t *testing.T) {
 	}
 }
 
-// newTurnRegistry builds the registry a turn consults, over a fresh store root and a state
+// newTurnRegistry builds the registry a turn consults, over a fresh DCMS root and a state
 // directory of its own.
 func newTurnRegistry(t *testing.T) (*pkgConversations.ConversationStore, *runnerconfig.Config) {
 	t.Helper()
 	cfg := &runnerconfig.Config{
-		Config: &coreconfig.Config{AuthMode: "debug", RootPath: t.TempDir(), StatePath: t.TempDir(), MaxUploadBytes: 1 << 20},
+		Config: &coreconfig.Config{AuthMode: "debug", DCMSRoot: t.TempDir(), StatePath: t.TempDir(), MaxUploadBytes: 1 << 20},
 		// What LoadConfig defaults it to. A hand-built Config leaves it false — fail closed — so the
 		// tests that drive a `bypassPermissions` turn have to say so, exactly like a deployment does.
 		BypassEnabled: true,
@@ -2135,7 +2215,7 @@ func newTurnRegistry(t *testing.T) (*pkgConversations.ConversationStore, *runner
 // newSocketTestServer builds the minimum Server the socket needs, over a temp root.
 func newSocketTestServer(t *testing.T, store *pkgConversations.ConversationStore) *Service {
 	t.Helper()
-	cfg := &runnerconfig.Config{Config: &coreconfig.Config{AuthMode: "debug", RootPath: t.TempDir(), MaxUploadBytes: 1 << 20}}
+	cfg := &runnerconfig.Config{Config: &coreconfig.Config{AuthMode: "debug", DCMSRoot: t.TempDir(), MaxUploadBytes: 1 << 20}}
 	return newSocketTestServerWith(t, cfg, store)
 }
 

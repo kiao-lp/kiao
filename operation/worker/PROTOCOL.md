@@ -21,7 +21,7 @@ The WebSocket uses `hello.protocolVersion`; its [versioning rule](PROTOCOL/socke
 requires a client with a mismatched version to stop and request a reload.
 
 **The wire is harness-neutral.** Claude, Codex, Muse and Pi share the same message
-shapes. The `harness` field and model names identify the engine-specific values.
+shapes. The `harness` field identifies the tooling that supplies the model and permission options.
 
 Runner HTTP endpoints under `/hybridflow-runner/…` also accept `/harnesses/…` and `/claude/…`
 as compatibility aliases, with the same handlers and payloads. The socket accepts
@@ -60,7 +60,7 @@ The same account has full access from every application, over HTTP and WebSocket
 operations a client presents do not define a separate authorization scope. See the
 [access decision](/docs/solution-design/decisions/00067-owner-access-from-every-application.md).
 
-Path bounds, state-directory protection, agent permissions and file-operation checks apply
+Path bounds, state-directory protection, harness permission modes and file-operation checks apply
 independently. `GET /healthz` is an unauthenticated liveness probe.
 
 ## Topics
@@ -100,7 +100,7 @@ Read when: managing installs, harness availability or MCP servers.
 Inventory, registration and asynchronous install and uninstall jobs.
 
 <a id="agents"></a>
-### [Workflow agents and harnesses](/operation/worker/PROTOCOL/harnesses.md)
+### [Agents and harnesses](/operation/worker/PROTOCOL/harnesses.md)
 Read when: working on the harness dropdown, quota display, model lists, or sign-in.
 Which harness CLIs a deployment offers and what each one can do, the usage windows and options endpoints, and how the host's CLI is signed in from the panel.
 
@@ -110,7 +110,7 @@ Attaching files to a turn, and conversations: the durable thread a turn belongs 
 
 ### [Playing a board](/operation/worker/PROTOCOL/chain-runs.md)
 Read when: touching chain-run endpoints, the run list UI, or board marking.
-How a board is played without a browser: starting a run on a card, what each card type does, how usage limits and retries wait, and how answers are filed and marked.
+How a board is played without a browser: starting a run on a flow node, what each flow node type does, how usage limits and retries wait, and how answers are filed and marked.
 
 ### [Socket frames](/operation/worker/PROTOCOL/socket-frames.md)
 Read when: opening the socket, routing frames, or resyncing after reconnect.

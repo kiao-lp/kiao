@@ -1,7 +1,7 @@
 import React from 'react';
 import { FlowNodeSettings } from '../flowNodeSettings';
 import { FlowNodeSuccess } from '../flowNodeSuccess';
-import { hasTransition, FlowNodeType } from '../flowNodeType';
+import { hasTransition, FlowNodeType, splits } from '../flowNodeType';
 import { BoardContent } from '../boardContent';
 import { CompactCheck, NextFlowNodeSelect, TransitionModeSelect } from './FlowNodeControls';
 import styles from '../Hybridflow.module.css';
@@ -17,7 +17,7 @@ interface FlowNodeSuccessEditorProps {
     readOnly?: boolean;
 }
 
-/** AI cards can compact and hand on their conversation independently of naming a successor. */
+/** AI nodes can compact and hand on their conversation independently of naming a successor. */
 export const FlowNodeSuccessEditor: React.FC<FlowNodeSuccessEditorProps> = ({
     success, content, flowNodeId, type, settings, onChange, readOnly,
 }) => (
@@ -30,7 +30,7 @@ export const FlowNodeSuccessEditor: React.FC<FlowNodeSuccessEditorProps> = ({
                 && <TransitionModeSelect success={success} settings={settings} onChange={onChange} disabled={readOnly} />}
             <NextFlowNodeSelect
                 success={success} content={content} flowNodeId={flowNodeId}
-                multiple={type === 'gateway'} onChange={onChange}
+                multiple={splits(type)} exclusive={type === 'exclusive-gateway'} onChange={onChange}
                 disabled={readOnly}
             />
         </div>

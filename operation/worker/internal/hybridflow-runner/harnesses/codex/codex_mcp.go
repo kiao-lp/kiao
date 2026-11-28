@@ -1,17 +1,24 @@
 package codex
 
 import (
+	"encoding/json"
 	"fmt"
 	"kiao/worker/internal/core/equipment"
+	"kiao/worker/internal/core/process"
+	"slices"
 	"sort"
 	"strings"
+	"time"
 )
 
 // buildCodexMCPConfig returns a deterministic TOML inline table. An empty result leaves
 // the deployment's CLI configuration untouched (no mcp_servers override).
 func buildCodexMCPConfig(servers []equipment.MCPServer) string {
-	if len(servers) == 0 {
+	if servers == nil {
 		return ""
+	}
+	if len(servers) == 0 {
+		return "{}"
 	}
 	sorted := append([]equipment.MCPServer(nil), servers...)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Name < sorted[j].Name })
@@ -19,6 +26,31 @@ func buildCodexMCPConfig(servers []equipment.MCPServer) string {
 	entries := make([]string, 0, len(sorted))
 	for _, server := range sorted {
 		entries = append(entries, tomlKey(server.Name)+" = "+codexMCPEntry(server))
+	}
+	return "{ " + strings.Join(entries, ", ") + " }"
+}
+
+// Codex merges overrides with its own MCP settings. Disable inherited entries
+// by name without supplying a transport or changing the rest of its settings.
+func excludeUnavailableMCP(binary, dir, config string, unavailable []string) string {
+	if len(unavailable) == 0 {
+		return config
+	}
+	result := process.RunProc([]string{binary, "mcp", "list", "--json"}, dir, 2*time.Second, nil)
+	var inherited []struct {
+		Name string `json:"name"`
+	}
+	if !result.OK() || json.Unmarshal([]byte(result.Stdout), &inherited) != nil {
+		return config
+	}
+	var entries []string
+	if active := strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(config, "{"), "}")); active != "" {
+		entries = append(entries, active)
+	}
+	for _, server := range inherited {
+		if slices.Contains(unavailable, server.Name) {
+			entries = append(entries, tomlKey(server.Name)+" = { enabled = false }")
+		}
 	}
 	return "{ " + strings.Join(entries, ", ") + " }"
 }

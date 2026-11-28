@@ -1,10 +1,11 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from 'src/test/render';
+import { MemoryRouter } from 'react-router-dom';
 
 /** The board reads and writes through the hybridflow store, so these run against one held in memory. */
 
-/** The one agent this deployment offers, with the three modes Claude publishes: what a card made on. */
+/** The one agent this deployment offers, with the three modes Claude publishes: what a node made on. */
 const AGENTS = await vi.hoisted(async () => {
     const { harnessOptions } = await import('src/test/harnesses');
     return [harnessOptions({
@@ -17,7 +18,7 @@ vi.mock('./useHarnessOptions', () => ({
     useHarnessOptions: () => ({ harnesses: AGENTS, optionsFor: () => AGENTS[0] }),
 }));
 
-/** The one managed agent this store keeps, on the engine above: what a card made on the board is made. */
+/** The store's only agent, used when creating an AI task on the board. */
 vi.mock('./Agents-ctx', () => ({
     useAgents: () => ({
         agents: [{ id: 'agent-1', name: 'Reviewer', harness: 'claude', model: 'opus', published: { harness: 'claude' } }],
@@ -34,19 +35,21 @@ const HANDLE = 'major';
 
 type FlowNodeSpec = { id: string; title: string } & Record<string, unknown>;
 
-/** A board of the cards it should show — the shape the service publishes, read by the board's own. */
+/** A board of the nodes it should show — the shape the service publishes, read by the board's own. */
 const boardOf = (...flowNodes: FlowNodeSpec[]): BoardContent => readBoardContent({ flowNodes });
 
-/** One card, as the wire holds it. */
-const card = (id: string, title = id, over: Record<string, unknown> = {}): FlowNodeSpec =>
+/** One node, as the wire holds it. */
+const node = (id: string, title = id, over: Record<string, unknown> = {}): FlowNodeSpec =>
     ({ id, title, ...over });
 
 let service: FakeHybridflowClient;
 
 const wrapper = ({ children }: { children: React.ReactNode }) => (
-    <HybridflowClientProvider client={service.asClient()}>
-        <HybridflowProvider>{children}</HybridflowProvider>
-    </HybridflowClientProvider>
+    <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <HybridflowClientProvider client={service.asClient()}>
+            <HybridflowProvider>{children}</HybridflowProvider>
+        </HybridflowClientProvider>
+    </MemoryRouter>
 );
 
 const tick = (ms = 0) => act(async () => { await vi.advanceTimersByTimeAsync(ms); });
@@ -73,7 +76,7 @@ const sent = () => service.calls.filter(call => !call.startsWith('board '));
 beforeEach(() => {
     vi.clearAllMocks();
     vi.useFakeTimers();
-    service = new FakeHybridflowClient(boardOf(card('t1', 'Write the plan')), HANDLE);
+    service = new FakeHybridflowClient(boardOf(node('t1', 'Write the plan')), HANDLE);
 });
 
 afterEach(() => { vi.useRealTimers(); });
@@ -84,7 +87,7 @@ describe('Hybridflow – opening and closing', () => {
         expect(shape(result)).toEqual(['Write the plan']);
 
         act(() => { result.current.closeBoard(); });
-        service.content = boardOf(card('t1', 'Write the plan'), card('t2', 'Added by hand'));
+        service.content = boardOf(node('t1', 'Write the plan'), node('t2', 'Added by hand'));
         act(() => { result.current.openBoard(HANDLE); });
         await tick();
 
@@ -117,18 +120,18 @@ describe('Hybridflow – following the board it is open on', () => {
         const result = await openedBoard();
 
         service.elsewhere(() => boardOf(
-            card('t1', 'Write the plan', { status: 'done', body: 'Answered' }),
+            node('t1', 'Write the plan', { status: 'done', body: 'Answered' }),
         ));
         await tick();
 
         expect(flowNodeById(result, 't1')).toMatchObject({ status: 'done', body: 'Answered' });
     });
 
-    it('shows a card a turn added', async () => {
+    it('shows a node a turn added', async () => {
         const result = await openedBoard();
 
         service.elsewhere(() => boardOf(
-            card('t1', 'Write the plan'), card('t9', 'Added by a turn'),
+            node('t1', 'Write the plan'), node('t9', 'Added by a turn'),
         ));
         await tick();
 
@@ -138,7 +141,7 @@ describe('Hybridflow – following the board it is open on', () => {
     it('reads the board when it is asked to', async () => {
         const result = await openedBoard();
 
-        service.content = boardOf(card('t1', 'Write the plan', { status: 'running' }));
+        service.content = boardOf(node('t1', 'Write the plan', { status: 'running' }));
         act(() => { result.current.reloadBoard(); });
         await tick();
 
@@ -150,7 +153,7 @@ describe('Hybridflow – following the board it is open on', () => {
         act(() => { result.current.select('t1'); });
         const opened = result.current.openingId;
 
-        service.elsewhere(() => boardOf(card('t1', 'Write the plan', { status: 'done' })));
+        service.elsewhere(() => boardOf(node('t1', 'Write the plan', { status: 'done' })));
         await tick();
 
         expect(result.current.selected).toBe('t1');
@@ -163,13 +166,13 @@ describe('Hybridflow – written at both ends at once', () => {
     // The point of the whole thing: starting a play must not stop the next ticket being written, and writing it.
     it('keeps a ticket typed here and a mark made by the run', async () => {
         service = new FakeHybridflowClient(
-            boardOf(card('t1', 'Played'), card('t2', 'Next one')), HANDLE);
+            boardOf(node('t1', 'Played'), node('t2', 'Next one')), HANDLE);
         const result = await openedBoard();
 
         act(() => { result.current.editFlowNode('t2', { title: 'Next one, written up' }); });
         service.elsewhere(() => boardOf(
-            card('t1', 'Played', { status: 'done', chat: 'chat-1' }),
-            card('t2', 'Next one'),
+            node('t1', 'Played', { status: 'done', chat: 'chat-1' }),
+            node('t2', 'Next one'),
         ));
         await tick();
 
@@ -181,12 +184,12 @@ describe('Hybridflow – written at both ends at once', () => {
 
     it('takes a mark made on the very flow node being read', async () => {
         service = new FakeHybridflowClient(
-            boardOf(card('t1', 'Played', { body: 'Do the thing.' })), HANDLE);
+            boardOf(node('t1', 'Played', { body: 'Do the thing.' })), HANDLE);
         const result = await openedBoard();
 
         act(() => { result.current.editFlowNode('t1', { title: 'Played, retitled' }); });
         service.elsewhere(() => boardOf(
-            card('t1', 'Played', { body: 'Do the thing.', status: 'done', chat: 'chat-1' }),
+            node('t1', 'Played', { body: 'Do the thing.', status: 'done', chat: 'chat-1' }),
         ));
         await tick();
 
@@ -196,14 +199,14 @@ describe('Hybridflow – written at both ends at once', () => {
         expect(flowNodeById(result, 't1')!.chat).toBe('chat-1');
     });
 
-    it('keeps a card placed here while the run was writing the board', async () => {
+    it('keeps a node placed here while the run was writing the board', async () => {
         service = new FakeHybridflowClient(boardOf(
-            card('t1', 'Played', { spot: { x: 0, y: 0 } }),
+            node('t1', 'Played', { spot: { x: 0, y: 0 } }),
         ), HANDLE);
         const result = await openedBoard();
 
         act(() => { result.current.moveSpots(['t1'], 100, 50); });
-        service.elsewhere(() => boardOf(card('t1', 'Played', { status: 'done' })));
+        service.elsewhere(() => boardOf(node('t1', 'Played', { status: 'done' })));
         await tick();
 
         expect(flowNodeById(result, 't1')!.spot).toEqual({ x: 100, y: 50 });
@@ -253,7 +256,7 @@ describe('Hybridflow – what a gesture sends', () => {
 
     it('sends one call per gesture, naming only what it changed', async () => {
         service = new FakeHybridflowClient(
-            boardOf(card('t1', 'One'), card('t2', 'Two')), HANDLE);
+            boardOf(node('t1', 'One'), node('t2', 'Two')), HANDLE);
         const result = await openedBoard();
 
         act(() => { result.current.editFlowNode('t1', { title: 'Renamed' }); });
@@ -270,7 +273,7 @@ describe('Hybridflow – what a gesture sends', () => {
         ]);
     });
 
-    it('creates a card under the id it minted for it', async () => {
+    it('creates a node under the id it minted for it', async () => {
         const result = await openedBoard();
 
         act(() => { result.current.addFlowNode('ai', { x: 0, y: 0 }); });
@@ -289,28 +292,28 @@ describe('Hybridflow – what a gesture sends', () => {
         expect(sent()).toEqual([]);
     });
 
-    it('files a workflow round the cards it names, and opens it', async () => {
+    it('files a workflow round the nodes it names, and opens it', async () => {
         service = new FakeHybridflowClient(
-            boardOf(card('t1', 'One'), card('t2', 'Two')), HANDLE);
+            boardOf(node('t1', 'One'), node('t2', 'Two')), HANDLE);
         const result = await openedBoard();
 
         act(() => { result.current.createWorkflow(['t1', 't2']); });
         const filed = result.current.selectedWorkflow;
         await tick();
 
-        expect(filed?.kind).toBe('workflow');
-        expect(sent()).toEqual([`createWorkflow ${HANDLE} ${filed!.id}`]);
-        expect(result.current.content?.workflows).toEqual([{ id: filed!.id, name: '' }]);
+        expect(filed).toBeTruthy();
+        expect(sent()).toEqual([`createWorkflow ${HANDLE} ${filed}`]);
+        expect(result.current.content?.workflows).toEqual([{ id: filed, name: '' }]);
         expect(result.current.content?.flowNodes.map(flowNode => flowNode.workflow))
-            .toEqual([filed!.id, filed!.id]);
+            .toEqual([filed, filed]);
     });
 
-    it('ungroups the cards of a workflow taken off, and one a delete emptied', async () => {
+    it('ungroups the nodes of a workflow taken off, and one a delete emptied', async () => {
         service = new FakeHybridflowClient(
-            boardOf(card('t1', 'One'), card('t2', 'Two')), HANDLE);
+            boardOf(node('t1', 'One'), node('t2', 'Two')), HANDLE);
         const result = await openedBoard();
         act(() => { result.current.createWorkflow(['t1', 't2']); });
-        const filed = result.current.selectedWorkflow!.id;
+        const filed = result.current.selectedWorkflow!;
         await tick();
 
         act(() => { result.current.removeFlowNodes(['t1', 't2']); });
@@ -322,10 +325,10 @@ describe('Hybridflow – what a gesture sends', () => {
 });
 
 describe('Hybridflow – a board written with columns', () => {
-    it('reads the cards and leaves the columns behind', async () => {
+    it('reads the nodes and leaves the columns behind', async () => {
         service = new FakeHybridflowClient(readBoardContent({
             columns: [{ id: 'col-Todo', title: 'Todo' }],
-            flowNodes: [card('t1', 'Write the plan')],
+            flowNodes: [node('t1', 'Write the plan')],
         }), HANDLE);
         const result = await openedBoard();
 
@@ -348,7 +351,7 @@ describe('Hybridflow – the open flow node', () => {
         expect(shape(result)).toEqual(['Write the plan', '']);
     });
 
-    it('makes a card of the kind picked, at the point on the canvas it was asked for', async () => {
+    it('makes a node of the kind picked, at the point on the canvas it was asked for', async () => {
         const result = await openedBoard();
 
         act(() => { result.current.addFlowNode('scheduler', { x: 320, y: 160 }); });
@@ -372,7 +375,7 @@ describe('Hybridflow – the open flow node', () => {
         expect(result.current.selectedFlowNode!.flowNode.settings).toEqual({});
     });
 
-    it('opens the copy a clone makes, not the card it was made from', async () => {
+    it('opens the copy a clone makes, not the node it was made from', async () => {
         const result = await openedBoard();
 
         act(() => { result.current.cloneFlowNode('t1'); });
@@ -382,7 +385,7 @@ describe('Hybridflow – the open flow node', () => {
         expect(result.current.selectedFlowNode!.flowNode.id).toBe(result.current.content!.flowNodes[1].id);
     });
 
-    it('leaves the board alone when the card a clone names has gone', async () => {
+    it('leaves the board alone when the node a clone names has gone', async () => {
         const result = await openedBoard();
 
         act(() => { result.current.cloneFlowNode('nowhere'); });
@@ -391,7 +394,7 @@ describe('Hybridflow – the open flow node', () => {
         expect(result.current.selected).toBeNull();
     });
 
-    it('holds the title focus for the card the canvas menu makes, until the panel takes it', async () => {
+    it('holds the title focus for the node the canvas menu makes, until the panel takes it', async () => {
         const result = await openedBoard();
 
         act(() => { result.current.addFlowNode('ai', { x: 0, y: 0 }); });
@@ -407,8 +410,8 @@ describe('Hybridflow – the open flow node', () => {
 
     it('does not count a move as an opening, and keeps the flow node open through it', async () => {
         service = new FakeHybridflowClient(boardOf(
-            card('t1', 'Write the plan', { spot: { x: 0, y: 0 } }),
-            card('t2', 'Move me', { spot: { x: 400, y: 0 } }),
+            node('t1', 'Write the plan', { spot: { x: 0, y: 0 } }),
+            node('t2', 'Move me', { spot: { x: 400, y: 0 } }),
         ), HANDLE);
         const result = await openedBoard();
 
@@ -445,8 +448,8 @@ describe('Hybridflow – where a flow node stands', () => {
     });
 });
 
-describe('Hybridflow – the cards picked out', () => {
-    it('holds exactly the cards the box names', async () => {
+describe('Hybridflow – the nodes picked out', () => {
+    it('holds exactly the nodes the box names', async () => {
         const result = await openedBoard();
 
         act(() => { result.current.toggleMark('t1'); });
@@ -460,8 +463,8 @@ describe('Hybridflow – the cards picked out', () => {
     });
 });
 
-describe('Hybridflow – pasting cards', () => {
-    it('files the clipboard’s cards at the end of the board and opens the first', async () => {
+describe('Hybridflow – pasting nodes', () => {
+    it('files the clipboard’s nodes at the end of the board and opens the first', async () => {
         const result = await openedBoard();
 
         const coming = [newFlowNode('Pasted one'), newFlowNode('Pasted two')];

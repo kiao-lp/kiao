@@ -36,11 +36,11 @@ const held = (texts: string[]): SuccessCriterion[] =>
 
 /** The editor over criteria held above it, the way both faces of the task editor hold them. */
 const showing = (texts: string[]) => {
-    const Harness: React.FC = () => {
+    const FlowNodeControlsFixture: React.FC = () => {
         const [criteria, setCriteria] = React.useState<SuccessCriterion[]>(() => held(texts));
         return <SuccessCriteriaEditor criteria={criteria} onChange={setCriteria} />;
     };
-    return render(<Harness />);
+    return render(<FlowNodeControlsFixture />);
 };
 
 const boxes = () =>
@@ -147,9 +147,9 @@ describe("a gateway's branches, picked in the panel", () => {
         const right = { ...newFlowNode('Right'), id: 'right-id' };
         const join = { ...newFlowNode('Join'), id: 'join-id', type: 'gateway' as const };
         const content: BoardContent = {
-            flowNodes: [join, left, right], flowNodeClasses: [], workflows: [], workflowClasses: [],
+            flowNodes: [join, left, right], workflows: [],
         };
-        const Harness: React.FC = () => {
+        const FlowNodeControlsFixture: React.FC = () => {
             const [success, setSuccess] = React.useState<FlowNodeSuccess>(() => ({
                 flowNode: '', flowNodes: branches, mode: 'end', compact: false,
             }));
@@ -160,7 +160,7 @@ describe("a gateway's branches, picked in the panel", () => {
                 />
             );
         };
-        return render(<Harness />);
+        return render(<FlowNodeControlsFixture />);
     };
 
     it('shows the branches it holds', () => {

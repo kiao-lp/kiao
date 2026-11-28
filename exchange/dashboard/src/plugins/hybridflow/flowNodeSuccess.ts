@@ -1,9 +1,9 @@
 /** Successors reference stable node ids. */
 
 import { isPlayable, FlowNodeSettings } from './flowNodeSettings';
-import { chains, hasTransition, FlowNodeType } from './flowNodeType';
+import { chains, hasTransition, FlowNodeType, splits } from './flowNodeType';
 
-/** continue forks transcript and agent session, preserving this node's chat; end starts a fresh chat. */
+/** Continue forks the transcript and a compatible harness session while preserving this node's chat. End starts a fresh chat. */
 export type TransitionMode = 'end' | 'continue';
 
 export const TRANSITION_MODE_LABELS: Record<TransitionMode, string> = {
@@ -26,7 +26,7 @@ export const brokenTransition = (success: FlowNodeSuccess, settings: FlowNodeSet
 export interface FlowNodeSuccess {
 
     flowNode: string;
-    /** Gateway-only branch ids, in listed order; started in parallel. */
+    /** Linked branches, in order. */
     flowNodes: string[];
     mode: TransitionMode;
 
@@ -50,13 +50,13 @@ export const withoutSuccessor = (success: FlowNodeSuccess): FlowNodeSuccess => (
 
 /**
  * Drop chat actions on non-AI nodes, Shutdown successors and non-Gateway branches.
- * Otherwise hidden, uneditable document values could leave a card marked broken.
+ * Otherwise hidden, uneditable document values could leave a node marked broken.
  */
 export const successFor = (success: FlowNodeSuccess, type: FlowNodeType): FlowNodeSuccess => {
     const asked = hasTransition(type);
     const mode = asked ? success.mode : TRANSITION_MODE_DEFAULT;
     const compact = asked && success.compact;
-    const gateway = type === 'gateway';
+    const gateway = splits(type);
     const flowNode = gateway ? '' : (chains(type) ? success.flowNode : '');
     const flowNodes = gateway ? success.flowNodes : [];
     const sameBranches = flowNodes.length === 0

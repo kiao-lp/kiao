@@ -6,7 +6,7 @@ import { useWorkerClient } from '@kiao-dashboard-core';
 vi.mock('@kiao-dashboard-core', () => ({ useWorkerClient: vi.fn() }));
 
 const PATH = 'templates/greeting.temp.md';
-const SOURCE = '# Greeting\n\n## template\n\nHello {{name}}\n';
+const SOURCE = '# Greeting\n\nLegacy index text\n\n## Root\n\n### textTemplate\n\nHello ${name}\n';
 
 const Probe = () => {
     const { template, setTemplate } = useTemplatePersistenceContext();
@@ -46,6 +46,7 @@ describe('TemplatePersistence (autosave)', () => {
             () => expect(update).toHaveBeenCalledWith(PATH, expect.stringContaining('Renamed')),
             { timeout: 3000 },
         );
+        expect(update.mock.calls[0][1]).not.toContain('Legacy index text');
     });
 
     // Loading a template must not write it straight back: that would be a no-op commit on every

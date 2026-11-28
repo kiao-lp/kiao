@@ -63,11 +63,11 @@ describe('bookmarksFileText', () => {
 });
 
 describe('linkOfPath', () => {
-    it('is the path from the store root, with a leading slash', () => {
+    it('is the path from the DCMS root, with a leading slash', () => {
         expect(linkOfPath('units/abc/cadre.md')).toBe('/units/abc/cadre.md');
     });
 
-    // Stored links keep percent-encoding; the link fixer matches either form.
+    // DCMS links may be percent-encoded. The link fixer matches raw and encoded forms.
     it('encodes what a writer of a link escapes', () => {
         expect(linkOfPath('backlog/board/10 To Test.tasks.md'))
             .toBe('/backlog/board/10%20To%20Test.tasks.md');
@@ -112,7 +112,7 @@ describe('indexOfPath', () => {
         expect(indexOfPath(readBookmarks(FILE), 'units/abc/podcast.md')).toBe(-1);
     });
 
-    it('finds the store root, which is bookmarked as `/`', () => {
+    it('finds the DCMS root, which is bookmarked as `/`', () => {
         const bookmarks = readBookmarks([{ title: 'Everything', link: '/', note: '' }]);
         expect(indexOfPath(bookmarks, '')).toBe(0);
     });

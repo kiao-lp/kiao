@@ -7,14 +7,17 @@ import type {
     HarnessConversationFork,
     HarnessConversationPatch,
 } from 'kiao-worker';
+import { WorkerError } from 'kiao-worker';
 import { useWorkerClient, useGlobalViewState } from '@kiao-dashboard-core';
 import { useChatSocketContext } from './ChatSocket-ctx';
 
 export interface ChatConversationsState {
     conversations: HarnessConversation[];
+    allConversations: HarnessConversation[];
     activeId: string | null;
     setActiveId: (id: string | null) => void;
     loading: boolean;
+    listFailed: boolean;
 
     create: (body: HarnessConversationCreate) => Promise<HarnessConversation>;
 
@@ -32,22 +35,18 @@ export interface ChatConversationsState {
 const byUpdatedAtDesc = (a: HarnessConversation, b: HarnessConversation): number =>
     b.updatedAt.localeCompare(a.updatedAt);
 
-/**
- * Applies one conversation to the list.
- * Archiving is how a conversation leaves the switcher without being lost, so an archived record is.
- */
 const upsert = (list: HarnessConversation[], conversation: HarnessConversation): HarnessConversation[] => {
     const held = list.find(entry => entry.id === conversation.id);
     if (held && held.updatedAt > conversation.updatedAt) return list;
     const without = list.filter(entry => entry.id !== conversation.id);
-    if (conversation.archived) return without;
     return [...without, conversation].sort(byUpdatedAtDesc);
 };
 
 export const useChatConversations = (): ChatConversationsState => {
     const workerClient = useWorkerClient();
     const { onRegistry, close } = useChatSocketContext();
-    const [conversations, setConversations] = useState<HarnessConversation[]>([]);
+    const [allConversations, setAllConversations] = useState<HarnessConversation[]>([]);
+    const conversations = useMemo(() => allConversations.filter(entry => !entry.archived), [allConversations]);
     const [loading, setLoading] = useState(true);
     const [listed, setListed] = useState(false);
     const [reloads, setReloads] = useState(0);
@@ -63,15 +62,15 @@ export const useChatConversations = (): ChatConversationsState => {
     useEffect(() => {
         let cancelled = false;
         setLoading(true);
-        workerClient.listHarnessConversations()
+        workerClient.listHarnessConversations(true)
             .then(list => {
                 if (cancelled) return;
-                setConversations([...list].sort(byUpdatedAtDesc));
+                setAllConversations([...list].sort(byUpdatedAtDesc));
                 setListed(true);
             })
             .catch(() => {
                 if (cancelled) return;
-                setConversations([]);
+                setAllConversations([]);
                 setListed(false);
             })
             .finally(() => {
@@ -82,10 +81,10 @@ export const useChatConversations = (): ChatConversationsState => {
 
     useEffect(() => onRegistry(msg => {
         if (msg.type === 'conversation') {
-            setConversations(prev => upsert(prev, msg.conversation));
+            setAllConversations(prev => upsert(prev, msg.conversation));
             return;
         }
-        setConversations(prev => prev.filter(entry => entry.id !== msg.conversationId));
+        setAllConversations(prev => prev.filter(entry => entry.id !== msg.conversationId));
         close(msg.conversationId);
     }), [onRegistry, close]);
 
@@ -97,7 +96,7 @@ export const useChatConversations = (): ChatConversationsState => {
 
     // record here means the switcher never waits on a frame to show what was just made.
     const show = useCallback((conversation: HarnessConversation) => {
-        setConversations(prev => upsert(prev, conversation));
+        setAllConversations(prev => upsert(prev, conversation));
         setActiveId(conversation.id);
     }, [setActiveId]);
 
@@ -115,13 +114,17 @@ export const useChatConversations = (): ChatConversationsState => {
 
     const patch = useCallback(async (id: string, body: HarnessConversationPatch) => {
         const updated = await workerClient.patchHarnessConversation(id, body);
-        setConversations(prev => upsert(prev, updated));
+        setAllConversations(prev => prev.some(entry => entry.id === id) ? upsert(prev, updated) : prev);
         return updated;
     }, [workerClient]);
 
     const remove = useCallback(async (id: string) => {
-        await workerClient.deleteHarnessConversation(id);
-        setConversations(prev => prev.filter(entry => entry.id !== id));
+        try {
+            await workerClient.deleteHarnessConversation(id);
+        } catch (error) {
+            if (!(error instanceof WorkerError) || error.response.status !== 404) throw error;
+        }
+        setAllConversations(prev => prev.filter(entry => entry.id !== id));
         close(id);
     }, [workerClient, close]);
 
@@ -129,14 +132,16 @@ export const useChatConversations = (): ChatConversationsState => {
 
     return useMemo(() => ({
         conversations,
+        allConversations,
         activeId,
         setActiveId,
         loading,
+        listFailed: !loading && !listed,
         create,
         show,
         fork,
         patch,
         remove,
         refresh,
-    }), [conversations, activeId, setActiveId, loading, create, show, fork, patch, remove, refresh]);
+    }), [conversations, allConversations, activeId, setActiveId, loading, listed, create, show, fork, patch, remove, refresh]);
 };

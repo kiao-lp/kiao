@@ -88,7 +88,8 @@ cp -a "$DASHBOARD_DIR/build" "$STAGE_DIR/dashboard"
 node "$SCRIPT_DIR/stage-file-migrations.js" "$PROJECT_ROOT/migrations/sources.json" "$STAGE_DIR/migrations"
 # Include dependencies: the image has Node.js but no npm.
 cp -a "$PROJECT_ROOT/dist/kiao-mcp" "$STAGE_DIR/kiao-mcp"
-python3 "$SCRIPT_DIR/stage-agentic-repositories.py" stage --available "$STAGE_DIR/agentic-seed" "$PROJECT_ROOT"
+python3 "$SCRIPT_DIR/stage-agentic-repositories.py" stage "$STAGE_DIR/agentic-seed" "$PROJECT_ROOT"
+cp "$PROJECT_ROOT/dist/kiao-build-revision" "$STAGE_DIR/VERSION"
 cp "$SCRIPT_DIR/stage-agentic-repositories.py" "$STAGE_DIR/seed-agentic-resources.py"
 # The catalogue is a directory so assemblies can add component catalogues beside pub.json.
 mkdir -p "$STAGE_DIR/catalog"
@@ -116,7 +117,7 @@ CLI_PREFIX="$PROJECT_ROOT/dist/cache/toolbox/alpine"
 mkdir -p "$STAGE_DIR/toolbox"
 
 if [ -z "$PREINSTALL" ]; then
-    echo "== No agent CLI in this image — the configuration panel installs one on demand =="
+    echo "== Harness CLIs are available on demand in the configuration panel =="
     CLIS_STAGED="none — installed on demand from the configuration panel"
 else
     echo "== Staging the harness CLIs: $PREINSTALL =="
@@ -134,7 +135,7 @@ fi
 echo "== Building image $IMAGE_NAME =="
 # BuildKit enables --platform on Docker 20.10 as well.
 export DOCKER_BUILDKIT=1
-docker build --platform linux/amd64 -t "$IMAGE_NAME" "$STAGE_DIR"
+docker build --platform linux/amd64 --label "org.opencontainers.image.revision=$(cat "$STAGE_DIR/VERSION")" -t "$IMAGE_NAME" "$STAGE_DIR"
 
 if [ "$SKIP_SAVE" -eq 0 ]; then
     echo "== Saving image to $TAR_OUT =="
@@ -163,7 +164,7 @@ echo "Image: $IMAGE_NAME"
 echo "Context: $STAGE_DIR ($(du -sh "$STAGE_DIR" 2>/dev/null | cut -f1))"
 # With the containerd image store, inspect .Size reports compressed size; use image ls.
 echo "Size: $(docker image ls --format '{{.Size}}' "$IMAGE_NAME" | head -1) (docker image ls)"
-echo "Agent CLIs: $CLIS_STAGED"
+echo "Harness CLIs: $CLIS_STAGED"
 echo "Boards: PostgreSQL + hybridflow-store, in this image"
 echo "Claude permissions: Manual / Manual Live only"
 echo "  (add -e KIAO_WORKER_HYBRIDFLOW_RUNNER_BYPASS_ENABLED=true to allow --dangerously-skip-permissions)"

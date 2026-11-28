@@ -291,8 +291,8 @@ func start(opts options) error {
 	}
 
 	// One address for the boards, and everything that touches them is given it: the proxy in front
-	// of the SPA, and the worker child whose runner claims a card and files an answer. They
-	// must agree — a person dragging a card and the run answering it writing to two different
+	// of the SPA, and the worker child whose runner claims a flow node and files an answer. They
+	// must agree — a person dragging a flow node and the run answering it writing to two different
 	// places is the kind of thing nobody notices until the board disagrees with itself.
 	//
 	// A remote service is used as it stands. A database of our own gets a port beside the

@@ -1,0 +1,29 @@
+---
+document:
+  status: DRAFT
+  role: PRIMARY_SOURCE
+---
+
+# Background operations in Dashboard
+
+This inventory records the waits and overlapping edits found in the Dashboard review. Show which operation is running where the user triggered it. Keep the values and target of a submitted operation stable until it settles. A refresh can keep serving existing data when the action can safely use it.
+
+| Area | Finding | Expected behavior |
+| --- | --- | --- |
+| [Edit agent](../../src/plugins/hybridflow/agentic-resources/components/AgentEditorPanel.tsx) | Pull has no feedback while Git checks the remote. The initial publication check also silently disables Publish. | Show each check and explain the remote state when Pull stays unavailable. |
+| [Agent and model chooser](../../src/plugins/hybridflow/agentic-resources/components/AgentMatrixDialog.tsx) | An immediate selection disables the matrix while the conversation starts, with no feedback on the selected cell. | Show progress on the cell that submitted the choice, or on the confirmation button for a fork. |
+| [Agent dependencies](../../src/plugins/hybridflow/agentic-resources/components/AgentDependenciesField.tsx) | Link, unlink and Local updates can overlap with autosaved edits to the same draft. The progress spinner is on the link picker for all three actions. | Flush draft edits, lock the draft while updating its dependencies and name the operation in progress. |
+| [Agentic resources list](../../src/plugins/hybridflow/agentic-resources/components/AgenticResourcesPanel.tsx) | Refreshing a populated list and checking an agent's Git state before deletion have no feedback. | Show progress at the refresh and delete controls, and prevent repeat requests there. |
+| [Resource source editors](../../src/plugins/hybridflow/agentic-resources/components/ResourceSourceFields.tsx) | The source field goes blank and disabled while reading a file or saving before switching files. The legacy editor also disables Git, publish and install controls with no indication of the active command. | Show which read, save or command the editor is waiting for. |
+| [Boards list](../../src/plugins/hybridflow/components/BoardsList.tsx) | Create and Rename can be submitted again or edited while the request is pending. Reload silently disables itself with a populated list. | Keep the submitted dialog stable and show progress on its action and on Reload. |
+| [Runners](../../src/plugins/hybridflow/components/RunnersPanel.tsx) | A runner can be edited or deleted while its name is being saved. Create silently disables itself while its form remains editable. Delete dismisses immediately, and each runner can claim this machine while another claim is pending. | Show progress for the action in flight, lock the affected runner or form and serialize machine claims. |
+| [Work on task](../../src/plugins/hybridflow/components/WorkOnTask.tsx) | Output stays editable during Submit. Submitting before a schema arrives reports it as unavailable. | Keep the submitted output stable and show when validation is waiting for a schema. |
+| [Git panel](../../src/core/git/GitPanel.tsx) | The sync button spins for unrelated operations. The commit message and file-row actions remain editable during a write. The branch and consolidation dialogs can close before their commands settle. | Name the active Git operation and lock controls that change its repository state or submitted values. |
+| [Git diff](../../src/core/git/GitDiffView.tsx) | Editing the working copy while Save is pending can lose the new draft when the save clears it. Reload disables itself without feedback. | Keep the working copy read-only during Save and show progress during both requests. |
+| [Configuration](../../src/core/toolbox/ToolboxPanel.tsx) | Install and Uninstall wait for a job ID before showing progress. Registration can be changed again during its request and saving plugins silently disables their switches. | Show request progress before the log is available, keep registration changes serial and show when plugin settings are saving. |
+| [Harness models](../../src/core/toolbox/HarnessModelsPanel.tsx) and [API keys](../../src/core/toolbox/PrivateKeysPanel.tsx) | Saving model preferences silently disables the table. Key actions leave both fields editable, and Show and Remove silently disable their controls. | Show the active operation and keep submitted key fields stable. |
+| [Harness sign-in](../../src/plugins/hybridflow/conversations/ChatSignIn.tsx) | The API-key form can close or switch to device sign-in while submitting, which lets it start another request. | Keep the sign-in form open and on the submitted method until the request settles. |
+| [Markdown export](../../src/kit/MarkdownEditor/ExportModal.tsx) | Export is available before the themes load. Word export leaves the format and theme editable while it runs. | Wait for the themes and keep the submitted choices stable during export. |
+| [Paste image](../../src/kit/MarkdownEditor/ImagePasteModal.tsx) | The insert button shows progress but the submitted storage, path and conversion settings remain editable. | Hold the submitted options until insertion finishes. |
+| [File optimizations](../../src/plugins/file-optimizations/FileOptimizationsView.tsx) | Re-scan silently disables itself with existing results. Both tabs can start mutations against the same scan while another operation is active. | Show scan progress and reserve result-changing actions until the scan or mutation settles. |
+| [Video segment export](../../src/plugins/movie-edit/useSaveSegments.ts) | The segment list can change after the overwrite check or while FFmpeg is installing. The save can then use a different plan from the one checked. Stop can be pressed again before the job settles. | Keep the checked export plan stable through confirmation, installation and export. Show when a stop is pending. |

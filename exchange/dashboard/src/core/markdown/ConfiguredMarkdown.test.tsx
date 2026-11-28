@@ -79,7 +79,7 @@ describe('ConfiguredMarkdown — an image link of the open document', () => {
         expect(await imageSrc(container)).toBe('/api/files/download/docs/design.assets/01-mermaid.svg');
     });
 
-    it('leaves a link that names the store root where it points', async () => {
+    it('leaves a link that names the DCMS root where it points', async () => {
         browsing.currentPath = 'units/xyz';
         const { container } = show('![](/units/abc/shot.png)');
 
@@ -137,8 +137,10 @@ describe('ConfiguredMarkdown — a render of markdown that has not changed', () 
 });
 
 const crosshairs = (container: HTMLElement): (string | null)[] =>
-    Array.from(container.querySelectorAll('.cms-reveal-in-tree'))
-        .map(button => button.previousElementSibling?.getAttribute('href') ?? null);
+    Array.from(container.querySelectorAll('.cms-reveal-in-tree')).map(button => {
+        const link = button.previousElementSibling ?? button.parentElement?.previousElementSibling;
+        return link?.getAttribute('href') ?? null;
+    });
 
 describe('ConfiguredMarkdown — where a link points', () => {
     it('puts a crosshair beside a link to another document of the store', () => {

@@ -1,6 +1,6 @@
+export const TEMPLATE_EXTENSION = '.temp.md';
 
 export interface TemplateCollectionV0 {
-    index: string;
     name?: string;
     rootTemplate: TemplateV0;
     subTemplates: TemplateV0[];

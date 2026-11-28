@@ -141,9 +141,9 @@ describe('writing what follows a flow node', () => {
     });
 });
 
-/** What becomes of the chat is asked of an AI card and of no other, and the chain of every card. */
+/** What becomes of the chat is asked of an AI node and of no other, and the chain of every node. */
 describe('what a flow node of this type can hold', () => {
-    it('leaves an AI card exactly what it said', () => {
+    it('leaves an AI node exactly what it said', () => {
         expect(successFor({ flowNode: 't2', flowNodes: [], mode: 'continue', compact: true }, 'ai'))
             .toEqual({ flowNode: 't2', flowNodes: [], mode: 'continue', compact: true });
     });
@@ -167,7 +167,7 @@ describe('what a flow node of this type can hold', () => {
 });
 
 describe("a gateway's branches", () => {
-    it('reads the list beside the single card, cleaned', () => {
+    it('reads the list beside the single node, cleaned', () => {
         expect(readSuccess({ flowNodes: [' b ', '', 'b', 'a', 42, null] }))
             .toEqual({ flowNode: '', flowNodes: ['b', 'a'], mode: 'end', compact: false });
     });
@@ -177,7 +177,7 @@ describe("a gateway's branches", () => {
         expect(readSuccess({}).flowNodes).toEqual([]);
     });
 
-    it('keeps the branches on a gateway and takes the single card off it', () => {
+    it('keeps the branches on a gateway and takes the single node off it', () => {
         expect(successFor({ flowNode: 't2', flowNodes: ['b', 'a'], mode: 'continue', compact: true }, 'gateway'))
             .toEqual({ flowNode: '', flowNodes: ['b', 'a'], mode: 'end', compact: false });
     });
@@ -189,7 +189,7 @@ describe("a gateway's branches", () => {
             .toEqual({ flowNode: '', flowNodes: [], mode: 'end', compact: false });
     });
 
-    it('says something follows where branches do, and writes them beside the single card', () => {
+    it('says something follows where branches do, and writes them beside the single node', () => {
         expect(hasSuccess({ flowNode: '', flowNodes: ['b'], mode: 'end', compact: false })).toBe(true);
         expect(writeSuccess({ flowNode: '', flowNodes: ['b', 'a'], mode: 'end', compact: false }))
             .toEqual({ flowNodes: ['b', 'a'], mode: 'end' });

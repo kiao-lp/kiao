@@ -46,7 +46,7 @@ a client of a shared service over HTTPS.
 An executable or local-start instance may instead be pointed at a **database** of its own, with
 `KIAO_HYBRIDFLOW_STORE_DATABASE_URL`, and then it starts a hybridflow-store beside its
 worker. That is for developing against something that is not production; setting both is
-refused at startup, because they are two different places to write a card to and they look
+refused at startup, because they are two different places to write a flow node to and they look
 identical from the screen.
 
 In all of them the SPA calls an **origin-relative `/api/hybridflow`**, so the same bundle is correct
@@ -54,10 +54,10 @@ everywhere and nothing in it names a host. Two things must be true of whatever s
 
 - it **does not buffer** — `GET /changes?wait=1` is held open until something on the board changes,
   and a buffering proxy delivers the answer late or in a lump, which reads as a board that does not
-  move when a run marks a card;
+  move when a run marks a flow node;
 - when the service is elsewhere, **it adds the credential**. A local instance has no Keycloak
   session to borrow: its SPA is built with `VITE_NO_SECURITY`. So the proxy presents the
-  deployment's service token and names the user in `X-Kiao-Actor`, which is the one way a card
+  deployment's service token and names the user in `X-Kiao-Actor`, which is the one way a flow node
   moved from a laptop says who moved it. The token never reaches the browser.
 
 ### One list, every environment

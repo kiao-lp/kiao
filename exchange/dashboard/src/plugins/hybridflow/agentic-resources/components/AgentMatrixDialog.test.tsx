@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from 'src/test/render';
+import { act, fireEvent, render, screen } from 'src/test/render';
 import type { HarnessOptionsEntry, HarnessProfileOffer } from 'kiao-worker';
 import type { AgentDto } from '../types';
 import { AgentMatrixDialog } from './AgentMatrixDialog';
@@ -59,5 +59,26 @@ describe('AgentMatrixDialog', () => {
 
         expect(onConfirm).toHaveBeenCalledWith({ agent: 'pi-agent', harness: 'pi', profileId: 'work', model: undefined }, false);
         expect(screen.queryByRole('button', { name: 'Cancel' })).not.toBeInTheDocument();
+    });
+
+    it('shows progress on the submitted choice and locks the matrix until it settles', async () => {
+        let finish!: () => void;
+        const onConfirm = vi.fn(() => new Promise<void>(resolve => { finish = resolve; }));
+        renderDialog(onConfirm);
+
+        const selected = await screen.findByRole('button', { name: 'Pi agent · Pi / Work' });
+        const other = screen.getByRole('button', { name: 'Reviewer · Claude Code / haiku' });
+        fireEvent.click(selected);
+
+        expect(selected).toHaveAttribute('aria-busy', 'true');
+        expect(other).toHaveAttribute('aria-busy', 'false');
+        expect(other).toBeDisabled();
+        expect(screen.getByRole('status')).toHaveTextContent('Applying agent selection…');
+        fireEvent.click(other);
+        expect(onConfirm).toHaveBeenCalledTimes(1);
+
+        await act(async () => { finish(); });
+        expect(selected).toHaveAttribute('aria-busy', 'false');
+        expect(other).toBeEnabled();
     });
 });

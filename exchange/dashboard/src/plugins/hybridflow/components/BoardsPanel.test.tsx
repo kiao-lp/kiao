@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen, within, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, within, waitFor } from 'src/test/render';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { MemoryRouter, useLocation } from 'react-router-dom';
@@ -8,10 +8,10 @@ import { Modal, message } from 'antd';
 const currentBoard = vi.hoisted(() => ({ handle: null as string | null }));
 vi.mock('../Hybridflow-ctx', () => ({ useHybridflow: () => currentBoard }));
 
-/** The boards panel is the same list as the page, drawn in a column's width: the compact face — no. */
+import { BoardsCatalogProvider } from '../BoardsCatalog-ctx';
 import { BoardsPanel } from './BoardsPanel';
 import { BoardSummary, FakeHybridflowClient, HybridflowClientProvider } from '../service';
-import { readFileText } from '../boardArchive';
+import { BOARD_ARCHIVE_VERSION, readFileText } from '../boardArchive';
 import { readBoardContent } from '../boardContent';
 
 /** One board, as a listing answers with it. */
@@ -51,12 +51,16 @@ const renderPanel = () => render(
     <MemoryRouter initialEntries={['/units/abc/cadre.md']}>
         <HybridflowClientProvider client={service.asClient()}>
             <LocationProbe />
-            <BoardsPanel />
+            <BoardsCatalogProvider><BoardsPanel /></BoardsCatalogProvider>
         </HybridflowClientProvider>
     </MemoryRouter>,
 );
 
 const rows = () => screen.findAllByTestId(/board-row-/);
+const chooseBoardAction = async (slug: string, name: string) => {
+    fireEvent.contextMenu(within(screen.getByTestId(`board-row-${slug}`)).getByRole('link'));
+    await userEvent.click(await screen.findByRole('menuitem', { name }));
+};
 
 // What the download offered: jsdom mints no object URLs, and a real click on an anchor asks it to navigate somewhere it cannot go —.
 const offeredBlobs: Blob[] = [];
@@ -80,6 +84,21 @@ afterEach(() => {
 });
 
 describe('BoardsPanel', () => {
+    it('recovers from a read failure and lists folders even when there are no boards', async () => {
+        service.boardsList = [];
+        vi.spyOn(service, 'boardFolders')
+            .mockRejectedValueOnce(new Error('Store unavailable'))
+            .mockResolvedValueOnce([{ id: 'planning', name: 'Planning' }]);
+
+        renderPanel();
+
+        const alert = await screen.findByRole('alert');
+        expect(alert).toHaveTextContent('Store unavailable');
+        await userEvent.click(within(alert).getByRole('button', { name: 'Try again' }));
+        expect(await screen.findByRole('button', { name: 'Planning' })).toBeInTheDocument();
+        expect(screen.queryByText('No boards yet.')).toBeNull();
+    });
+
     it('lists every board, each opening its own address, without the handles and hours', async () => {
         renderPanel();
 
@@ -109,7 +128,8 @@ describe('BoardsPanel', () => {
         renderPanel();
         await rows();
 
-        await userEvent.click(screen.getByRole('button', { name: /New board/ }));
+        await userEvent.click(screen.getByRole('button', { name: 'Create board or folder' }));
+        await userEvent.click(await screen.findByRole('menuitem', { name: 'New board' }));
         const dialog = await screen.findByRole('dialog');
         await userEvent.type(within(dialog).getByRole('textbox'), 'Third');
         await userEvent.click(within(dialog).getByRole('button', { name: 'Create' }));
@@ -122,7 +142,7 @@ describe('BoardsPanel', () => {
         renderPanel();
         await rows();
 
-        await userEvent.click(screen.getByTestId('rename-board-major'));
+        await chooseBoardAction('major', 'Rename');
         const dialog = await screen.findByRole('dialog');
         await userEvent.clear(within(dialog).getByLabelText('Board name'));
         await userEvent.type(within(dialog).getByLabelText('Board name'), 'Majeur');
@@ -133,12 +153,37 @@ describe('BoardsPanel', () => {
         expect(service.calls).toContain('renameBoard major Majeur');
     });
 
+    it('holds the entered board name while creation is in progress', async () => {
+        let fail!: (cause: Error) => void;
+        const create = vi.spyOn(service, 'createBoard').mockReturnValueOnce(new Promise((_, reject) => { fail = reject; }));
+        renderPanel();
+        await rows();
+        await userEvent.click(screen.getByRole('button', { name: 'Create board or folder' }));
+        await userEvent.click(await screen.findByRole('menuitem', { name: 'New board' }));
+        const dialog = within(await screen.findByRole('dialog'));
+        const name = dialog.getByRole('textbox');
+        fireEvent.change(name, { target: { value: 'Third' } });
+        const submit = dialog.getByRole('button', { name: 'Create' });
+        fireEvent.click(submit);
+
+        expect(submit).toHaveAttribute('aria-busy', 'true');
+        expect(name).toHaveAttribute('readonly');
+        expect(dialog.getByRole('button', { name: 'Cancel' })).toBeDisabled();
+        fireEvent.keyDown(name, { key: 'Enter', code: 'Enter' });
+        expect(create).toHaveBeenCalledTimes(1);
+        expect(create).toHaveBeenCalledWith('Third', undefined);
+
+        await act(async () => { fail(new Error('Unavailable')); });
+        expect(name).not.toHaveAttribute('readonly');
+        expect(name).toHaveValue('Third');
+    });
+
     it('downloads the board its row names as one JSON file', async () => {
         service.summary = { ...service.summary, name: 'Major', slug: 'major' };
         renderPanel();
         await rows();
 
-        await userEvent.click(screen.getByTestId('download-board-major'));
+        await chooseBoardAction('major', 'Download');
 
         expect(service.calls).toContain('board major');
         await waitFor(() => expect(offeredBlobs).toHaveLength(1));
@@ -157,8 +202,8 @@ describe('BoardsPanel', () => {
         await rows();
 
         const file = new File([JSON.stringify({
-            kind: 'kiao-board', version: 1, name: 'Imported',
-            flowNodes: [], flowNodeClasses: [], workflows: [], workflowClasses: [],
+            kind: 'kiao-board', version: BOARD_ARCHIVE_VERSION, name: 'Imported',
+            flowNodes: [], workflows: [],
         })], 'imported.json', { type: 'application/json' });
         fireEvent.change(screen.getByTestId('import-board-input'), { target: { files: [file] } });
 
@@ -181,11 +226,8 @@ describe('BoardsPanel', () => {
         renderPanel();
         await rows();
 
-        await userEvent.click(screen.getByTestId('delete-board-minor'));
-        const dialog = await screen.findByRole('dialog');
-        const title = within(dialog).getByText('Delete “Minor”?',
-            { selector: '.ant-modal-confirm-title' });
-        expect(title).toBeInTheDocument();
+        await chooseBoardAction('minor', 'Delete');
+        const dialog = await screen.findByRole('dialog', { name: 'Delete “Minor”?' });
         await userEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
 
         await waitFor(
@@ -198,7 +240,7 @@ describe('BoardsPanel', () => {
         renderPanel();
         await rows();
 
-        await userEvent.click(screen.getByTestId('delete-board-minor'));
+        await chooseBoardAction('minor', 'Delete');
         const dialog = await screen.findByRole('dialog');
         await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
 

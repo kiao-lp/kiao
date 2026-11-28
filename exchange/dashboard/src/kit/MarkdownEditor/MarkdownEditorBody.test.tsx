@@ -100,7 +100,7 @@ describe('the markdown preview zoom', () => {
 // Pasted image folder and link base.
 describe('the pasted image', () => {
     it('is offered the browsed file’s folder, and linked against it', () => {
-        // No file browsed in the mock: store root, relative link.
+        // No file browsed in the mock: DCMS root, relative link.
         render(body(1));
 
         expect(pasteTo.folder).toBe('');

@@ -31,13 +31,13 @@ func (a *stubHarness) Driver() harnessapi.HarnessDriver {
 	return driver
 }
 
-// claudeAgentAt is the Claude harness pointed at a binary of the test's choosing. It is what keeps one
+// claudeHarnessAt is the Claude harness pointed at a binary of the test's choosing. It is what keeps one
 // path in this package end to end over the real stream-json protocol: the board tests drive a whole
 // turn — spawn, stream, settle, transcript — through a shell script standing in for the CLI.
-func claudeAgentAt(cfg *runnerconfig.Config, binary string) *claudecli.ClaudeHarness {
+func claudeHarnessAt(cfg *runnerconfig.Config, binary string) *claudecli.ClaudeHarness {
 	harness := &claudecli.ClaudeHarness{Cfg: cfg, Binary: binary, OptionsService: claudecli.NewClaudeOptionsService(cfg)}
 	// The options service is wired because the permission modes are read off it — the board refuses a
-	// card asking for a mode its harness does not have — and stubbed because the effort levels are not
+	// flow node asking for a mode its harness does not have — and stubbed because the effort levels are not
 	// what these tests are about: reading them would spawn a `claude` the host need not have.
 	harness.OptionsService.Help = func() (string, error) { return "", errors.New("no CLI in this test") }
 	return harness

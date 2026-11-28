@@ -21,13 +21,17 @@ func managedSkillProjections(project string) (map[string]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	return skillProjectionHashes(data)
+}
+
+func skillProjectionHashes(data []byte) (map[string]string, error) {
 	var lock struct {
 		Dependencies []struct {
 			Hashes map[string]string `yaml:"deployed_file_hashes"`
 		} `yaml:"dependencies"`
 	}
-	if err = yaml.Unmarshal(data, &lock); err != nil {
-		return nil, err
+	if err := yaml.Unmarshal(data, &lock); err != nil {
+		return nil, &entities.OperationError{Message: "Fix the YAML in apm.lock.yaml or regenerate it from apm.yml.", Cause: err}
 	}
 	projections := map[string]string{}
 	for _, dependency := range lock.Dependencies {
@@ -41,6 +45,70 @@ func managedSkillProjections(project string) (map[string]string, error) {
 		}
 	}
 	return projections, nil
+}
+
+// A release worktree may contain earlier projections that are no longer in its lock.
+func (s *Store) clearReleaseSkillProjections(ctx context.Context, project string) error {
+	files, err := s.git(ctx, project, "ls-files", "-z", "--", ".agents/skills", ".claude/skills")
+	if err != nil || len(files) == 0 {
+		return err
+	}
+	current, err := managedSkillProjections(project)
+	if err != nil {
+		return err
+	}
+	pending := map[string]string{}
+	for _, name := range strings.Split(strings.TrimSuffix(string(files), "\x00"), "\x00") {
+		path, err := resourceFile(project, name)
+		if err != nil {
+			return err
+		}
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		hash := sha256.Sum256(content)
+		pending[name] = "sha256:" + hex.EncodeToString(hash[:])
+	}
+	removeMatching := func(hashes map[string]string) error {
+		for name, hash := range pending {
+			if hashes[name] == hash {
+				if err := os.Remove(filepath.Join(project, name)); err != nil {
+					return err
+				}
+				delete(pending, name)
+			}
+		}
+		return nil
+	}
+	if err = removeMatching(current); err != nil || len(pending) == 0 {
+		return err
+	}
+	history, err := s.git(ctx, project, "log", "--format=%H", "--all", "--", "apm.lock.yaml")
+	if err != nil {
+		return err
+	}
+	for _, commit := range strings.Fields(string(history)) {
+		lock, err := s.git(ctx, project, "show", commit+":apm.lock.yaml")
+		if err != nil {
+			continue // The commit can have removed the lock.
+		}
+		hashes, err := skillProjectionHashes(lock)
+		if err == nil {
+			if err = removeMatching(hashes); err != nil {
+				return err
+			}
+		}
+		if len(pending) == 0 {
+			return nil
+		}
+	}
+	for name := range pending {
+		if current[name] != "" {
+			return entities.Conflictf("generated skill %s was edited; preserve its changes before restoring the projection", name)
+		}
+	}
+	return nil
 }
 
 // APM recreates local skill projections after their committed hashes are verified.
@@ -94,7 +162,7 @@ func (s *Store) keepSkillProjectionsLocal(ctx context.Context, project string) e
 		return err
 	}
 	for chunk := range slices.Chunk(paths, 256) {
-		args := append([]string{"--literal-pathspecs", "rm", "--cached", "--ignore-unmatch", "--"}, chunk...)
+		args := append([]string{"--literal-pathspecs", "rm", "-f", "--cached", "--ignore-unmatch", "--"}, chunk...)
 		if _, err = s.git(ctx, project, args...); err != nil {
 			return err
 		}
@@ -143,7 +211,10 @@ func writeSkillProjectionIgnores(project string, paths []string) error {
 
 func (s *Store) restoreResourceDependencies(ctx context.Context, dir string) error {
 	if _, err := os.Stat(filepath.Join(dir, "SKILL.md")); err == nil {
-		data, err := os.ReadFile(filepath.Join(dir, "apm.yml"))
+		data, err := os.ReadFile(filepath.Join(dir, manifestFile))
+		if os.IsNotExist(err) {
+			return entities.Invalidf("Add %s to the root of the skill repository.", manifestFile)
+		}
 		if err != nil {
 			return err
 		}
@@ -154,7 +225,7 @@ func (s *Store) restoreResourceDependencies(ctx context.Context, dir string) err
 			} `yaml:"dependencies"`
 		}
 		if err = yaml.Unmarshal(data, &manifest); err != nil {
-			return err
+			return entities.Invalidf("Check the YAML syntax and dependency declarations in %s.", manifestFile)
 		}
 		if len(manifest.Dependencies.APM) == 0 && len(manifest.Dependencies.MCP) == 0 {
 			_, err = s.compiler.Run(ctx, dir, "deps", "list")

@@ -1,8 +1,7 @@
 import React from 'react';
-import { Button } from 'antd';
+import { IconButton, ZoomControl } from '@kiao-dashboard-core';
 import { ClearOutlined } from '@ant-design/icons';
 import { useTagsAvailable, useTagsUi } from '@kiao-dashboard-kit/capabilities';
-import { ZoomControl } from '@kiao-dashboard-kit/zoom-control';
 import { useBoardControls } from '../BoardControls-ctx';
 import styles from '../Hybridflow.module.css';
 
@@ -14,7 +13,7 @@ interface BoardFilterProps {
     selected: string[];
     onToggle: (label: string) => void;
     onClear: () => void;
-    /** Shown and total card counts; shown only while filtering. */
+    /** Visible and total flow node counts; shown only while filtering. */
     shown: number;
     total: number;
     zoom: number;
@@ -59,12 +58,10 @@ export const BoardFilter: React.FC<BoardFilterProps> = ({
                     <span className={styles.filterCount} data-testid="board-filter-count">
                         {shown} of {total} shown
                     </span>
-                    <Button
-                        type="text"
-                        size="small"
+                    <IconButton
+                        label="Clear the tag filter"
                         icon={<ClearOutlined />}
                         className={styles.filterClear}
-                        aria-label="Clear the tag filter"
                         data-testid="board-filter-clear"
                         onClick={onClear}
                     />

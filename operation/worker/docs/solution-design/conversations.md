@@ -22,10 +22,9 @@ two are joined at the handler. A conversation id is a path segment, so it is val
 metadata still says a turn was running is settled with an `interrupted` record — the process died
 with the service that spawned it, and nothing else would ever close that turn.
 
-**Agent publication.** Creation and forks bind a published agent and resolve its model, profile
-and reasoning defaults. Worker captures the publication in conversation metadata. The same turn
-engine prepares the package and supplies its instructions, skills and MCP tools for conversations
-and AI tasks.
+**Agent publication.** Creation and forks capture an agent publication and resolve its model,
+profile and reasoning defaults. Worker delivers the captured package's instructions, skills and
+MCP tools to the selected harness in free conversations and AI tasks.
 
 **Forking a conversation** (`POST /hybridflow-runner/conversations/{id}/fork`). A fork copies the
 transcript up to `fromMessageId` or the whole transcript when the field is omitted. The copy
@@ -45,10 +44,10 @@ outright.
 starts, and it is re-resolved before every turn — a folder renamed or deleted since refuses the turn
 with `bad_folder` rather than starting a process in whatever the service's own working directory
 happens to be. Resolution is stricter than the storage layer's: symlinks are followed and the result
-re-checked against the store root, because a store symlink pointing outside would otherwise put the
+re-checked against the DCMS root, because a store symlink pointing outside would otherwise put the
 CLI outside it with a path that passes the lexical test.
 
-It is a **scope, not a sandbox**. The whole store root is handed to the CLI as `--add-dir`, so a turn
+It is a **scope, not a sandbox**. The whole DCMS root is handed to the CLI as `--add-dir`, so a turn
 started in one folder reaches every other without asking — the store is one tree and the work crosses
 it — and beyond the store, `Read` and `Bash` take absolute paths and reach whatever the service user
 can. Nothing here is granular: containment is the permission mode and the human answering it.
@@ -74,9 +73,9 @@ process group. Cancellation, launcher exit and worker death trigger that cleanup
 an independent manager, such as remote systemd, keeps running. The mechanism, its scope and
 verification are recorded in [decision 00052](/operation/worker/docs/solution-design/decisions/00052-codex-process-ownership.md).
 
-**Harnesses** (`hybridflow-runner/harnesses/harnesses.go`). A conversation’s agent selects
-Claude, Codex, Muse or Pi. Each session belongs to its harness and profile. Forking with an agent
-on a different harness starts a new session. Pi execution profiles are local to the runner.
+**Harnesses** (`hybridflow-runner/harnesses/harnesses.go`). A conversation captures its selected
+harness and profile. Forking to a different harness starts a new session. Pi execution profiles
+are local to the runner.
 Codex offers bypass permissions. Claude, Muse and Pi also support manual approvals.
 [Harness options](/operation/worker/PROTOCOL/harnesses.md) · [Pi profiles](/operation/worker/PROTOCOL/pi.md)
 

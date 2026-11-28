@@ -13,7 +13,7 @@ address so the browser makes its clipboard available.
    **Copy as... → Copy text files with contents**. For several files, select them in the
    file browser first, then right-click one of the selected files.
 2. In the destination instance, right-click the destination folder in **File Tree** and
-   choose **Paste text files**. The store root and the file browser's empty area also
+   choose **Paste text files**. The DCMS root and the file browser's empty area also
    offer this command.
 
 The clipboard carries each file's name and complete text. Markdown, JSON, SVG, source code

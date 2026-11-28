@@ -22,7 +22,7 @@ func TestAgentDescriptionUpgradePreservesExistingInstructions(t *testing.T) {
 			('11111111-1111-4111-8111-111111111111', 'Reviewer', 'claude', 'Be concise.')`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := migrateBeforeRetirement(ctx, pool); err != nil {
+	if _, err := migrateThrough(ctx, pool, 35); err != nil {
 		t.Fatal(err)
 	}
 	var description, instructions string
@@ -37,7 +37,7 @@ func TestAgentDescriptionUpgradePreservesExistingInstructions(t *testing.T) {
 // The upgrade path a production database walks: V001 applied by the build that created it, and a
 // newer binary applying everything after it on its first start. What it asserts is the database
 // a production database wakes up to — the chat constraint gone, the agents table there, the board's provenance
-// columns gone, the notify channel renamed, the card's log gone, the columns gone, the
+// columns gone, the notify channel renamed, the flow node's log gone, the columns gone, the
 // conversations gone, and the ledger holding every version.
 func TestMigrationsApplyOverAV001Database(t *testing.T) {
 	url := strings.TrimSpace(os.Getenv(testURLEnv))
@@ -101,7 +101,7 @@ func TestMigrationsApplyOverAV001Database(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Two cards written the way a V001 database holds them, so the pass has something to carry:
+	// Two flow nodes written the way a V001 database holds them, so the pass has something to carry:
 	// what V011 moves onto a task is only worth asserting over a row that was there before it.
 	if _, err := pool.Exec(ctx, `
 		INSERT INTO board (id, name, slug) VALUES
@@ -114,7 +114,7 @@ func TestMigrationsApplyOverAV001Database(t *testing.T) {
 			 '/docs', 'conv-1786543210123-ab12', 'continue', '1'),
 			('33333333-3333-4333-8333-333333333333', '11111111-1111-4111-8111-111111111111',
 			 'And off', 'shutdown', '', 'ready', NULL, NULL, NULL, NULL, NULL, 'end', '2')`); err != nil {
-		t.Fatalf("filing the V001-era cards: %v", err)
+		t.Fatalf("filing the V001-era flow nodes: %v", err)
 	}
 
 	applied, err := Migrate(ctx, pool)
@@ -149,10 +149,6 @@ func TestMigrationsApplyOverAV001Database(t *testing.T) {
 	if err = pool.QueryRow(ctx, `SELECT tablename FROM pg_tables WHERE schemaname=current_schema() AND tablename='task_execution'`).Scan(&held); err != nil {
 		t.Errorf("missing execution provenance table: %v", err)
 	}
-	var classAgent bool
-	if err := pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='flow_node_class_version' AND column_name='agent')`).Scan(&classAgent); err != nil || classAgent {
-		t.Fatalf("class version schema: agent column present=%v, %v", classAgent, err)
-	}
 	for _, column := range []string{"origin_path", "doc_id"} {
 		err = pool.QueryRow(ctx, `SELECT column_name FROM information_schema.columns
 			WHERE table_schema = current_schema() AND table_name = 'board'
@@ -175,11 +171,11 @@ func TestMigrationsApplyOverAV001Database(t *testing.T) {
 		t.Error("flow_node.log is still there after the upgrade")
 	}
 	// V009: the word is gone from the schema, and what carried it is still there under the name it
-	// should have had. The table, the column naming the card played next and the change log's own
+	// should have had. The table, the column naming the flow node played next and the change log's own
 	// column are the three the rest of the service reads by name.
 	//
-	// `task` is a table again after V011 and is a different thing — the AI-or-Human half of a card
-	// rather than the card — so what is asserted is that the **card** no longer lives there: the
+	// `task` is a table again after V011 and is a different thing — the AI-or-Human half of a flow node
+	// rather than the flow node — so what is asserted is that the **flow node** no longer lives there: the
 	// row is identified by its flow node and carries no title of its own.
 	err = pool.QueryRow(ctx, `SELECT tablename FROM pg_tables
 		WHERE schemaname = current_schema() AND tablename = 'task_tag'`).Scan(&held)
@@ -189,7 +185,7 @@ func TestMigrationsApplyOverAV001Database(t *testing.T) {
 	err = pool.QueryRow(ctx, `SELECT column_name FROM information_schema.columns
 		WHERE table_schema = current_schema() AND table_name = 'task' AND column_name = 'title'`).Scan(&held)
 	if err == nil {
-		t.Error("the task table still holds a card's title after the upgrade")
+		t.Error("the task table still holds a flow node's title after the upgrade")
 	}
 	for _, column := range [][2]string{
 		{"flow_node_successor", "successor_id"},
@@ -203,7 +199,7 @@ func TestMigrationsApplyOverAV001Database(t *testing.T) {
 			t.Errorf("%s.%s is not there after the upgrade: %v", column[0], column[1], err)
 		}
 	}
-	// V010: the columns are gone — the table, the cards' filing and order, and the change log's
+	// V010: the columns are gone — the table, the flow nodes' filing and order, and the change log's
 	// own column and scope word.
 	err = pool.QueryRow(ctx, `SELECT tablename FROM pg_tables
 		WHERE schemaname = current_schema() AND tablename = 'board_column'`).Scan(&held)
@@ -228,9 +224,9 @@ func TestMigrationsApplyOverAV001Database(t *testing.T) {
 	if err == nil {
 		t.Error("the change log still accepts the column scope after the upgrade")
 	}
-	// V011: the AI-and-Human half of a card is a table of its own, keyed by the card it belongs to
+	// V011: the AI-and-Human half of a flow node is a table of its own, keyed by the flow node it belongs to
 	// and keyed to it — the primary key *is* the foreign key — and every column it took is gone
-	// from the card.
+	// from the flow node.
 	for _, column := range []string{
 		"body", "agent", "model", "effort", "permission", "folder", "settings_extra",
 		"conversation_id", "on_success_mode", "on_success_compact",
@@ -260,14 +256,14 @@ func TestMigrationsApplyOverAV001Database(t *testing.T) {
 	if err != nil {
 		t.Errorf("the task table does not name its flow node as a foreign key: %v", err)
 	}
-	// The AI card's own answers are on its task, and the Shutdown has no task to put any on.
+	// The AI flow node's own answers are on its task, and the Shutdown has no task to put any on.
 	var body, folder, chat, mode string
 	err = pool.QueryRow(ctx, `SELECT body, folder, conversation_id, on_success_mode FROM task
 		WHERE flow_node_id = '22222222-2222-4222-8222-222222222222'`).Scan(&body, &folder, &chat, &mode)
 	if err != nil {
-		t.Errorf("the AI card has no task after the upgrade: %v", err)
+		t.Errorf("the AI flow node has no task after the upgrade: %v", err)
 	} else if body != "Go on." || folder != "/docs" || chat != "conv-1786543210123-ab12" || mode != "continue" {
-		t.Errorf("the task holds %q / %q / %q / %q, want what the card said before the upgrade",
+		t.Errorf("the task holds %q / %q / %q / %q, want what the flow node said before the upgrade",
 			body, folder, chat, mode)
 	}
 	var tasks int
@@ -276,19 +272,19 @@ func TestMigrationsApplyOverAV001Database(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	} else if tasks != 0 {
-		t.Errorf("the Shutdown card has %d tasks after the upgrade, want none", tasks)
+		t.Errorf("the Shutdown flow node has %d tasks after the upgrade, want none", tasks)
 	}
-	// The trigger no longer reads a column the card has given up, which is what a change to any
-	// card would otherwise fail on.
+	// The trigger no longer reads a column the flow node has given up, which is what a change to any
+	// flow node would otherwise fail on.
 	err = pool.QueryRow(ctx, `SELECT prosrc FROM pg_proc
 		WHERE pronamespace = current_schema()::regnamespace AND proname = 'record_flow_node_change'`).Scan(&held)
 	if err != nil {
 		t.Errorf("the flow node change trigger is not there after the upgrade: %v", err)
 	} else if strings.Contains(held, "conversation_id") {
-		t.Error("the flow node change trigger still reads the card's conversation after the upgrade")
+		t.Error("the flow node change trigger still reads the flow node's conversation after the upgrade")
 	}
 	// V014: the conversations are gone — the tables, the functions that announced their changes,
-	// and the change log's own column and scope words. The card's chat survives them: it names a
+	// and the change log's own column and scope words. The flow node's chat survives them: it names a
 	// conversation worker keeps, and that reference is not a row here.
 	for _, table := range []string{"conversation", "transcript_record"} {
 		err = pool.QueryRow(ctx, `SELECT tablename FROM pg_tables
@@ -327,7 +323,7 @@ func TestPiProfileMigrationIsAdditiveAndAgentsRoundTrip(t *testing.T) {
         VALUES('11111111-1111-4111-8111-111111111111','Existing','claude','opus','Keep these instructions');`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := migrateBeforeRetirement(ctx, pool); err != nil {
+	if _, err := migrateThrough(ctx, pool, 35); err != nil {
 		t.Fatal(err)
 	}
 	store := NewAgentStore(pool)
@@ -347,7 +343,7 @@ func TestPiProfileMigrationIsAdditiveAndAgentsRoundTrip(t *testing.T) {
 	}
 }
 
-func migrateBeforeRetirement(ctx context.Context, pool *pgxpool.Pool) ([]AppliedMigration, error) {
+func migrateThrough(ctx context.Context, pool *pgxpool.Pool, version int) ([]AppliedMigration, error) {
 	scripts, err := loadMigrations()
 	if err != nil {
 		return nil, err
@@ -365,7 +361,7 @@ func migrateBeforeRetirement(ctx context.Context, pool *pgxpool.Pool) ([]Applied
 		return nil, err
 	}
 	for _, script := range scripts {
-		if script.version >= 36 {
+		if script.version > version {
 			break
 		}
 		if _, done := applied[script.version]; done {

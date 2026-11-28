@@ -9,7 +9,7 @@ import {
     backlogUrlFor,
     formatBacklogTimestamp,
     markdownLinkToPassage,
-    storedPassageLink,
+    dcmsLinkToPassage,
 } from './backlog';
 
 describe('backlogPathFor', () => {
@@ -51,15 +51,15 @@ describe('backlogSectionFor', () => {
     });
 });
 
-describe('storedPassageLink', () => {
+describe('dcmsLinkToPassage', () => {
     it('names the passage bare: no domain, no mount point, fragment kept', () => {
-        expect(storedPassageLink('units/abc/cadre.md', { start: 'is drawn once' }))
+        expect(dcmsLinkToPassage('units/abc/cadre.md', { start: 'is drawn once' }))
             .toBe('/units/abc/cadre.md#text=is%20drawn%20once');
     });
 });
 
 describe('markdownLinkToPassage', () => {
-    it('quotes the passage as the label of its stored link', () => {
+    it('quotes the passage as the label of its Markdown link', () => {
         expect(markdownLinkToPassage('units/abc/cadre.md', { start: 'is drawn once' }, 'is drawn once'))
             .toBe('[is drawn once](/units/abc/cadre.md#text=is%20drawn%20once)');
     });

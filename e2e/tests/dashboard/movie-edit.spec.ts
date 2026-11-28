@@ -14,7 +14,7 @@ import { join } from 'node:path';
  * the segments reach the store and come back from it.
  *
  * The clip is uploaded by the spec into `smoke/`, and taken away again with its sidecar: other
- * specs list that folder and the root of the store, and a fixture in the template would be in all
+ * specs list that folder and the DCMS root, and a fixture in the template would be in all
  * of their listings.
  */
 
@@ -164,7 +164,7 @@ test('cuts a segment, and keeps it in a sidecar beside the video', async ({ page
 
     // Thrown away, from the store as well.
     await panel(page).getByTestId('delete-segment').click();
-    await page.locator('.ant-popconfirm').getByRole('button', { name: 'Delete' }).click();
+    await page.getByRole('dialog', { name: 'Delete segment “Intro”?' }).getByRole('button', { name: 'Delete' }).click();
     await expect(panel(page).getByTestId('segment-row')).toHaveCount(0);
     await expect(current(page)).toHaveText('No segment');
     await expect.poll(() => storedSegments(request), { timeout: TIMEOUT }).toEqual([]);

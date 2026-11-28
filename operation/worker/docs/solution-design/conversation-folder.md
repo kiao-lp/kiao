@@ -6,7 +6,7 @@ document:
 
 # What a conversation folder holds
 
-One directory per conversation under the state directory — `<root>/.kiao-config/conversations/`
+One directory per conversation under the state directory — `<dcms-root>/.kiao-config/conversations/`
 when nothing configures it elsewhere — named `conv-<creation millis>-<4 hex>`, so a listing is
 chronological. Two files and a directory, everything `0600` under `0700`:
 
@@ -19,7 +19,7 @@ chronological. Two files and a directory, everything `0600` under `0700`:
 ```
 
 Written by worker, `internal/hybridflow-runner/conversations/conversations.go`. The folder is the only copy:
-hybridflow-store keeps the boards and names a card's chat by its id, but the transcript itself
+hybridflow-store keeps the boards and names a flow node's chat by its id, but the transcript itself
 lives here and nowhere else.
 
 ## meta.json
@@ -29,9 +29,9 @@ lives here and nowhere else.
 | `schemaVersion` | `1`. A reader accepts any version it can parse. |
 | `id` | the directory name, repeated |
 | `title`, `titleSetByUser` | first non-empty line of the first prompt, collapsed and cut at 60 runes, unless a person renamed it |
-| `folder` | the CLI's cwd, relative to the store root; fixed at creation |
+| `folder` | the CLI's cwd, relative to the DCMS root; fixed at creation |
 | `harness` | `claude`, `codex`, `muse`…; fixed at creation |
-| `agentVersion` | managed task agent's immutable publication: `agentId`, `version`, `name`, `harness`, `model`, `profileId`, `description`, `instructions`, `publishedAt`; also `resolvedModel` and `resolvedProfileId` for defaults resolved at creation; absent on free or historical conversations |
+| `agentVersion` | Captured agent publication or draft snapshot for a task or free conversation. Includes `agentId`, `version`, `name`, `harness`, `model`, `profileId`, `description`, `instructions` and `publishedAt`, plus resolved execution settings. Historical conversations may lack a snapshot. |
 | `owner` | `anonymous` when unauthenticated |
 | `model`, `effort`, `permissionMode`, `thinking` | the settings the **last** turn ran with |
 | `sessionId` | the harness's own session, handed back as `--resume` |
@@ -104,7 +104,7 @@ One JSON record per line, in five kinds:
 
 | `kind` | written by | what it is |
 | --- | --- | --- |
-| `run` | the hub, **before** the spawn | the turn as it was handed over: `conversation`, `turn`, `harness`, `owner`, `folder`, `workDir`, `storeRoot`, the settings, `allowBypass`, `session` / `forkSession` / `resumeAt`, `mcpServers[]`, `mcpConfig`, `mcpToken` (whether one was minted, never which), and the play — `playedBy`, `agentRef`, `agentVersion`, `runId`, `flowNodeId`, `board`. A turn that never started still has one, which is the turn it is most worth reading for. |
+| `run` | the hub, **before** the spawn | the turn as it was handed over: `conversation`, `turn`, `harness`, `owner`, `folder`, `workDir`, the absolute DCMS root (`storeRoot`), the settings, `allowBypass`, `session` / `forkSession` / `resumeAt`, `mcpServers[]`, `mcpConfig`, `mcpToken` (whether one was minted, never which), and the play — `playedBy`, `agentRef`, `agentVersion`, `runId`, `flowNodeId`, `board`. A turn that never started still has one, which is the turn it is most worth reading for. |
 | `exec` | the driver, after the process exists | `binary`, `path`, `version`, `argv`, `env`, `dir`, `pid`, `skillsPath`, `skills[]`, and `config` — a configuration staged for the turn and deleted after it. |
 | `stderr` | every turn | one line the harness wrote there, whole. |
 | `stream` | only where `traceStream` is on | one frame of the raw protocol, with `dir`: `out` is what the harness said, `in` what was said to it. |
@@ -173,7 +173,6 @@ happens, and none of it survives in the folder.
 | **Timing inside a turn** | every event arrives with a clock available at each step. | two timestamps per turn, both write-times. No per-block time, no tool duration, no time to first block — and `runningAt` is cleared at settle, so the turn's own duration is gone too. |
 | **Permission asks and their answers** | **Claude**: `control_request` / `can_use_tool`, withdrawn by `control_cancel_request`. **Muse**: approvals with a subject line and the choices offered, and questions with their answers. **Codex**: nothing — `codex exec` never asks, and the sandbox stands in for the human. | in `job.pending` in memory and on the socket. What was asked, what was allowed or denied, what a countdown decided: nothing on disk, so a replayed transcript shows a tool call with no sign that anyone let it through. |
 | **What the model was actually sent** | the composed prompt (`promptWithContext` adds the attachment and image paths), the rendering briefing on the system prompt, and the managed agent's `Instructions`. | the record keeps the text the user typed. Three of the four things the model read are not in the store. |
-| **Which managed agent played the card** | the chain runner resolves a `playAgent` per play — name, harness, model, standing instructions. | `meta.harness` is the *engine* and `meta.model` the model; the persona is not written down. hybridflow-store holds `flowNode.conversation_id` from the flow node's side, so a card names its conversation and a conversation names no card. |
 | **What a fork was forked from** | `fork` has the source's id in hand when it writes the copy. | only a notice naming the source's *title* — which is neither unique nor stable, since renaming the source silently breaks the only link there is. |
 | **A Muse subagent's own story** | `subagent` items carry the host's one-line summary of a turn of a turn; `workflow`, `reminderChild`, `userShell` and `compaction` items carry their own. | the summary is kept as one text block and the other four kinds are dropped, so a turn that delegated its work reads as a single line about having delegated it. |
 | **Where a `between` landed in the reply** | nothing: the harnesses stream, and the hub accumulates. | unrepresentable. The whole reply is one record, so there is no point inside it to file a remark at; the order on disk is always prompt → betweens → reply. |

@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
-import { Button, Flex, Select } from 'antd';
+import { Flex, Select } from 'antd';
 import { FormatPainterOutlined } from '@ant-design/icons';
-import { useSelectionContext } from '@kiao-dashboard-core';
+import { IconButton, useSelectionContext } from '@kiao-dashboard-core';
 
 import { useMindmapStateContext } from '../state';
 import { useApplyStyleToSelection } from '../hooks/useNote';
@@ -62,13 +62,11 @@ export const NewNoteStyleControl: React.FC = () => {
                 onChange={(background) => patchNewNoteStyle({ background })}
                 aria-label="Background colour of a new note"
             />
-            <Button
-                size="small"
-                type="text"
+            <IconButton
+                label="Apply this style to the selected notes"
                 icon={<FormatPainterOutlined />}
                 disabled={selection.length === 0}
                 onClick={applyStyleToSelection}
-                aria-label="Apply this style to the selected notes"
             />
         </Flex>
     );

@@ -3,7 +3,6 @@ package boards
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io/fs"
@@ -12,10 +11,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -38,18 +35,14 @@ type DraftAgentPackage struct {
 }
 
 type PreparedAgentPackage struct {
-	Root         string
-	Instructions string
-	Servers      []equipment.MCPServer
-	base         string
-	digest       string
+	Root           string
+	Instructions   string
+	Servers        []equipment.MCPServer
+	MCPDiagnostics []equipment.MCPDiagnostic `json:"-"`
+	base           string
+	digest         string
+	restore        func() error
 }
-
-var packageInstall sync.Mutex
-var preparedPackages = map[string]*PreparedAgentPackage{}
-var immutableCommit = regexp.MustCompile(`^[0-9a-f]{40}$`)
-var draftPackageID = regexp.MustCompile(`^[A-Z2-7]{26}$`)
-var mcpDailyLog = regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}\.jsonl$`)
 
 func (s *HybridflowStore) packageRequest(ctx context.Context, method, id, ref string) ([]byte, error) {
 	// Preparing a package may require resolving dependencies on the manager.
@@ -60,8 +53,8 @@ func (s *HybridflowStore) packageRequest(ctx context.Context, method, id, ref st
 	return upstream.requestContext(ctx, method, "/agents/"+url.PathEscape(id)+"/packages/"+url.PathEscape(ref), "", nil)
 }
 
-func (s *HybridflowStore) AgentPackage(id, commit string) (*AgentPackage, error) {
-	body, err := s.packageRequest(context.Background(), http.MethodGet, id, commit)
+func (s *HybridflowStore) agentPackage(ctx context.Context, id, commit string) (*AgentPackage, error) {
+	body, err := s.packageRequest(ctx, http.MethodGet, id, commit)
 	if err != nil {
 		return nil, err
 	}
@@ -89,12 +82,28 @@ func (s *HybridflowStore) DraftAgentPackage(ctx context.Context, id string) (*Dr
 
 // PrepareAgentPackage caches a deployment prepared by the resource manager.
 func (s *HybridflowStore) PrepareAgentPackage(state, nodeBinary, workerURL string, version *ManagedAgentVersion) (*PreparedAgentPackage, error) {
+	return s.PrepareAgentPackageContext(context.Background(), state, nodeBinary, workerURL, version)
+}
+
+func (s *HybridflowStore) PrepareAgentPackageContext(ctx context.Context, state, nodeBinary, workerURL string, version *ManagedAgentVersion) (*PreparedAgentPackage, error) {
+	if version != nil && version.DraftID != "" {
+		return prepareAgentPackage(state, nodeBinary, workerURL, version, nil)
+	}
 	return prepareAgentPackage(state, nodeBinary, workerURL, version, func() (*AgentPackage, error) {
-		if version.DraftID != "" {
-			return nil, fmt.Errorf("the local draft package is missing; start a new conversation with the draft")
-		}
-		return s.AgentPackage(version.AgentID, version.Commit)
+		return s.agentPackage(ctx, version.AgentID, version.Commit)
 	})
+}
+
+func (s *HybridflowStore) AgentVersions(ctx context.Context, id string) ([]ManagedAgentVersion, error) {
+	body, err := s.requestContext(ctx, http.MethodGet, "/agents/"+url.PathEscape(id)+"/versions", "", nil)
+	if err != nil {
+		return nil, err
+	}
+	var result struct {
+		Versions []ManagedAgentVersion `json:"versions"`
+	}
+	err = json.Unmarshal(body, &result)
+	return result.Versions, err
 }
 
 func InstallDraftAgentPackage(state, nodeBinary, workerURL string, draft *DraftAgentPackage) error {
@@ -104,288 +113,144 @@ func InstallDraftAgentPackage(state, nodeBinary, workerURL string, draft *DraftA
 	return err
 }
 
-func prepareAgentPackage(state, nodeBinary, workerURL string, version *ManagedAgentVersion, load func() (*AgentPackage, error)) (*PreparedAgentPackage, error) {
-	ref := ""
-	switch {
-	case version != nil && version.DraftID == "" && immutableCommit.MatchString(version.Commit):
-		ref = version.Commit
-	case version != nil && version.Commit == "" && draftPackageID.MatchString(version.DraftID):
-		ref = version.DraftID
-	default:
-		return nil, fmt.Errorf("agent publication requires a complete Git commit")
+// StageDraftAgentPackage gives a diagnostic request disposable access to the current draft.
+func StageDraftAgentPackage(state, nodeBinary, workerURL string, draft *DraftAgentPackage) (*PreparedAgentPackage, func(), error) {
+	scratch, err := os.MkdirTemp(state, ".mcp-draft-")
+	if err != nil {
+		return nil, nil, err
 	}
-	packageInstall.Lock()
-	defer packageInstall.Unlock()
-	cacheKey := agentPackageFormat + "\x00" + state + "\x00" + version.AgentID + "\x00" + ref + "\x00" + version.LockDigest + "\x00" + nodeBinary + "\x00" + workerURL
-	if prepared := preparedPackages[cacheKey]; prepared != nil {
-		digest, err := packageTreeDigest(prepared.base, nil)
-		if err != nil || digest != prepared.digest {
-			return nil, fmt.Errorf("agent package cache was modified")
-		}
-		return prepared, nil
+	base := filepath.Join(scratch, "package")
+	cleanup := func() {
+		removeStagedPackage(base)
+		_ = os.RemoveAll(scratch)
 	}
+	digest, err := verifiedBundleDigest(&draft.Agent, &draft.Package)
+	if err == nil {
+		err = writeAgentPackage(base, &draft.Package, digest)
+	}
+	if err != nil {
+		cleanup()
+		return nil, nil, err
+	}
+	prepared, err := bindAgentPackage(base, digest, nodeBinary, workerURL, filepath.Join(scratch, "logs"), &draft.Agent)
+	if err != nil {
+		cleanup()
+		return nil, nil, err
+	}
+	return prepared, cleanup, nil
+}
 
-	cacheID := sha256.Sum256([]byte(cacheKey))
-	base := filepath.Join(state, "agentic-packages", ref+"-"+hex.EncodeToString(cacheID[:8]))
-	metadata := base + ".json"
-	logDir := filepath.Join(state, "logs", "kiao-mcp", filepath.Base(base))
-	if data, e := os.ReadFile(metadata); e == nil {
-		var held struct {
-			Prepared PreparedAgentPackage
-			Digest   string
-		}
-		if e = json.Unmarshal(data, &held); e != nil {
-			return nil, e
-		}
-		if held.Prepared.Root != filepath.Join(base, "deployment") {
-			return nil, fmt.Errorf("invalid package cache root")
-		}
-		actual, e := packageTreeDigest(base, nil)
-		if e != nil {
-			return nil, fmt.Errorf("agent package cache was modified")
-		}
-		legacyLogDirs := held.Prepared.configureMCPLogs(logDir)
-		if actual != held.Digest {
-			if e = recoverPackageMCPLogs(base, held.Digest, logDir, legacyLogDirs); e != nil {
-				return nil, e
-			}
-		}
-		held.Prepared.Instructions, e = publishedSkillInstructions(held.Prepared.Root, version.Instructions)
-		if e != nil {
-			return nil, e
-		}
-		held.Prepared.base, held.Prepared.digest = base, held.Digest
-		preparedPackages[cacheKey] = &held.Prepared
-		return &held.Prepared, nil
-	} else if !os.IsNotExist(e) {
-		return nil, e
-	}
-	bundle, err := load()
-	if err != nil {
-		return nil, err
-	}
-	if bundle.Format != agentPackageFormat || bundle.Project != "deployment" {
-		return nil, fmt.Errorf("agentic-resource-manager must deliver a prepared %s package", agentPackageFormat)
-	}
-	if bundle.Commit != version.Commit {
-		return nil, fmt.Errorf("agent package commit differs from selected publication")
-	}
-	if bundle.DraftID != version.DraftID {
-		return nil, fmt.Errorf("agent package draft differs from selected draft")
-	}
-	if err = os.RemoveAll(base); err != nil {
-		return nil, err
-	}
-	if err = os.MkdirAll(base, 0700); err != nil {
-		return nil, err
-	}
-	complete := false
-	defer func() {
-		if !complete {
-			_ = os.RemoveAll(base)
-		}
-	}()
-	safe := func(name string) (string, error) {
-		if name == "" || filepath.IsAbs(name) || strings.Contains(name, "\\") {
-			return "", fmt.Errorf("invalid package path")
-		}
-		clean := filepath.Clean(name)
-		if clean != "deployment" && !strings.HasPrefix(clean, "deployment"+string(filepath.Separator)) {
-			return "", fmt.Errorf("package path leaves deployment")
-		}
-		return filepath.Join(base, clean), nil
-	}
-	var total int64
-	for name, content := range bundle.Files {
-		target, err := safe(name)
-		if err != nil {
-			return nil, err
-		}
-		total += int64(len(content))
-		if len(content) > 8<<20 || total > 64<<20 {
-			return nil, fmt.Errorf("agent package exceeds delivery limit")
-		}
-		if err = os.MkdirAll(filepath.Dir(target), 0700); err != nil {
-			return nil, err
-		}
-		if err = os.WriteFile(target, content, 0600); err != nil {
-			return nil, err
-		}
-	}
-	project, err := safe(bundle.Project)
-	if err != nil {
-		return nil, err
-	}
-	lock, err := os.ReadFile(filepath.Join(project, "apm.lock.yaml"))
-	if err != nil {
-		return nil, err
-	}
-	sum := sha256.Sum256(lock)
-	if version.LockDigest == "" || hex.EncodeToString(sum[:]) != version.LockDigest {
-		return nil, fmt.Errorf("agent package lock digest differs from selection")
-	}
+func bindAgentPackage(base, digest, nodeBinary, workerURL, logDir string, version *ManagedAgentVersion) (*PreparedAgentPackage, error) {
+	project := filepath.Join(base, "deployment")
 	instructions, err := publishedSkillInstructions(project, version.Instructions)
 	if err != nil {
 		return nil, err
 	}
-	prepared := &PreparedAgentPackage{Root: project, Instructions: instructions}
-	// APM's Claude projection keeps environment references until execution.
-	mcpPath := filepath.Join(project, ".mcp.json")
-	data, err := os.ReadFile(mcpPath)
-	if err != nil && !os.IsNotExist(err) {
-		return nil, err
-	}
-	if err == nil {
-		var config struct {
-			Servers map[string]struct {
-				Type    string            `json:"type"`
-				Command string            `json:"command"`
-				Args    []string          `json:"args"`
-				URL     string            `json:"url"`
-				Env     map[string]string `json:"env"`
-				Headers map[string]string `json:"headers"`
-			} `json:"mcpServers"`
-		}
-		if err = json.Unmarshal(data, &config); err != nil {
-			return nil, err
-		}
-		names := make([]string, 0, len(config.Servers))
-		for name := range config.Servers {
-			names = append(names, name)
-		}
-		sort.Strings(names)
-		for _, name := range names {
-			entry := config.Servers[name]
-			server := equipment.MCPServer{Name: name, Type: entry.Type, Command: entry.Command, Args: entry.Args, URL: entry.URL, Env: entry.Env, Headers: entry.Headers}
-			if strings.HasPrefix(entry.Command, "kiao-mcp-") {
-				resourceName := "mcp-" + strings.TrimPrefix(entry.Command, "kiao-mcp-")
-				script, err := installedPackageRuntime(project, resourceName)
-				if err != nil {
-					return nil, err
-				}
-				server.Type = equipment.MCPStdio
-				server.Command, err = exec.LookPath(nodeBinary)
-				if err != nil {
-					return nil, err
-				}
-				server.Args = []string{script}
-				if server.Env == nil {
-					server.Env = map[string]string{}
-				}
-				server.Env["WORKER_URL"] = workerURL
-				server.Env["KIAO_MCP_ACCESS_TOKEN"] = equipment.MCPTokenPlaceholder
-			} else if server.Command != "" {
-				server.Command, err = publishedCommand(server.Command, nodeBinary)
-				if err != nil {
-					return nil, fmt.Errorf("MCP %s: %w", name, err)
-				}
-				if entry.Command == "npx" || entry.Command == "npm" {
-					if server.Env == nil {
-						server.Env = map[string]string{}
-					}
-					server.Env["PATH"] = filepath.Dir(server.Command) + string(os.PathListSeparator) + os.Getenv("PATH")
-				}
-				if server.Type == "" {
-					server.Type = equipment.MCPStdio
-				}
-			}
-			prepared.Servers = append(prepared.Servers, server)
-		}
-	}
-	prepared.configureMCPLogs(logDir)
-	prepared.base = base
-	prepared.digest, err = packageTreeDigest(base, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	persisted, err := json.Marshal(struct {
-		Prepared *PreparedAgentPackage
-		Digest   string
-	}{prepared, prepared.digest})
-	if err != nil {
-		return nil, err
-	}
-	temporary, err := os.CreateTemp(filepath.Dir(metadata), ".prepared-*")
-	if err != nil {
-		return nil, err
-	}
-	defer os.Remove(temporary.Name())
-	_, writeErr := temporary.Write(persisted)
-	closeErr := temporary.Close()
-	if writeErr != nil {
-		return nil, writeErr
-	}
-	if closeErr != nil {
-		return nil, closeErr
-	}
-	if err = os.Rename(temporary.Name(), metadata); err != nil {
-		return nil, err
-	}
-	preparedPackages[cacheKey] = prepared
-	complete = true
+	prepared := &PreparedAgentPackage{Root: project, Instructions: instructions, base: base, digest: digest}
+	prepared.bindMCP(nodeBinary, workerURL, logDir)
 	return prepared, nil
 }
 
-func (p *PreparedAgentPackage) configureMCPLogs(logDir string) map[string]struct{} {
-	legacyLogDirs := map[string]struct{}{}
-	modules := filepath.Join(p.Root, "apm_modules")
-	for _, server := range p.Servers {
-		if server.Type != equipment.MCPStdio || server.Env["KIAO_MCP_ACCESS_TOKEN"] != equipment.MCPTokenPlaceholder || len(server.Args) != 1 {
-			continue
-		}
-		script := server.Args[0]
-		runtimeDir := filepath.Dir(script)
-		if filepath.Base(script) != "server.mjs" || filepath.Base(runtimeDir) != "runtime" {
-			continue
-		}
-		module := filepath.Dir(runtimeDir)
-		relative, err := filepath.Rel(modules, module)
-		if err != nil || !filepath.IsLocal(relative) {
-			continue
-		}
-		server.Env["KIAO_MCP_LOG_DIR"] = logDir
-		legacyLogDirs[filepath.Join(module, "logs", "kiao-mcp")] = struct{}{}
+// Resolve the bindings each time so installing a missing command takes effect on the next turn.
+func (p *PreparedAgentPackage) bindMCP(nodeBinary, workerURL, logDir string) {
+	report := func(server, stage string, err error) {
+		p.MCPDiagnostics = append(p.MCPDiagnostics, equipment.MCPDiagnostic{
+			Server: server, Stage: stage, Message: err.Error(),
+		})
 	}
-	return legacyLogDirs
+	// APM's Claude projection keeps environment references until execution.
+	data, err := os.ReadFile(filepath.Join(p.Root, ".mcp.json"))
+	if os.IsNotExist(err) {
+		return
+	}
+	if err != nil {
+		report(".mcp.json", "configuration", err)
+		return
+	}
+	var config struct {
+		Servers map[string]json.RawMessage `json:"mcpServers"`
+	}
+	if err = json.Unmarshal(data, &config); err != nil {
+		report(".mcp.json", "configuration", err)
+		return
+	}
+	names := make([]string, 0, len(config.Servers))
+	for name := range config.Servers {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		server := equipment.MCPServer{Name: name}
+		if err := json.Unmarshal(config.Servers[name], &server); err != nil {
+			report(name, "configuration", err)
+			continue
+		}
+		server.Name = name
+		if err := p.resolveMCP(&server, nodeBinary, workerURL); err != nil {
+			report(name, "runtime", err)
+			continue
+		}
+		if server.Type == equipment.MCPStdio {
+			if server.Env == nil {
+				server.Env = map[string]string{}
+			}
+			server.Env["KIAO_MCP_LOG_DIR"] = logDir
+		}
+		p.Servers = append(p.Servers, server)
+	}
 }
 
-func recoverPackageMCPLogs(base, expectedDigest, logDir string, legacyLogDirs map[string]struct{}) error {
-	// Establish that only generated logs differ before moving any files.
-	var logs []string
-	actual, err := packageTreeDigest(base, func(path string) bool {
-		if _, ok := legacyLogDirs[filepath.Dir(path)]; !ok || !mcpDailyLog.MatchString(filepath.Base(path)) {
-			return false
+func (p *PreparedAgentPackage) resolveMCP(server *equipment.MCPServer, nodeBinary, workerURL string) error {
+	if server.Type == "" {
+		if server.URL != "" {
+			server.Type = equipment.MCPHTTP
+		} else {
+			server.Type = equipment.MCPStdio
 		}
-		logs = append(logs, path)
-		return true
-	})
-	if err != nil || actual != expectedDigest || len(logs) == 0 {
-		return fmt.Errorf("agent package cache was modified")
 	}
-	if err = os.MkdirAll(logDir, 0700); err != nil {
-		return fmt.Errorf("archive agent package MCP logs: %w", err)
+	switch server.Type {
+	case equipment.MCPHTTP, "streamable-http":
+		server.Type = equipment.MCPHTTP
+		if server.URL == "" {
+			return fmt.Errorf("no URL configured")
+		}
+		return nil
+	case equipment.MCPStdio:
+		// Resolve below.
+	default:
+		return fmt.Errorf("unsupported MCP transport %q", server.Type)
 	}
-	archive, err := os.MkdirTemp(logDir, "legacy-")
-	if err != nil {
-		return fmt.Errorf("archive agent package MCP logs: %w", err)
+	if server.Command == "" {
+		return fmt.Errorf("no command configured")
 	}
-	for _, path := range logs {
-		relative, err := filepath.Rel(base, path)
+	if resource, packaged := strings.CutPrefix(server.Command, "kiao-mcp-"); packaged {
+		script, err := installedPackageRuntime(p.Root, "mcp-"+resource)
 		if err != nil {
 			return err
 		}
-		target := filepath.Join(archive, relative)
-		if err = os.MkdirAll(filepath.Dir(target), 0700); err != nil {
-			return fmt.Errorf("archive agent package MCP logs: %w", err)
+		server.Command, err = exec.LookPath(nodeBinary)
+		if err != nil {
+			return fmt.Errorf("Node runtime %q is unavailable on the runner: %w", nodeBinary, err)
 		}
-		if err = os.Rename(path, target); err != nil {
-			return fmt.Errorf("archive agent package MCP logs: %w", err)
+		server.Args = []string{script}
+		if server.Env == nil {
+			server.Env = map[string]string{}
 		}
+		server.Env["WORKER_URL"] = workerURL
+		server.Env["KIAO_MCP_ACCESS_TOKEN"] = equipment.MCPTokenPlaceholder
+		return nil
 	}
-	actual, err = packageTreeDigest(base, nil)
-	if err != nil || actual != expectedDigest {
-		return fmt.Errorf("agent package cache was modified")
+	command := server.Command
+	var err error
+	server.Command, err = publishedCommand(command, nodeBinary)
+	if err != nil {
+		return fmt.Errorf("command %q is unavailable on the runner: %w", command, err)
+	}
+	if command == "npx" || command == "npm" {
+		if server.Env == nil {
+			server.Env = map[string]string{}
+		}
+		server.Env["PATH"] = filepath.Dir(server.Command) + string(os.PathListSeparator) + os.Getenv("PATH")
 	}
 	return nil
 }
@@ -414,7 +279,7 @@ func publishedSkillInstructions(project, instructions string) (string, error) {
 				return "", err
 			}
 			if len(seen) == 0 {
-				result.WriteString("\n\nUse this published skill catalogue. Read the listed SKILL.md when its description matches the task.\n")
+				result.WriteString("\n\nUse this published skill catalogue. Read the listed SKILL.md when its description matches the task. The installed package is read-only. Write generated files in the working directory or a temporary directory.\n")
 			}
 			fmt.Fprintf(&result, "\nSkill %s: %s\n%s\n", name, manifest, skillDescription(string(data)))
 			seen[name] = true
@@ -470,7 +335,7 @@ func installedPackageRuntime(project, name string) (string, error) {
 		return "", err
 	}
 	if selected == "" {
-		return "", fmt.Errorf("installed APM dependencies omit runtime for %s", name)
+		return "", fmt.Errorf("installed APM dependencies omit runtime for %s (expected runtime/server.mjs)", name)
 	}
 	return selected, nil
 }
@@ -493,36 +358,6 @@ func publishedCommand(name, nodeBinary string) (string, error) {
 		}
 	}
 	return exec.LookPath(name)
-}
-
-func packageTreeDigest(root string, skip func(path string) bool) (string, error) {
-	hash := sha256.New()
-	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if entry.IsDir() {
-			return nil
-		}
-		if !entry.Type().IsRegular() {
-			return fmt.Errorf("non-regular file in published package")
-		}
-		if skip != nil && skip(path) {
-			return nil
-		}
-		content, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		relative, err := filepath.Rel(root, path)
-		if err != nil {
-			return err
-		}
-		sum := sha256.Sum256(content)
-		fmt.Fprintf(hash, "%s\x00%x\n", filepath.ToSlash(relative), sum)
-		return nil
-	})
-	return hex.EncodeToString(hash.Sum(nil)), err
 }
 
 func skillDescription(text string) string {

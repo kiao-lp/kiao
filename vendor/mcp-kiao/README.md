@@ -14,8 +14,8 @@ descriptions loaded into the model's context) focused: a deployment enables the 
 
 - **`kiao-files`** (`dist/index.js`) — direct file access + git tools.
 - **`kiao-hybridflow`** (`dist/hybridflow-entry.js`) — inspect, modify and create every kind of
-  hybridflow object in real time: boards and their cards, workflows and workflow classes, node
-  classes and their versions, managed agents and runners. worker proxies these to the
+  hybridflow object in real time: boards, cards, workflows, managed agents and runners.
+  Worker proxies these to the
   hybridflow-store with its service token, attributing the change to the turn's owner — the turn
   holds no store credential.
 
@@ -39,18 +39,15 @@ above — worker reads the directory, not the package each file came from.
   `files_delete` removes a whole entry — a directory goes with everything under it, and a document
   file takes its `.config.json` sidecar — so emptying a folder by hand is never needed;
   `files_delete_batch` does the same for many paths in one request instead of one round trip each.
-- **Boards** (`kiao-hybridflow`) — `board_*` (list, create, read whole, patch, delete;
-  add, read, patch, delete and chain cards; a card's usage totals; file a class from a card;
-  the change feed; list JSON Schema values across boards), `workflow_*` and `workflow_class_*`
-  (create, read, patch, delete, instantiate), `class_*` (list, create, read, patch, delete and
-  chain node classes; create, patch and delete versions; instantiate), `agent_*` (list, create,
-  read, patch, publish, publication history, delete), `runner_*` (list, create, read, patch, delete),
-  `hybridflow_schema`. Calls use the worker's `/hybridflow-runner/…` proxy. Execution,
-  completion, usage-report writes and runner heartbeats are deliberately absent.
+- **Boards** (`kiao-hybridflow`) — `board_*` manages boards, cards and links, and reads the
+  change feed, usage and JSON Schema values. `workflow_*` manages, copies and pastes workflows.
+  `agent_*` manages agents and publications, and `runner_*` manages runners.
+  `hybridflow_schema` reports the store's migration ledger. Calls use the worker's
+  `/hybridflow-runner/…` proxy.
 
-The [hybridflow skill](../kiao-skills/hybridflow/SKILL.md) is the entry point for workflow design
+The [hybridflow skill](https://github.com/kiao-lp/skill-hybridflow/blob/main/SKILL.md) is the entry point for workflow design
 and shared reference information. Its trigger table selects the relevant domain reference and
-tools; its [HTTP fallback](../kiao-skills/hybridflow/references/api-curl.md) maps every tool to an
+tools; its [HTTP fallback](https://github.com/kiao-lp/skill-hybridflow/blob/main/references/api-curl.md) maps every tool to an
 endpoint. These references apply to both access methods. Tool schemas carry MCP call arguments,
 replacement warnings and revision checks. Strict card and nested configuration schemas reject
 unknown or read-only fields before HTTP; the store owns topology and export validation, and MCP

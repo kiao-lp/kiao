@@ -1,6 +1,5 @@
 import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
-import { Button } from 'antd';
-import { Tooltip } from '../../ui-foundation/feedback/Tooltip';
+import { IconButton } from '../../ui-foundation/toolbar/IconButton';
 import { AimOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useRefreshFileList } from '../core/CurrentFileList-ctx';
 import { RowContextMenu } from '../context-menu/RowContextMenu';
@@ -9,32 +8,27 @@ import { ROOT } from './fileTreeModel';
 import { useNavTreeStore } from './NavTreeStore-ctx';
 
 const LocateCurrentButton: React.FC<{ onLocate: () => void }> = ({ onLocate }) => (
-  <Tooltip title="Show the open document">
-    <Button
+  <IconButton
+      label="Show the open document in the tree"
+      tooltip="Show the open document"
       className="cms-nav-locate-button"
-      type="text"
-      size="small"
       icon={<AimOutlined />}
       onClick={onLocate}
-      aria-label="Show the open document in the tree"
       data-testid="nav-locate-current"
-    />
-  </Tooltip>
+  />
 );
 
 /** Re-reads listings for files changed outside the app. */
 const RefreshTreeButton: React.FC = () => {
   const refreshFileList = useRefreshFileList();
   return (
-    <Button
-    className="cms-nav-refresh-button"
-    type="text"
-    size="small"
-    icon={<ReloadOutlined />}
-    onClick={() => void refreshFileList()}
-    aria-label="Refresh the file tree"
-    data-testid="nav-refresh-tree"
-  />
+    <IconButton
+        label="Refresh the file tree"
+        className="cms-nav-refresh-button"
+        icon={<ReloadOutlined />}
+        onClick={() => void refreshFileList()}
+        data-testid="nav-refresh-tree"
+    />
   );
 };
 

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -159,7 +159,12 @@ test('--skip-save succeeds on a fresh image build without an archive', (t) => {
     write(buildScript, readFileSync(join(binDir, 'build-kiao-image.sh')));
     write(join(project, 'bin/require-build-all.sh'), readFileSync(join(binDir, 'require-build-all.sh')), true);
     write(join(project, 'bin/stage-agentic-repositories.py'), readFileSync(join(binDir, 'stage-agentic-repositories.py')));
-    write(join(project, 'agentic-resources.json'), JSON.stringify({ resources: [{ name: 'mcp-kiao', kind: 'mcp' }] }));
+    const catalogue = JSON.stringify({ resources: [] });
+    write(join(project, 'agentic-resources.json'), catalogue);
+    write(join(project, 'dist/agentic-resources.json'), catalogue);
+    execFileSync('git', ['init', '-q', project]);
+    execFileSync('git', ['-C', project, '-c', 'user.name=Kiao', '-c', 'user.email=kiao@example.com', 'commit', '--allow-empty', '-qm', 'fixture']);
+    write(join(project, 'dist/kiao-build-revision'), execFileSync('git', ['-C', project, 'rev-parse', 'HEAD']));
     for (const dir of ['reference/kiao-mcp/dist', 'exchange/dashboard/node_modules']) {
         mkdirSync(join(project, dir), { recursive: true });
     }

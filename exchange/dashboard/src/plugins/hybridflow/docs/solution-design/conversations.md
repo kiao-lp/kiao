@@ -23,6 +23,12 @@ MCP tools through the same runner as board tasks. Model and profile come from th
 The composer offers reasoning effort, permissions and extended thinking for the next turn; a
 microphone beside them dictates into the message box.
 
+The response token limit button displays the selected value and opens a 4 × 4 grid with **None**
+and the first 15 distinct positive Fibonacci values multiplied by eight. The panel remembers the
+choice per conversation while it is open.
+A numeric choice asks the agent to keep all visible replies for the turn within the selected
+budget. The worker adds that instruction to the model prompt and records the user’s original text.
+
 Every cell of that catalogue reads **Select**: the column header carries the harness, the model
 or the Pi profile, and the row heading the agent.
 
@@ -48,7 +54,11 @@ attachments and controls using the `kiao-worker` wire unions.
 
 [ChatMessageList](../../conversations/ChatMessageList.tsx) renders text, thinking and tool blocks in produced order. Indexed `output`/`tool_use` updates and full `sync` replay keep that order. Thinking collapses in place; tool chips expose full input. Transcripts without blocks render as flat text and chips.
 
-Text uses `ConfiguredMarkdown`, including diagram fences and store links opened in place.
+[Conversation details](../../conversations/ChatConversationDetails.tsx) sits at the start of the
+scrollable transcript. Every harness uses this view for the captured agent, execution defaults, IDs
+and the worker paths supplied with the transcript.
+
+Text uses `ConfiguredMarkdown` to render diagram fences and open DCMS links in place.
 Worker's `harnesses/prompt/briefing.go` tells turns how these features work.
 
 Every message carries a copy control that puts its markdown source on the clipboard: a prompt as

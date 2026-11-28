@@ -31,6 +31,30 @@ func TestStorageSaveFileRejectsTraversal(t *testing.T) {
 	}
 }
 
+func TestCopyIntoFolderIncludesHiddenEntriesAndProtectsState(t *testing.T) {
+	root := t.TempDir()
+	state := filepath.Join(root, "inputs", ".state")
+	storage := NewStorage(root, state)
+	mustWrite(t, filepath.Join(state, "private.json"), "runner state")
+	mustWrite(t, filepath.Join(root, "inputs", ".settings"), "hidden input")
+
+	if err := storage.CopyIntoFolder(t.Context(), "/release", []string{"/inputs"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := mustRead(t, filepath.Join(root, "release", "inputs", ".settings")); got != "hidden input" {
+		t.Errorf("copied hidden input = %q", got)
+	}
+	if _, err := os.Stat(filepath.Join(root, "release", "inputs", ".state")); !os.IsNotExist(err) {
+		t.Fatalf("copied state directory: %v", err)
+	}
+	if err := storage.CopyIntoFolder(t.Context(), "/inputs/descendant", []string{"/inputs"}); err == nil {
+		t.Fatal("copy accepted a destination inside the source")
+	}
+	if _, err := os.Stat(filepath.Join(root, "inputs", "descendant")); !os.IsNotExist(err) {
+		t.Fatalf("destination created inside source: %v", err)
+	}
+}
+
 func TestStorageDeleteFile(t *testing.T) {
 	root := t.TempDir()
 	s := &Storage{Root: root}
@@ -68,7 +92,7 @@ func TestStorageDeleteFile(t *testing.T) {
 	}
 }
 
-// The one path a recursive delete must never accept: every spelling of the storage root, which
+// The one path a recursive delete must never accept: every spelling of the DCMS root, which
 // would otherwise take the whole store.
 func TestStorageDeleteFileRefusesTheRoot(t *testing.T) {
 	root := t.TempDir()
@@ -254,7 +278,40 @@ func TestStorageHidesNothingWhenStateLivesOutsideTheRoot(t *testing.T) {
 	}
 }
 
-// The store root is the git work tree in production, so .git sits directly in it. It is not
+func TestStorageProtectsStateBehindAliasesAndAncestors(t *testing.T) {
+	root := t.TempDir()
+	state := filepath.Join(root, "instance", "private")
+	target := filepath.Join(state, "agentic-packages", "release", "deployment", "skill.md")
+	mustWrite(t, target, "published\n")
+	alias := filepath.Join(root, "state-alias")
+	if err := os.Symlink(state, alias); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Dir(target), filepath.Join(root, "shortcut")); err != nil {
+		t.Fatal(err)
+	}
+	storage := NewStorage(root, alias)
+
+	for _, path := range []string{"instance/private/agentic-packages", "state-alias/agentic-packages/new.log", "shortcut/new.log"} {
+		if _, err := storage.SaveFile(path, strings.NewReader("unexpected")); !errors.Is(err, ErrStatePath) {
+			t.Errorf("write %s: %v", path, err)
+		}
+	}
+	if err := storage.DeleteFile("instance"); !errors.Is(err, ErrStatePath) {
+		t.Errorf("delete ancestor: %v", err)
+	}
+	if err := storage.RenameFile("instance", "moved"); !errors.Is(err, ErrStatePath) {
+		t.Errorf("rename ancestor: %v", err)
+	}
+	if _, err := storage.SaveFile("instance/notes.md", strings.NewReader("editable")); err != nil {
+		t.Fatalf("write alongside the state: %v", err)
+	}
+	if got := mustRead(t, target); got != "published\n" {
+		t.Fatalf("installed package changed: %q", got)
+	}
+}
+
+// The DCMS root is the git work tree in production, so .git sits directly in it. It is not
 // content: a listing that showed it would offer to zip a gigabyte of objects and to delete the
 // only backup the store has. The name is matched at any depth, because a store may hold several
 // unrelated work trees.

@@ -7,11 +7,15 @@ import (
 	"strings"
 )
 
+func (s *ConversationStore) turnTracesDir(conversationID string) string {
+	return filepath.Join(s.ConvDir(conversationID), turntrace.TurnsDirName)
+}
+
 func (s *ConversationStore) OpenTurnTrace(conversationID, turnID string, stream bool, secrets []string) *turntrace.TurnTrace {
 	if s == nil || !ConversationIDRe.MatchString(conversationID) || strings.TrimSpace(turnID) == "" {
 		return nil
 	}
-	dir := filepath.Join(s.ConvDir(conversationID), turntrace.TurnsDirName)
+	dir := s.turnTracesDir(conversationID)
 	if err := os.MkdirAll(dir, turntrace.TraceDirPerm); err != nil {
 		turntrace.LogConv.Warn("cannot open the turn trace",
 			"conversation", conversationID, "turn", turnID, "error", err)

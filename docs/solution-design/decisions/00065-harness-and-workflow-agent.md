@@ -50,3 +50,5 @@ Operating-system platform keeps its existing meaning.
 ## More Information
 
 This decision supersedes [ADR-00023](00023-wire-says-agent.md).
+[ADR 00073](00073-agent-and-harness-vocabulary.md) records the current resource-based definition
+of an agent.

@@ -11,10 +11,11 @@ export const FlowNodeValueEditor: React.FC<{
     error: string;
     testId: string;
     schema?: JsonSchema;
-}> = ({ value, onChange, error, testId, schema }) => (
+    readOnly?: boolean;
+}> = ({ value, onChange, error, testId, schema, readOnly }) => (
     <>
         <div className={styles.panelEditor} data-testid={testId}>
-            <CodeMirrorJsonEditor value={value} onChange={onChange} extensions={extensions} schema={schema} />
+            <CodeMirrorJsonEditor value={value} onChange={onChange} extensions={extensions} schema={schema} readOnly={readOnly} />
         </div>
         {error && <div role="alert" data-testid="flow-node-value-error">{error}</div>}
     </>

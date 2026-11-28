@@ -1,7 +1,6 @@
 package runnerhttp
 
 import (
-	"encoding/json"
 	"kiao/worker/internal/core/access"
 	pkgBoards "kiao/worker/internal/hybridflow-runner/boards"
 	"kiao/worker/internal/hybridflow-runner/playback"
@@ -151,14 +150,17 @@ type heldFinishBoards struct {
 	pkgBoards.BoardStore
 	reached chan struct{}
 	release chan struct{}
+	first   sync.Once
 }
 
-func (b *heldFinishBoards) Finish(handle, node, run, status string, outputs ...json.RawMessage) (*pkgBoards.BoardContent, error) {
+func (b *heldFinishBoards) Finish(handle, node, run string, result pkgBoards.PlayResult) (*pkgBoards.BoardContent, error) {
 	if node == "held" {
-		close(b.reached)
-		<-b.release
+		b.first.Do(func() {
+			close(b.reached)
+			<-b.release
+		})
 	}
-	return b.BoardStore.Finish(handle, node, run, status, outputs...)
+	return b.BoardStore.Finish(handle, node, run, result)
 }
 
 func TestChainBoardWriteLeavesOtherRunsAndStopAvailable(t *testing.T) {

@@ -13,8 +13,15 @@
       "name": "skill-archdia",
       "kind": "skill",
       "skill": "archdia",
-      "commit": "1fa104011f3ffb3dcbc11c8438758d3d3fb809cf",
-      "remote": "git@github.com:kiao-lp/skill-archdia.git"
+      "commit": "81a0fa9f4f862082639d1e560e8d126287d2062d",
+      "remote": "https://github.com/kiao-lp/skill-archdia.git"
+    },
+    {
+      "name": "skill-bitbucket",
+      "kind": "skill",
+      "skill": "bitbucket",
+      "commit": "970b0f08d4d634208fd5da840d17167708a7bb0c",
+      "remote": "https://github.com/kiao-lp/skill-bitbucket.git"
     },
     {
       "name": "skill-featmat",
@@ -34,43 +41,50 @@
       "name": "skill-hybridflow",
       "kind": "skill",
       "skill": "hybridflow",
-      "commit": "1e8c01ea76344568472c92f59f19ba583fe02f79",
-      "remote": "git@github.com:kiao-lp/skill-hybridflow.git"
+      "commit": "984818ace1141d78aa355112ff4396c20e1ed671",
+      "remote": "https://github.com/kiao-lp/skill-hybridflow.git"
+    },
+    {
+      "name": "skill-jira",
+      "kind": "skill",
+      "skill": "jira",
+      "commit": "6ae6fc3435b716327051e4b10455cbc3d2704a3a",
+      "remote": "https://github.com/kiao-lp/skill-jira.git"
     },
     {
       "name": "skill-kiao-adr",
       "kind": "skill",
       "skill": "kiao-adr",
-      "commit": "c0a6314bcabc53ef4f1c29999231a014db1a8361",
-      "remote": "git@github.com:kiao-lp/skill-kiao-adr.git"
+      "commit": "750a859b447095d5604d0b5fc53147a1a00ca469",
+      "remote": "https://github.com/kiao-lp/skill-kiao-adr.git"
     },
     {
       "name": "skill-markdown-anchors",
       "kind": "skill",
       "skill": "markdown-anchors",
-      "commit": "c948219e360d93f8af3ef97f09f811e0536007be",
-      "remote": "git@github.com:kiao-lp/skill-markdown-anchors.git"
+      "commit": "c397eaf94a61946503d6738c0209621ca2ff96ab",
+      "remote": "https://github.com/kiao-lp/skill-markdown-anchors.git"
     },
     {
       "name": "skill-markdown-metadata",
       "kind": "skill",
       "skill": "markdown-metadata",
-      "commit": "e4d0aaed9074a2984e622ecf3fe16a31511edfaf",
-      "remote": "git@github.com:kiao-lp/skill-markdown-metadata.git"
+      "commit": "ad22d19d2060b1d0a0f818fee02dacc3e447e234",
+      "remote": "https://github.com/kiao-lp/skill-markdown-metadata.git"
     },
     {
       "name": "skill-markdown-passage-link",
       "kind": "skill",
       "skill": "markdown-passage-link",
-      "commit": "9024f974a59dcd794eb00ee603a8039fe0380e86",
-      "remote": "git@github.com:kiao-lp/skill-markdown-passage-link.git"
+      "commit": "f8ec01d91c9ce38c3029cc892ad185e6c63c1d54",
+      "remote": "https://github.com/kiao-lp/skill-markdown-passage-link.git"
     },
     {
       "name": "skill-mindmap",
       "kind": "skill",
       "skill": "mindmap",
-      "commit": "a6437ce1402f1804b2a537db9896889910d07e74",
-      "remote": "git@github.com:kiao-lp/skill-mindmap.git"
+      "commit": "15ce5f9b336aadea39bac8807ba4a3d0e92cf323",
+      "remote": "https://github.com/kiao-lp/skill-mindmap.git"
     },
     {
       "name": "skill-strategy",
@@ -83,26 +97,33 @@
       "name": "skill-template-lang",
       "kind": "skill",
       "skill": "template-lang",
-      "commit": "0187515945a2379e95fac8c8b3bfbb6db562e182",
-      "remote": "git@github.com:kiao-lp/skill-template-lang.git"
+      "commit": "95d3792af83508433fef3919fcc00b922f1cd5c7",
+      "remote": "https://github.com/kiao-lp/skill-template-lang.git"
+    },
+    {
+      "name": "skill-xray",
+      "kind": "skill",
+      "skill": "xray",
+      "commit": "811d599336da9b2491ffb5e109b465735c7e6248",
+      "remote": "https://github.com/kiao-lp/skill-xray.git"
     },
     {
       "name": "mcp-kiao",
       "kind": "mcp",
-      "commit": "f49a580e053881c3856edac6f5b4ce2c46573182",
+      "commit": "cf0748c461d73778fe031f7c4907a95afd104e40",
       "remote": "git@github.com:kiao-lp/mcp-kiao.git"
     },
     {
       "name": "mcp-files",
       "kind": "mcp",
-      "commit": "41ba06152a0eab4d88dd8b76a28e117356acbfab",
-      "remote": null
+      "commit": "c95c2fb81656ae71de099866417f47ad7d9bfb47",
+      "remote": "git@github.com:kiao-lp/mcp-files.git"
     },
     {
       "name": "mcp-hybridflow",
       "kind": "mcp",
-      "commit": "33ac8066024dd17cb9484721bb3d0f915b88c588",
-      "remote": "git@github.com:kiao-lp/mcp-hybridflow.git"
+      "commit": "577dfb5cb9b3986d24dc17de3e8f3ca799a0efed",
+      "remote": "https://github.com/kiao-lp/mcp-hybridflow.git"
     },
     {
       "name": "skill-verify",
@@ -139,35 +160,35 @@
     {
       "name": "mcp-fetch",
       "kind": "mcp",
-      "commit": "84bce795105aed58decdaae297bf3ed550c8a1d2",
+      "commit": "cfaa2cc5df9c0911dd5a4ef282448dc22e9df252",
       "remote": null,
       "default": false
     },
     {
       "name": "mcp-duckduckgo",
       "kind": "mcp",
-      "commit": "9e3dd046cb6d952ace2dd791f8214361a9067343",
+      "commit": "9127e624bd01145c3f6b7c6540cc05492a40943a",
       "remote": null,
       "default": false
     },
     {
       "name": "mcp-markitdown",
       "kind": "mcp",
-      "commit": "0e001ca4c9bed786fc869a00f0270745e00419db",
+      "commit": "559234ef67d832f590e0bbcb4fecee178e612ad1",
       "remote": null,
       "default": false
     },
     {
       "name": "mcp-papers",
       "kind": "mcp",
-      "commit": "fde78eb8019d93d82f76f7cc584135e9b18ab756",
+      "commit": "8d76500db24b711637beab3a1c86e36446a763d1",
       "remote": null,
       "default": false
     },
     {
       "name": "mcp-playwright",
       "kind": "mcp",
-      "commit": "c2eb054f84253c2768ea17016d9a0ba35197d2dc",
+      "commit": "483aba17488555375071704af845b9ad32705f42",
       "remote": null,
       "default": false
     },

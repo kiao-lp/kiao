@@ -10,4 +10,4 @@ Part of the [Dashboard solution design](../../../../../docs/solution-design/READ
 
 | Design | Covers |
 | --- | --- |
-| [Internal links](internal-links.md) | Stored paths, mount resolution, click interception and link repair |
+| [Internal links](internal-links.md) | DCMS links, mount resolution, click interception and link repair |

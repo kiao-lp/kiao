@@ -367,7 +367,7 @@ const LegacyMigrationIgnoreFile = "migration-ignore"
 // and absorbs legacy migration-ignore patterns into [migration] before deleting that file.
 // Write failures are nonfatal: rootKiaoDecl supplies defaults in memory.
 func EnsureStoreDeclaration(cfg *fileconfig.Config) {
-	file := filepath.Join(cfg.RootPath, KiaoFilesName)
+	file := filepath.Join(cfg.DCMSRoot, KiaoFilesName)
 	legacy := filepath.Join(cfg.StatePath, LegacyMigrationIgnoreFile)
 	legacyExists := filesystem.Exists(legacy)
 
@@ -431,7 +431,7 @@ func absorbedMigrationSection(legacy string, patterns []string) string {
 
 // LogStoreDeclaration reports effective root exclusions per pass for startup diagnostics.
 func LogStoreDeclaration(cfg *fileconfig.Config) {
-	d := rootKiaoDecl(cfg.RootPath)
+	d := rootKiaoDecl(cfg.DCMSRoot)
 	source := d.source
 	if source == "" {
 		source = "(built-in defaults)"

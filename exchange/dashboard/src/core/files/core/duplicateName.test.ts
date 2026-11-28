@@ -45,7 +45,7 @@ describe('duplicatePath', () => {
             .toBe('docs/guide/notes 1.md');
     });
 
-    it('handles a file sitting at the store root', () => {
+    it('handles a file sitting at the DCMS root', () => {
         expect(duplicatePath('notes.md', ['notes.md'], EXTENSIONS)).toBe('notes 1.md');
     });
 

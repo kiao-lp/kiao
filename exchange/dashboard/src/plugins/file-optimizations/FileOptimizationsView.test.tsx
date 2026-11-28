@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from 'src/test/render';
 import type { FileOptimizations } from 'kiao-worker';
 
 const h = vi.hoisted(() => ({
@@ -10,9 +10,11 @@ const h = vi.hoisted(() => ({
     refreshFileList: vi.fn(),
 }));
 
-vi.mock('@kiao-dashboard-core', () => ({
+vi.mock('@kiao-dashboard-core', async () => ({
+    useConfirmation: (await import('src/core/ui-foundation/forms/ConfirmationDialog')).useConfirmation,
     useWorkerClient: () => ({ getFileOptimizations: h.scan }),
     useRefreshFileList: () => h.refreshFileList,
+    InProgressFeedback: ({ label }: { label: string }) => <span role="status">{label}</span>,
 }));
 
 import { FileOptimizationsBody } from './FileOptimizationsView';
@@ -25,8 +27,17 @@ describe('FileOptimizationsBody', () => {
         await screen.findByText('No file is stored twice — 0 files read.');
         expect(h.scan).toHaveBeenCalledTimes(1);
 
-        fireEvent.click(screen.getByRole('button', { name: /Re-scan/ }));
-        await waitFor(() => expect(h.scan).toHaveBeenCalledTimes(2));
+        let finish!: (result: FileOptimizations) => void;
+        h.scan.mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+        const rescan = screen.getByRole('button', { name: 'Re-scan' });
+        fireEvent.click(rescan);
+        expect(rescan).toBeDisabled();
+        expect(screen.getByRole('status')).toHaveTextContent('Scanning files…');
+        expect(screen.getByText('No file is stored twice — 0 files read.')).toBeVisible();
+        fireEvent.click(rescan);
+        expect(h.scan).toHaveBeenCalledTimes(2);
+        await act(async () => { finish({ duplicates: [], largest: [], scanned: 1, truncated: false }); });
+        expect(rescan).toBeEnabled();
     });
 
     it('rescans when closed and opened again', async () => {

@@ -24,6 +24,8 @@ describe('CodeEditor plugin', () => {
         'Main.kt', 'build.gradle.kts', 'main.py',
         'query.sql',
         'package.json', 'deploy.sh', 'deploy.bash',
+        'deploy.ash', 'deploy.dash', 'deploy.ksh', 'deploy.zsh',
+        'bin/Deploy.PS1', 'Tools.psm1', 'Tools.psd1',
         'pom.xml', 'compose.yml', 'compose.yaml', 'application.properties', '.gitignore',
     ])('handles %s', (path) => {
         expect(plugin.fileConfigFor(file(path))).not.toBeNull();
@@ -33,6 +35,8 @@ describe('CodeEditor plugin', () => {
         expect(plugin.fileConfigFor(file('notes.md'))).toBeNull();
         expect(plugin.fileConfigFor(file('notes.txt'))).toBeNull();
         expect(plugin.fileConfigFor(file('events.jsonl'))).toBeNull();
+        expect(plugin.fileConfigFor(file('deploy.fish'))).toBeNull();
+        expect(plugin.fileConfigFor(file('deploy.cmd'))).toBeNull();
     });
 
     // Sibling index files would show the same name without the extension.

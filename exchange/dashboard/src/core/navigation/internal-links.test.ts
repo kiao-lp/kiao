@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { internalPathOf, resolveInternalLink, storePathOfHref, toStoredLink } from './internal-links';
+import {
+    encodedDcmsLinkOf, internalPathOf, normalizeDocumentLink, resolveInternalLink,
+    storedLinkOf, storePathOfHref, toStoredLink,
+} from './internal-links';
 
 /** jsdom serves the page from this origin, so it is what counts as "internal". */
 const ORIGIN = window.location.origin;
@@ -8,54 +11,59 @@ describe('internal-links', () => {
     beforeEach(() => { vi.stubEnv('BASE_URL', '/dashboard/'); });
     afterEach(() => { vi.unstubAllEnvs(); });
 
-    describe('toStoredLink', () => {
+    it('keeps the legacy exports as aliases', () => {
+        expect(storedLinkOf).toBe(encodedDcmsLinkOf);
+        expect(toStoredLink).toBe(normalizeDocumentLink);
+    });
+
+    describe('normalizeDocumentLink', () => {
         it('strips the origin and the context path from a link to this app', () => {
-            expect(toStoredLink(`${ORIGIN}/dashboard/mon/chemin`)).toBe('/mon/chemin');
+            expect(normalizeDocumentLink(`${ORIGIN}/dashboard/mon/chemin`)).toBe('/mon/chemin');
         });
 
-        it('strips the context path from a root-relative link', () => {
-            expect(toStoredLink('/dashboard/mon/chemin')).toBe('/mon/chemin');
+        it('converts an origin-relative Dashboard href to a DCMS link', () => {
+            expect(normalizeDocumentLink('/dashboard/mon/chemin')).toBe('/mon/chemin');
         });
 
-        it('leaves an already-bare link alone', () => {
-            expect(toStoredLink('/mon/chemin')).toBe('/mon/chemin');
+        it('keeps an existing DCMS link', () => {
+            expect(normalizeDocumentLink('/mon/chemin')).toBe('/mon/chemin');
         });
 
         it('keeps the query and the fragment', () => {
-            expect(toStoredLink(`${ORIGIN}/dashboard/a/b.md?title=x#h`)).toBe('/a/b.md?title=x#h');
-            expect(toStoredLink('/dashboard/a/b.md?title=x#h')).toBe('/a/b.md?title=x#h');
+            expect(normalizeDocumentLink(`${ORIGIN}/dashboard/a/b.md?title=x#h`)).toBe('/a/b.md?title=x#h');
+            expect(normalizeDocumentLink('/dashboard/a/b.md?title=x#h')).toBe('/a/b.md?title=x#h');
         });
 
         it('keeps percent-encoding, which a markdown destination needs', () => {
-            expect(toStoredLink(`${ORIGIN}/dashboard/mon%20chemin.md`)).toBe('/mon%20chemin.md');
+            expect(normalizeDocumentLink(`${ORIGIN}/dashboard/mon%20chemin.md`)).toBe('/mon%20chemin.md');
         });
 
         it('maps the app root to /', () => {
-            expect(toStoredLink(`${ORIGIN}/dashboard/`)).toBe('/');
-            expect(toStoredLink('/dashboard')).toBe('/');
+            expect(normalizeDocumentLink(`${ORIGIN}/dashboard/`)).toBe('/');
+            expect(normalizeDocumentLink('/dashboard')).toBe('/');
         });
 
         it('leaves another origin alone, context path or not', () => {
-            expect(toStoredLink('https://example.com/dashboard/a/b.md'))
+            expect(normalizeDocumentLink('https://example.com/dashboard/a/b.md'))
                 .toBe('https://example.com/dashboard/a/b.md');
-            expect(toStoredLink('https://ailleurs.fr/x')).toBe('https://ailleurs.fr/x');
+            expect(normalizeDocumentLink('https://ailleurs.fr/x')).toBe('https://ailleurs.fr/x');
         });
 
         it('leaves this origin alone outside the app', () => {
-            expect(toStoredLink(`${ORIGIN}/api/files/getFile?path=x`))
+            expect(normalizeDocumentLink(`${ORIGIN}/api/files/getFile?path=x`))
                 .toBe(`${ORIGIN}/api/files/getFile?path=x`);
         });
 
-        it('leaves everything that is not a path alone', () => {
+        it('preserves fragments, document-relative links, external links and custom schemes', () => {
             for (const link of ['', '#ancre', '//host/a', './rel.md', '../up.md', 'rel.md',
                 'unit::/units/abc/abc.mlunit.json', 'template::x/y.temp.md', 'mailto:a@b.fr', 'data:image/png;base64,AA']) {
-                expect(toStoredLink(link)).toBe(link);
+                expect(normalizeDocumentLink(link)).toBe(link);
             }
         });
     });
 
     describe('resolveInternalLink', () => {
-        it('prefixes the context path onto a stored link', () => {
+        it('adds the Dashboard mount point to a DCMS link', () => {
             expect(resolveInternalLink('/mon/chemin')).toBe('/dashboard/mon/chemin');
             expect(resolveInternalLink('/a/b.md?title=x#h')).toBe('/dashboard/a/b.md?title=x#h');
         });
@@ -65,16 +73,16 @@ describe('internal-links', () => {
             expect(resolveInternalLink('/dashboard')).toBe('/dashboard');
         });
 
-        it('leaves everything that is not a store path alone', () => {
+        it('preserves fragments, document-relative links, external links and custom schemes', () => {
             for (const link of ['', '#ancre', '//host/a', './rel.md', 'rel.md', 'unit::/units/abc/abc.mlunit.json',
                 'https://ailleurs.fr/x', 'mailto:a@b.fr']) {
                 expect(resolveInternalLink(link)).toBe(link);
             }
         });
 
-        it('round-trips with toStoredLink', () => {
+        it('round-trips with normalizeDocumentLink', () => {
             const shown = `${ORIGIN}/dashboard/units/abc/cadre.md`;
-            expect(`${ORIGIN}${resolveInternalLink(toStoredLink(shown))}`).toBe(shown);
+            expect(`${ORIGIN}${resolveInternalLink(normalizeDocumentLink(shown))}`).toBe(shown);
         });
     });
 
@@ -105,7 +113,7 @@ describe('internal-links', () => {
             expect(storePathOfHref(`${ORIGIN}/dashboard/units/abc/cadre.md`)).toBe('units/abc/cadre.md');
         });
 
-        it('answers the store root as the empty path, which is what the tree calls it', () => {
+        it('answers the DCMS root as the empty path, which is what the tree calls it', () => {
             expect(storePathOfHref('/dashboard/')).toBe('');
         });
 
@@ -132,8 +140,8 @@ describe('internal-links', () => {
     describe('mounted at the root', () => {
         beforeEach(() => { vi.stubEnv('BASE_URL', '/'); });
 
-        it('stores and resolves the same bare path', () => {
-            expect(toStoredLink(`${ORIGIN}/mon/chemin`)).toBe('/mon/chemin');
+        it('uses the DCMS link as the displayed href', () => {
+            expect(normalizeDocumentLink(`${ORIGIN}/mon/chemin`)).toBe('/mon/chemin');
             expect(resolveInternalLink('/mon/chemin')).toBe('/mon/chemin');
             expect(internalPathOf(`${ORIGIN}/mon/chemin`)).toBe('/mon/chemin');
         });
@@ -144,7 +152,7 @@ describe('internal-links', () => {
 
         it('resolves content written for another mount point onto the new one', () => {
             expect(resolveInternalLink('/mon/chemin')).toBe('/cms/mon/chemin');
-            expect(toStoredLink(`${ORIGIN}/cms/mon/chemin`)).toBe('/mon/chemin');
+            expect(normalizeDocumentLink(`${ORIGIN}/cms/mon/chemin`)).toBe('/mon/chemin');
         });
     });
 });

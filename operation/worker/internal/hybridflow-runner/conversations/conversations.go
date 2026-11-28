@@ -85,10 +85,10 @@ type ConversationMeta struct {
 	ID             string                      `json:"id"`
 	Title          string                      `json:"title"`
 	TitleSetByUser bool                        `json:"titleSetByUser"`
-	// Folder is relative to RootPath ("" means root) and immutable: it determines
+	// Folder is relative to DCMSRoot ("" means root) and immutable: it determines
 	// both the CLI cwd and the slug owning its session transcript.
 	Folder string `json:"folder"`
-	// Harness is immutable because sessions cannot move between engines; changing it requires
+	// Harness is immutable because sessions cannot move between harnesses; changing it requires
 	// forking. Empty selects the default harness.
 	Harness        string `json:"harness,omitempty"`
 	Owner          string `json:"owner"`
@@ -201,8 +201,8 @@ type ConversationRecord struct {
 	SystemPrompt string `json:"systemPrompt,omitempty"`
 	// Instructions holds managed-agent standing orders separately; empty outside board plays.
 	Instructions string `json:"instructions,omitempty"`
-	// Published harness name and ID, or the legacy engine reference.
-	// Both prompt and reply carry these; chat turns leave them empty.
+	// Published agent name and ID, or the legacy harness reference in AgentRef.
+	// Both prompt and reply carry these when the turn has an agent or legacy task reference.
 	PlayedBy     string                     `json:"playedBy,omitempty"`
 	AgentRef     string                     `json:"agentRef,omitempty"`
 	AgentVersion boards.AgentReleaseVersion `json:"agentVersion,omitempty"`
@@ -437,7 +437,7 @@ func (s *ConversationStore) Fork(sourceID, owner, fromMessageID string, onto For
 	if err != nil {
 		return ConversationMeta{}, err
 	}
-	// A session can be carried only on the same engine with branching support and,
+	// A session can be carried only on the same harness with branching support and,
 	// for a partial fork, a captured anchor. Otherwise copy display history only;
 	// the notice must disclose that the model will not remember it.
 	changedHarness := harnessapi.ResolvedHarness(onto.Harness) != harnessapi.ResolvedHarness(sourceMeta.Harness)
@@ -460,7 +460,7 @@ func (s *ConversationStore) Fork(sourceID, owner, fromMessageID string, onto For
 		title, named = DefaultConversationTitle, false
 	}
 
-	// Model, effort and permission modes are engine-specific; use target defaults on engine changes.
+	// Model, effort and permission modes are harness-specific; use target defaults on harness changes.
 	model, effort, mode := sourceMeta.Model, sourceMeta.Effort, sourceMeta.PermissionMode
 	if changedHarness || onto.ReplaceVersion {
 		model, effort, mode = onto.Model, onto.Effort, onto.PermissionMode
@@ -1057,7 +1057,7 @@ func forkNotice(sourceTitle string, carriesSession bool, harnessLabel string) st
 	return notice
 }
 
-// forkTarget carries the caller-resolved harness capabilities and engine-specific defaults.
+// forkTarget carries the target harness's capabilities and defaults resolved by the caller.
 type ForkTarget struct {
 	AgentVersion   *boards.ManagedAgentVersion
 	ReplaceVersion bool
@@ -1068,7 +1068,7 @@ type ForkTarget struct {
 	// Without branching support, even same-harness forks retain only display history.
 	Branches bool
 
-	// Defaults apply only when the engine changes; same-engine forks retain source settings.
+	// Defaults apply only when the harness changes; same-harness forks retain source settings.
 	Model, Effort, PermissionMode string
 }
 

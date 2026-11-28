@@ -25,14 +25,14 @@ describe('what a flow node says comes after it', () => {
 
     it('is left out of the document by a flow node that says nothing', () => {
         const written = writeBoardContent({
-            flowNodes: [newFlowNode('Alone')], flowNodeClasses: [],
-            workflows: [], workflowClasses: [],
+            flowNodes: [newFlowNode('Alone')],
+            workflows: [],
         }) as Written;
         expect(written.flowNodes[0]).not.toHaveProperty('onSuccess');
     });
 });
 
-describe('the tags a card is filed under', () => {
+describe('the tags a node is filed under', () => {
     it('reads the words, trimmed, once each, and drops what is not one', () => {
         const flowNodes = [
             { title: 'Tagged', tags: ['bug', ' needs   review '] },
@@ -47,10 +47,10 @@ describe('the tags a card is filed under', () => {
         ]);
     });
 
-    it('is written only where the card wears one, and before the body', () => {
+    it('is written only where the node wears one, and before the body', () => {
         const written = writeBoardContent({
             flowNodes: [{ ...newFlowNode('Filed', 'Text'), tags: ['bug'] }, newFlowNode('Bare')],
-            flowNodeClasses: [], workflows: [], workflowClasses: [],
+            workflows: [],
         }) as Written;
         expect(written.flowNodes[0]).toMatchObject({ tags: ['bug'] });
         expect(Object.keys(written.flowNodes[0])).toEqual(['id', 'title', 'tags', 'body']);
@@ -58,9 +58,9 @@ describe('the tags a card is filed under', () => {
     });
 });
 
-/** Left behind, forgivingly — the board is its cards. */
+/** Left behind, forgivingly — the board is its nodes. */
 describe('a board written with columns', () => {
-    it('leaves the columns behind and keeps the cards', () => {
+    it('leaves the columns behind and keeps the nodes', () => {
         const content = readBoardContent({
             columns: [{ id: 'c1', title: 'Todo' }, { id: 'c2', title: 'Done' }],
             flowNodes: [{ id: 't1', column: 'c2', title: 'Shipped' }, { id: 't2', title: 'Some day' }],
@@ -68,7 +68,7 @@ describe('a board written with columns', () => {
         expect(content.flowNodes.map(flowNode => flowNode.title)).toEqual(['Shipped', 'Some day']);
     });
 
-    it('leaves cards held inside columns behind with them', () => {
+    it('leaves nodes held inside columns behind with them', () => {
         const content = readBoardContent({
             columns: [
                 { id: 'c1', title: 'Todo', flowNodes: [{ id: 't1', title: 'One' }, { id: 't2', title: 'Two' }] },
@@ -124,7 +124,7 @@ describe('reading a board', () => {
     });
 
     it('reads nothing out of nothing', () => {
-        const empty = { flowNodes: [], flowNodeClasses: [], workflows: [], workflowClasses: [] };
+        const empty = { flowNodes: [], workflows: [] };
         expect(readBoardContent(null)).toEqual(empty);
         expect(readBoardContent({})).toEqual(empty);
         expect(readBoardContent([])).toEqual(empty);
@@ -150,7 +150,7 @@ describe('reading a board', () => {
         expect(read.map(flowNode => flowNode.at)).toEqual(['', '2026-09-03T22:00', '', '', '']);
     });
 
-    it('reads a card that is not AI as claiming nothing about a conversation', () => {
+    it('reads a node that is not AI as claiming nothing about a conversation', () => {
         const flowNodes = [
             { title: 'Human', onSuccess: { flowNode: 't2', flowNodes: [], mode: 'continue', compact: true } },
             { title: 'Waits', type: 'scheduler', onSuccess: { flowNode: 't2', flowNodes: [], mode: 'continue' } },
@@ -189,12 +189,11 @@ describe('reading a board', () => {
 describe('writing a board', () => {
     it('leaves out everything that says nothing', () => {
         const content: BoardContent = {
-            flowNodes: [newFlowNode('Bare')], flowNodeClasses: [],
-            workflows: [], workflowClasses: [],
+            flowNodes: [newFlowNode('Bare')],
+            workflows: [],
         };
         expect(writeBoardContent(content)).toEqual({
             flowNodes: [{ id: expect.any(String), title: 'Bare' }],
-            flowNodeClasses: [],
         });
     });
 
@@ -202,19 +201,19 @@ describe('writing a board', () => {
         const content: BoardContent = {
             flowNodes: [{
                 id: 't1', title: 'A', type: 'ai', note: '', value: {}, valueType: '', tags: ['bug', 'ui'],
-                body: '# Heading\n\nText',
+                body: '# Heading\n\nText', multiPartTemplate: true,
                 criteria: [{ id: 'c1', text: 'It holds' }], complexity: 5,
-                at: '', spot: { x: 320, y: 160 },
+                at: '', spot: { x: 320, y: 160 }, size: null,
                 status: 'done', archived: false, chat: 'chat-1', settings: { model: 'opus' },
                 onSuccess: { flowNode: 't2', flowNodes: [], mode: 'continue', compact: true },
-                classVersion: null, workflow: '',
+                workflow: '',
             }, {
                 id: 't2', title: 'B', type: 'scheduler', note: '', value: {}, valueType: '', tags: [], body: '',
-                criteria: [], complexity: null,
-                settings: {}, at: '2026-09-03T22:00', spot: null, status: 'ready',
-                archived: false, chat: '', onSuccess: noSuccess(), classVersion: null, workflow: '',
+                multiPartTemplate: false, criteria: [], complexity: null,
+                settings: {}, at: '2026-09-03T22:00', spot: null, size: null, status: 'ready',
+                archived: false, chat: '', onSuccess: noSuccess(), workflow: '',
             }],
-            flowNodeClasses: [], workflows: [], workflowClasses: [],
+            workflows: [],
         };
         expect(readBoardContent(writeBoardContent(content))).toEqual(content);
     });
@@ -281,7 +280,7 @@ describe('the task’s own two', () => {
         expect(read.complexity).toBe(5);
     });
 
-    it('reads no criteria and no complexity on a card that is no task', () => {
+    it('reads no criteria and no complexity on a node that is no task', () => {
         const read = readBoardContent({
             flowNodes: [{ id: 't1', title: 'Off', type: 'shutdown', criteria: [{ id: 'c1', text: 'x' }], complexity: 5 }],
         }).flowNodes[0];
@@ -300,7 +299,7 @@ describe('the task’s own two', () => {
         const written = writeBoardContent({
             flowNodes: [newFlowNode('Held', 'Text', {}, noSuccess(), [{ id: 'c1', text: 'It holds' }], 3),
                 newFlowNode('Bare')],
-            flowNodeClasses: [], workflows: [], workflowClasses: [],
+            workflows: [],
         }) as Written;
         expect(written.flowNodes[0]).toMatchObject({
             criteria: [{ id: 'c1', text: 'It holds' }], complexity: 3,
@@ -311,10 +310,10 @@ describe('the task’s own two', () => {
 });
 
 /**
- * Where a card sits on the board.
+ * Where a node sits on the board.
  * Absent means never placed — so no document needs rewriting to be read.
  */
-describe('where a card sits', () => {
+describe('where a node sits', () => {
     const first = (raw: unknown) => readBoardContent(raw).flowNodes[0];
 
     it('is the point the document names', () => {
@@ -337,12 +336,53 @@ describe('where a card sits', () => {
         expect(first({ flowNodes: [{ id: 't', ...said }] }).spot).toBeNull();
     });
 
-    it('is left out of the document for a card nobody has placed', () => {
+    it('is left out of the document for a node nobody has placed', () => {
         const written = writeBoardContent({
-            flowNodes: [newFlowNode('A')], flowNodeClasses: [],
-            workflows: [], workflowClasses: [],
+            flowNodes: [newFlowNode('A')],
+            workflows: [],
         });
         expect(JSON.stringify(written)).not.toContain('spot');
+    });
+});
+
+/**
+ * How large a node is drawn.
+ * An absent height keeps the natural one, so nobody's stored board needs a height to be read.
+ */
+describe('how large a node is drawn', () => {
+    const first = (raw: unknown) => readBoardContent(raw).flowNodes[0];
+
+    it('is the dimensions the document names', () => {
+        expect(first({ flowNodes: [{ id: 't', size: { w: 320, h: 160 } }] }).size)
+            .toEqual({ w: 320, h: 160 });
+    });
+
+    it('keeps a width without inventing a height', () => {
+        expect(first({ flowNodes: [{ id: 't', size: { w: 320 } }] }).size)
+            .toEqual({ w: 320 });
+    });
+
+    it('is rounded to whole pixels', () => {
+        expect(first({ flowNodes: [{ id: 't', size: { w: 180.4, h: 90.5 } }] }).size)
+            .toEqual({ w: 180, h: 91 });
+    });
+
+    it.each([
+        ['nothing said', {}],
+        ['a width of words', { size: { w: 'wide', h: 80 } }],
+        ['a width of nothing', { size: { w: 0, h: 80 } }],
+        ['not dimensions', { size: 12 }],
+        ['a width that is not finite', { size: { w: Infinity, h: 80 } }],
+    ])('is none where the document says %s', (_what, said) => {
+        expect(first({ flowNodes: [{ id: 't', ...said }] }).size).toBeNull();
+    });
+
+    it('is left out of the document for a node nobody resized', () => {
+        const written = writeBoardContent({
+            flowNodes: [newFlowNode('A')],
+            workflows: [],
+        });
+        expect(JSON.stringify(written)).not.toContain('size');
     });
 });
 

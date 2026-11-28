@@ -13,7 +13,7 @@ import (
 	"testing"
 )
 
-// write puts content at a store-relative path, creating the folders on the way.
+// write puts content at a path relative to the DCMS root, creating the folders on the way.
 func writeAt(t *testing.T, root, rel, content string) {
 	t.Helper()
 	mustWriteBytes(t, filepath.Join(root, filepath.FromSlash(rel)), []byte(content))

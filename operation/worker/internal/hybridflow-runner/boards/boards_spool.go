@@ -1,6 +1,7 @@
 package boards
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -63,15 +64,17 @@ type spoolBill struct {
 
 // SpoolRecord holds the ids and values needed to replay one write.
 type SpoolRecord struct {
-	Op       string          `json:"op"`
-	Handle   string          `json:"handle,omitempty"`
-	FlowNode string          `json:"flowNode,omitempty"`
-	Run      string          `json:"run,omitempty"`
-	Status   string          `json:"status,omitempty"`
-	Chat     string          `json:"chat,omitempty"`
-	Output   json.RawMessage `json:"output,omitempty"`
-	Usage    *spoolBill      `json:"usage,omitempty"`
-	At       int64           `json:"at"`
+	Op               string          `json:"op"`
+	Handle           string          `json:"handle,omitempty"`
+	FlowNode         string          `json:"flowNode,omitempty"`
+	Run              string          `json:"run,omitempty"`
+	AfterPredecessor bool            `json:"afterPredecessor,omitempty"`
+	Status           string          `json:"status,omitempty"`
+	Chat             string          `json:"chat,omitempty"`
+	Output           json.RawMessage `json:"output,omitempty"`
+	Workflow         *WorkflowUpdate `json:"workflow,omitempty"`
+	Usage            *spoolBill      `json:"usage,omitempty"`
+	At               int64           `json:"at"`
 }
 
 // SpoolingHybridflowStore is BoardStore over a HybridflowStore that survives the link going down:
@@ -148,10 +151,11 @@ func (s *SpoolingHybridflowStore) Close() error {
 	return nil
 }
 
-func (s *SpoolingHybridflowStore) Start(handle, flowNodeID, runID string) (*BoardContent, error) {
+func (s *SpoolingHybridflowStore) Start(handle, flowNodeID, runID string, afterPredecessor ...bool) (*BoardContent, error) {
+	arrival := len(afterPredecessor) > 0 && afterPredecessor[0]
 	return s.write(handle, flowNodeID,
-		SpoolRecord{Op: SpoolStart, Handle: handle, FlowNode: flowNodeID, Run: runID},
-		func() (*BoardContent, error) { return s.Inner.Start(handle, flowNodeID, runID) },
+		SpoolRecord{Op: SpoolStart, Handle: handle, FlowNode: flowNodeID, Run: runID, AfterPredecessor: arrival},
+		func() (*BoardContent, error) { return s.Inner.Start(handle, flowNodeID, runID, arrival) },
 		func(board *BoardContent) { board.Start(flowNodeID) })
 }
 
@@ -169,16 +173,38 @@ func (s *SpoolingHybridflowStore) Hold(handle, flowNodeID, runID string) (*Board
 		func(board *BoardContent) { board.Hold(flowNodeID) })
 }
 
-func (s *SpoolingHybridflowStore) Finish(handle, flowNodeID, runID, status string, outputs ...json.RawMessage) (*BoardContent, error) {
+func (s *SpoolingHybridflowStore) Finish(handle, flowNodeID, runID string, result PlayResult) (*BoardContent, error) {
 	return s.write(handle, flowNodeID,
-		SpoolRecord{Op: SpoolFinish, Handle: handle, FlowNode: flowNodeID, Run: runID, Status: status, Output: firstOutput(outputs)},
-		func() (*BoardContent, error) { return s.Inner.Finish(handle, flowNodeID, runID, status, outputs...) },
+		SpoolRecord{Op: SpoolFinish, Handle: handle, FlowNode: flowNodeID, Run: runID,
+			Status: result.Status, Output: result.Output, Workflow: result.Workflow},
+		func() (*BoardContent, error) { return s.Inner.Finish(handle, flowNodeID, runID, result) },
 		func(board *BoardContent) {
-			board.SetStatus(flowNodeID, status)
+			board.SetStatus(flowNodeID, result.Status)
 			if node := board.FlowNode(flowNodeID); node != nil {
-				node.Output = append(json.RawMessage(nil), firstOutput(outputs)...)
+				node.Output = append(json.RawMessage(nil), result.Output...)
+			}
+			if update := result.Workflow; update != nil {
+				board.Workflow(update.ID).MergeValues(update.Values)
 			}
 		})
+}
+
+func (s *SpoolingHybridflowStore) PassLimiter(ctx context.Context, handle, flowNodeID, runID string, revision int64, output json.RawMessage) (*FlowNode, string, error) {
+	node, next, err := s.Inner.PassLimiter(ctx, handle, flowNodeID, runID, revision, output)
+	if err != nil {
+		return nil, "", err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.downUntil = time.Time{}
+	if cached := s.boards[handle]; cached != nil {
+		if previous := cached.FlowNode(flowNodeID); previous != nil && previous.Revision < node.Revision {
+			board := cloneBoard(cached)
+			*board.FlowNode(flowNodeID) = *node
+			s.boards[handle] = board
+		}
+	}
+	return node, next, nil
 }
 
 func (s *SpoolingHybridflowStore) Chat(handle, flowNodeID, chat string) (*BoardContent, error) {
@@ -202,7 +228,7 @@ func (s *SpoolingHybridflowStore) Todo(handle, flowNodeID string) (*BoardContent
 		func(board *BoardContent) { board.SetStatus(flowNodeID, FlowNodeStatusTodo) })
 }
 
-// Drop is queued like any other write; the optimistic answer applies the guard — only a card
+// Drop is queued like any other write; the optimistic answer applies the guard — only a flow node
 // still marked as being worked on is given back.
 func (s *SpoolingHybridflowStore) Drop(handle, flowNodeID, runID string) (*BoardContent, error) {
 	return s.write(handle, flowNodeID,
@@ -243,7 +269,7 @@ func (s *SpoolingHybridflowStore) ReportUsage(handle, flowNodeID string, report 
 	})
 }
 
-// SettleRun frees the run's cards live, or durably queues the release while the link is down.
+// SettleRun frees the run's flow nodes live, or durably queues the release while the link is down.
 // A queued release returns zero; a persistence failure returns an error so restart can retry.
 func (s *SpoolingHybridflowStore) SettleRun(runID string) (int, error) {
 	s.mu.Lock()
@@ -278,7 +304,7 @@ func (s *SpoolingHybridflowStore) write(
 	live func() (*BoardContent, error), apply func(*BoardContent),
 ) (*BoardContent, error) {
 	s.mu.Lock()
-	down := time.Now().Before(s.downUntil)
+	down := time.Now().Before(s.downUntil) || s.hasPendingWorkflowLocked(handle)
 	s.mu.Unlock()
 	if !down {
 		board, err := live()
@@ -304,7 +330,7 @@ func (s *SpoolingHybridflowStore) write(
 // enqueue files the mark on the spool and answers from the cached board with the mark applied to
 // the copy. The cache keeps the optimistic board, so the reads behind it see the run's own marks
 // while the link is down. Without a cached board there is nothing honest to answer with, and the
-// mark is not queued either: a run that never started holds no card to replay.
+// mark is not queued either: a run that never started holds no flow node to replay.
 func (s *SpoolingHybridflowStore) enqueue(
 	rec SpoolRecord, handle string, apply func(*BoardContent),
 ) (*BoardContent, error) {
@@ -315,6 +341,18 @@ func (s *SpoolingHybridflowStore) enqueue(
 		return nil, &httpkit.HTTPError{
 			Status: http.StatusServiceUnavailable,
 			Msg:    "the hybridflow store could not be reached, and no board is cached for " + handle,
+		}
+	}
+	if rec.Op == SpoolStart {
+		if node := cached.FlowNode(rec.FlowNode); node != nil && node.IsGateway() &&
+			(node.Status == FlowNodeStatusRunning || len(cached.GatewayWaiting(*node, rec.AfterPredecessor)) > 0) {
+			return nil, &httpkit.HTTPError{Status: http.StatusConflict, Msg: "the gateway is running or waiting for its incoming branches"}
+		}
+	}
+	if update := rec.Workflow; update != nil {
+		node := cached.FlowNode(rec.FlowNode)
+		if node == nil || node.Workflow != update.ID || cached.Workflow(update.ID) == nil {
+			return nil, &httpkit.HTTPError{Status: http.StatusConflict, Msg: "the flow node's workflow has changed"}
 		}
 	}
 	if err := s.appendLocked(rec); err != nil {
@@ -347,7 +385,7 @@ func (s *SpoolingHybridflowStore) appendLocked(rec SpoolRecord) error {
 // refusal — no such board — is returned rather than masked by a copy of what is gone.
 func (s *SpoolingHybridflowStore) Board(handle string) (*BoardContent, error) {
 	s.mu.Lock()
-	down := time.Now().Before(s.downUntil)
+	down := time.Now().Before(s.downUntil) || s.hasPendingWorkflowLocked(handle)
 	cached, ok := s.boards[handle]
 	s.mu.Unlock()
 	if down && ok {
@@ -478,19 +516,31 @@ func (s *SpoolingHybridflowStore) hasPendingBoardLocked(handle string) bool {
 	return false
 }
 
+// Keep local readers and successors on the optimistic board until workflow values reach the store.
+func (s *SpoolingHybridflowStore) hasPendingWorkflowLocked(handle string) bool {
+	for _, rec := range s.pending {
+		if rec.Handle == handle && rec.Workflow != nil {
+			return true
+		}
+	}
+	return false
+}
+
 // send replays one queued mark: the write, and the board read back after it for the cache. A
 // record naming no operation this build knows is refused rather than sent — it can only be one a
 // newer build queued.
 func (s *SpoolingHybridflowStore) send(rec SpoolRecord) (*BoardContent, error) {
 	switch rec.Op {
 	case SpoolStart:
-		return s.Inner.Start(rec.Handle, rec.FlowNode, rec.Run)
+		return s.Inner.Start(rec.Handle, rec.FlowNode, rec.Run, rec.AfterPredecessor)
 	case spoolReopen:
 		return s.Inner.Reopen(rec.Handle, rec.FlowNode, rec.Run)
 	case spoolHold:
 		return s.Inner.Hold(rec.Handle, rec.FlowNode, rec.Run)
 	case SpoolFinish:
-		return s.Inner.Finish(rec.Handle, rec.FlowNode, rec.Run, rec.Status, rec.Output)
+		return s.Inner.Finish(rec.Handle, rec.FlowNode, rec.Run, PlayResult{
+			Status: rec.Status, Output: rec.Output, Workflow: rec.Workflow,
+		})
 	case SpoolChat:
 		return s.Inner.Chat(rec.Handle, rec.FlowNode, rec.Chat)
 	case spoolDrop:

@@ -151,7 +151,7 @@ type HarnessMessageDto struct {
 	ComposedPrompt string `json:"composedPrompt,omitempty"`
 	SystemPrompt   string `json:"systemPrompt,omitempty"`
 	Instructions   string `json:"instructions,omitempty"`
-	// PlayedBy names the managed agent; AgentRef preserves the card's reference to it.
+	// PlayedBy names the managed agent; AgentRef preserves the flow node's reference to it.
 	// Play metadata appears on both prompt and reply.
 	PlayedBy     string `json:"playedBy,omitempty"`
 	AgentRef     string `json:"agentRef,omitempty"`
@@ -179,5 +179,16 @@ type HarnessForkRequestDto struct {
 
 type HarnessConversationDetailDto struct {
 	HarnessConversationDto
-	Messages []HarnessMessageDto `json:"messages"`
+	Locations HarnessConversationLocationsDto `json:"locations"`
+	Messages  []HarnessMessageDto             `json:"messages"`
+}
+
+// Locations are paths on the worker host. The transcript and traces are created on demand.
+type HarnessConversationLocationsDto struct {
+	WorkingDirectory      string `json:"workingDirectory,omitempty"`
+	ConversationDirectory string `json:"conversationDirectory"`
+	MetadataFile          string `json:"metadataFile"`
+	TranscriptFile        string `json:"transcriptFile"`
+	TurnTracesDirectory   string `json:"turnTracesDirectory"`
+	AttachmentsDirectory  string `json:"attachmentsDirectory,omitempty"`
 }

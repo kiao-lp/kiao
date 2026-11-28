@@ -145,8 +145,8 @@ func (r *HarnessRegistry) Known(name string) bool {
 	return ok
 }
 
-// Legacy cards name engines directly. Recognize known but unavailable engines so the
-// runner reports harness unavailability rather than an unknown card value.
+// Legacy AI tasks can name a harness directly. Recognize known harnesses even when
+// unavailable so the runner can report the missing harness.
 func (r *HarnessRegistry) Drives(name string) bool {
 	if r == nil {
 		return false

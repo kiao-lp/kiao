@@ -11,6 +11,7 @@ const state = await vi.hoisted(async () => {
 });
 
 vi.mock('@kiao-dashboard-core', async () => ({
+    IconButton: (await import('src/core/ui-foundation/toolbar/IconButton')).IconButton,
     useStickToBottom: (await import('src/core/ui-foundation/scrolling/useStickToBottom')).useStickToBottom,
     // one's: here the handlers only have to be handlers.
     markdownLinkDropHandlers: () => ({}),
@@ -73,6 +74,7 @@ const paneWith = (restoredPrompt: { paneKey: string; text: string; attachments: 
             },
         }}
         onFork={() => {}}
+        changeResponseTokenLimit={() => {}}
         currentPath="units"
         harnesses={[TEST_AGENT]}
         optionsFor={() => TEST_AGENT}

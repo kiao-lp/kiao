@@ -305,7 +305,7 @@ func TestCreateConversationRefusesAModeTheHarnessLacks(t *testing.T) {
 }
 
 // The harness cannot be patched. It is fixed for the conversation's life for a stronger reason than
-// the folder is: a session id belongs to one engine, so a conversation that changed harness would hold
+// the folder is: a session id belongs to one harness, so a conversation that changed harness would hold
 // a session nothing could resume under a transcript claiming it had been continued.
 func TestPatchCannotChangeTheHarness(t *testing.T) {
 	svc, _ := newConversationTestServer(t)
@@ -330,7 +330,7 @@ func TestPatchCannotChangeTheHarness(t *testing.T) {
 	}
 }
 
-// Changing harness is a fork, and the fork says what it costs: the copy runs on the new engine, starts
+// Changing harness is a fork, and the fork says what it costs: the copy runs on the new harness, starts
 // a session of its own, and carries the transcript as a preamble to read rather than to remember.
 func TestForkOntoAnotherHarnessDropsTheSession(t *testing.T) {
 	svc, _ := newConversationTestServer(t)
@@ -351,7 +351,7 @@ func TestForkOntoAnotherHarnessDropsTheSession(t *testing.T) {
 		t.Errorf("harness = %q, want the selected agent’s harness", fork.Harness)
 	}
 	if fork.SessionID != "" {
-		t.Errorf("sessionId = %q, want none: a session id is one engine's own", fork.SessionID)
+		t.Errorf("sessionId = %q, want none: a session id is one harness's own", fork.SessionID)
 	}
 	// A Codex conversation must not inherit `sonnet`, which names nothing it can run, nor a mode it
 	// does not have — the copy would be refused at its first prompt.
@@ -485,7 +485,7 @@ func mustCreateThrough(t *testing.T, svc *Service, body string) pkgConversations
 
 // A prompt is refused where the conversation's harness does not have the mode. It is a second gate and
 // not a repeat of the deployment's: what the deployment allows says what may be run at all, this
-// says what this engine can do.
+// says what this harness can do.
 func TestAPromptIsRefusedForAModeTheHarnessLacks(t *testing.T) {
 	svc, _ := newConversationTestServer(t)
 	withCodex(t, svc)
@@ -512,9 +512,9 @@ func TestAPromptIsRefusedForAModeTheHarnessLacks(t *testing.T) {
 }
 
 // A conversation whose harness this deployment no longer offers is refused with a code of its own: the
-// session belongs to that engine and cannot be moved, so saying so — and pointing at the fork — is
+// session belongs to that harness and cannot be moved, so saying so — and pointing at the fork — is
 // all there is left to do with it.
-func TestAPromptIsRefusedForAnHarnessThatIsGone(t *testing.T) {
+func TestAPromptIsRefusedForAWithdrawnHarness(t *testing.T) {
 	svc, _ := newConversationTestServer(t)
 	withCodex(t, svc)
 	created := mustCreateThrough(t, svc, `{"folder":"","agentId":"codex-agent","permissionMode":"bypassPermissions"}`)

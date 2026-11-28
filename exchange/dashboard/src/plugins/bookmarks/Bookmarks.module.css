@@ -26,18 +26,9 @@
     overflow-y: auto;
 }
 
-.center {
-    display: flex;
-    justify-content: center;
-    padding: 16px;
-}
-
 /* One bookmark: its head, and the note under it while it is open. */
 .row {
-    display: flex;
-    flex-direction: column;
-    padding: 4px 2px;
-    border-bottom: 1px solid var(--border);
+    display: block;
 }
 
 .rowHead {

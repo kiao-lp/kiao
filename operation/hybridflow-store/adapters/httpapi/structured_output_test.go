@@ -36,14 +36,26 @@ func TestStructuredOutputHTTP(t *testing.T) {
 		t.Fatalf("output type = %q", made.OutputType)
 	}
 	path := "/boards/tasks/flow-nodes/" + made.ID
+	workflow := decodeBody[httpapi.WorkflowDto](t, call(t, handler, "POST", "/boards/tasks/workflows",
+		fmt.Sprintf(`{"name":"Editorial","flowNodes":[%q]}`, made.ID)))
 	call(t, handler, "POST", path+"/play", `{"run":"run-1"}`)
-	w = call(t, handler, "POST", path+"/played", `{"run":"run-1","status":"done","output":{"message":"hello"}}`)
+	w = call(t, handler, "POST", path+"/played", fmt.Sprintf(
+		`{"run":"run-1","status":"done","workflow":{"id":%q,"values":{"name":"Renamed"}}}`, workflow.ID))
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("reserved workflow field = %d %s", w.Code, w.Body.String())
+	}
+	w = call(t, handler, "POST", path+"/played", fmt.Sprintf(
+		`{"run":"run-1","status":"done","output":{"message":"hello"},"workflow":{"id":%q,"values":{"approved":true}}}`, workflow.ID))
 	if w.Code != http.StatusOK {
 		t.Fatalf("completion = %d %s", w.Code, w.Body.String())
 	}
 	got := decodeBody[httpapi.FlowNodeDto](t, call(t, handler, "GET", path, ""))
 	if string(got.Output) != `{"message":"hello"}` || got.Status != "done" {
 		t.Fatalf("output = %+v", got)
+	}
+	board := decodeBody[httpapi.BoardDetailDto](t, call(t, handler, "GET", "/boards/tasks", ""))
+	if len(board.Workflows) != 1 || board.Workflows[0].Name != "Editorial" || string(board.Workflows[0].Values) != `{"approved":true}` {
+		t.Fatalf("board workflows = %+v", board.Workflows)
 	}
 	w = call(t, handler, "PATCH", path, `{"outputType":""}`)
 	got = decodeBody[httpapi.FlowNodeDto](t, w)

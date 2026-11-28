@@ -20,7 +20,7 @@ func MachinePowerOff(cfg *runnerconfig.Config) func() error {
 		return nil
 	}
 	return func() error {
-		result := process.RunProc(command, cfg.RootPath, shutdownTimeout, nil)
+		result := process.RunProc(command, cfg.DCMSRoot, shutdownTimeout, nil)
 		if result.OK() {
 			return nil
 		}

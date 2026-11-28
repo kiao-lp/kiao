@@ -3,7 +3,6 @@ package config
 import (
 	"fmt"
 	"kiao/worker/internal/core/equipment"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -17,7 +16,7 @@ var mcpEntrypoints = map[string]struct {
 }{
 	// files_rename repairs links unlike a plain mv; the CLI already has direct file access.
 	"files": {server: "kiao-files", script: "index.js"},
-	// units and cv require deployment-provided overlays; missing scripts fail startup.
+	// units and cv require deployment-provided overlays.
 	"units":      {server: "kiao-units", script: "units-entry.js"},
 	"cv":         {server: "kiao-cv", script: "cv-entry.js"},
 	"hybridflow": {server: "kiao-hybridflow", script: "hybridflow-entry.js"},
@@ -55,9 +54,6 @@ func BundledMCPServers(cfg *Config) (map[string]equipment.MCPServer, error) {
 			return nil, fmt.Errorf("unknown MCP server %q; known: %s", name, knownMCPServers())
 		}
 		script := filepath.Join(cfg.MCPPath, "dist", entry.script)
-		if _, err := os.Stat(script); err != nil {
-			return nil, fmt.Errorf("MCP server %q: %s is not readable; is the kiao-mcp bundle built and staged?", name, script)
-		}
 		servers[name] = equipment.MCPServer{
 			Name:    entry.server,
 			Type:    equipment.MCPStdio,

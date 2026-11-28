@@ -16,14 +16,11 @@ type completionBoards struct {
 	handle, run string
 }
 
-func (b *completionBoards) Finish(handle, node, run, status string, outputs ...json.RawMessage) (*pkgBoards.BoardContent, error) {
+func (b *completionBoards) Finish(handle, node, run string, result pkgBoards.PlayResult) (*pkgBoards.BoardContent, error) {
 	b.writes++
 	b.handle, b.run = handle, run
-	b.node.Status, b.node.Run = status, ""
-	b.node.Output = nil
-	if len(outputs) > 0 {
-		b.node.Output = outputs[0]
-	}
+	b.node.Status, b.node.Run = result.Status, ""
+	b.node.Output = result.Output
 	return &pkgBoards.BoardContent{FlowNodes: []pkgBoards.FlowNode{b.node}}, nil
 }
 
@@ -57,7 +54,7 @@ func TestAICompletionPreservesInterruptionRetryAndStructuredOutput(t *testing.T)
 			runner := &ChainRunner{Boards: store}
 			run := &ChainRun{Id: "run", Handle: "board", FlowNodeID: node.ID, Chat: "chat", State: ChainRunStatePlaying}
 			zero := 0
-			result := inspectCardTurn(harnessfaults.TurnReply{Text: tc.reply, Tail: tc.reply, ExitCode: &zero}, tc.refusal, tc.stopped, "Claude")
+			result := inspectAITurn(harnessfaults.TurnReply{Text: tc.reply, Tail: tc.reply, ExitCode: &zero}, tc.refusal, tc.stopped, "Claude")
 			out, fault := runner.finishAITurn(run, node, PlayOneOutcome{Chat: "chat", Title: node.Title, Harness: "codex"}, contract, result)
 			if tc.refusal != nil && (!strings.Contains(run.ending, "codex did not take") || strings.Contains(run.ending, "Claude")) {
 				t.Fatalf("wrong harness in refusal: %s", run.ending)
@@ -69,7 +66,7 @@ func TestAICompletionPreservesInterruptionRetryAndStructuredOutput(t *testing.T)
 				t.Fatalf("retry fault = %+v for round %d", fault, tc.round)
 			}
 			if store.writes != tc.writes || store.node.Status != tc.status || string(store.node.Output) != tc.output {
-				t.Fatalf("writes = %d, card = %+v; want %d writes, %s, export %s", store.writes, store.node, tc.writes, tc.status, tc.output)
+				t.Fatalf("writes = %d, flow node = %+v; want %d writes, %s, export %s", store.writes, store.node, tc.writes, tc.status, tc.output)
 			}
 			if tc.writes > 0 && (store.handle != "board" || store.run != "run") {
 				t.Fatal("completion lost the board handle or run claim")

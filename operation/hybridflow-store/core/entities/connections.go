@@ -1,6 +1,25 @@
 package entities
 
-// Successors returns the stored connections, independently of the card's type.
+import "slices"
+
+type Route struct {
+	Condition string `json:"condition"`
+	FlowNode  string `json:"flowNode"`
+}
+
+func (n FlowNode) ValidateRoutes() error {
+	if len(n.Routes) > 0 && n.Type != FlowNodeExclusiveGateway {
+		return Invalidf("only an exclusive gateway can have routes")
+	}
+	for i, route := range n.Routes {
+		if !slices.Contains(n.Nexts, route.FlowNode) {
+			return Invalidf("route %d must name a linked successor", i+1)
+		}
+	}
+	return nil
+}
+
+// Successors returns the stored connections, independently of the flow node's type.
 func (n FlowNode) Successors() []string {
 	ids := append([]string{}, n.Nexts...)
 	if n.Next != "" {
@@ -27,15 +46,18 @@ func ValidateConnectionChanges(held []FlowNode, changes []FlowNode) error {
 	}
 	for _, n := range changes {
 		previous, existed := before[n.ID]
-		if (!existed || previous.Type != n.Type) && n.Type.IsDisplay() && incoming[n.ID] > 0 {
-			return Invalidf("card %q cannot have a predecessor", n.Title)
+		if (!existed || previous.Type != n.Type) && !n.Type.AcceptsPredecessor() && incoming[n.ID] > 0 {
+			return Invalidf("flow node %q cannot have a predecessor", n.Title)
 		}
-		if (!existed || previous.Type != n.Type) && n.Type != FlowNodeGateway && incoming[n.ID] > 1 {
-			return Invalidf("card %q can have only one predecessor; use a gateway to join branches", n.Title)
+		if (!existed || previous.Type != n.Type) && !n.Type.Joins() && incoming[n.ID] > 1 {
+			return Invalidf("flow node %q can have only one predecessor; use a gateway to join branches", n.Title)
 		}
 		nexts := n.Successors()
-		if (!n.Type.Chains() && len(nexts) > 0) || (n.Type != FlowNodeGateway && len(nexts) > 1) {
-			return Invalidf("card %q has successors its type does not allow", n.Title)
+		if n.Type == FlowNodeLimiter && len(nexts) > 2 {
+			return Invalidf("limiter %q can have only two successors", n.Title)
+		}
+		if (!n.Type.Chains() && len(nexts) > 0) || (!n.Type.Splits() && len(nexts) > 1) {
+			return Invalidf("flow node %q has successors its type does not allow", n.Title)
 		}
 		old := map[string]bool{}
 		for _, next := range previous.Successors() {
@@ -49,11 +71,14 @@ func ValidateConnectionChanges(held []FlowNode, changes []FlowNode) error {
 			if !ok {
 				return NotFoundf("successor %s", next)
 			}
-			if next == n.ID || target.BoardID != n.BoardID || target.Type.IsDisplay() {
-				return Invalidf("card %q cannot be chained to %q", n.Title, target.Title)
+			if next == n.ID || target.BoardID != n.BoardID {
+				return Invalidf("flow node %q cannot be chained to %q", n.Title, target.Title)
 			}
-			if target.Type != FlowNodeGateway && incoming[next] > 1 {
-				return Invalidf("card %q can have only one predecessor; use a gateway to join branches", target.Title)
+			if !target.Type.AcceptsPredecessor() {
+				return Invalidf("flow node %q cannot have a predecessor", target.Title)
+			}
+			if !target.Type.Joins() && incoming[next] > 1 {
+				return Invalidf("flow node %q can have only one predecessor; use a gateway to join branches", target.Title)
 			}
 		}
 	}

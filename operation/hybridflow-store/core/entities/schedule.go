@@ -11,6 +11,9 @@ var durationShape = regexp.MustCompile(`^(?:[0-9]+(?:\.[0-9]+)?(?:ms|s|m|h))+$`)
 
 func ReadDuration(raw string) string {
 	said := strings.TrimSpace(raw)
+	if nodeContextReference.MatchString(said) {
+		return said
+	}
 	if !durationShape.MatchString(said) {
 		return ""
 	}
@@ -26,7 +29,7 @@ func ValidateSchedule(at, duration string) error {
 		return Invalidf("a Scheduler uses either a datetime or a duration, not both")
 	}
 	if strings.TrimSpace(duration) != "" && ReadDuration(duration) == "" {
-		return Invalidf("duration must be positive, such as 30s, 15m or 1h30m")
+		return Invalidf("duration must be positive, such as 30s, 15m or 1h30m, or use a value reference")
 	}
 	return nil
 }

@@ -17,7 +17,7 @@ connected — a socket that dies drops its subscriptions and touches no turn at 
 JSON object discriminated by `type`; its frame class determines whether it carries a
 `conversationId`.
 
-**The socket is versioned with Dashboard.** `hello.protocolVersion` (currently `21`) must match
+**The socket is versioned with Dashboard.** `hello.protocolVersion` (currently `23`) must match
 the client's version; a mismatch stops reconnection and asks the user to reload.
 **Bump it whenever a frame's shape changes**, in `HarnessProtocolVersion`
 (`internal/hybridflow-runner/turns/engine.go`) and `HARNESS_PROTOCOL_VERSION`
@@ -61,7 +61,7 @@ looking at.
 |---|---|---|
 | `subscribe` | `conversationIds` (or `conversationId`) | Register interest. Additive, idempotent, and legal for a conversation with no turn running. Each id is answered — to this socket alone — with a `sync` or a `not_running`. Re-sending it is how a client forces a resync after a reconnect. |
 | `unsubscribe` | `conversationIds` (or `conversationId`) | Stop receiving those conversations' frames. Their turns keep running. |
-| `prompt` | `conversationId`, `prompt`, `effort?`, `thinking?`, `permissionMode?`, `attachments?` | Start a turn, subscribing this socket to the conversation as a side effect. The four settings override the conversation's stored defaults for this turn **and become its new defaults**; omitted, the stored ones apply. `thinking: false` disables extended thinking (`CLAUDE_CODE_DISABLE_THINKING=1`). `permissionMode` is `manual`, `manualLive` or `bypassPermissions`; anything else is refused, as is `bypassPermissions` on a service that has withdrawn it. A prompt for a conversation whose turn is still running is refused with `conversation_busy` — it never replaces it. `attachments` is up to ten ids from `POST /hybridflow-runner/attachments`, in the order the user attached them; ids and never paths, and every one of them must still be there or the turn is refused with `bad_attachment`. Unlike the four settings it is **not** kept as a default: an attachment belongs to the one message it was attached to. |
+| `prompt` | `conversationId`, `prompt`, `effort?`, `thinking?`, `permissionMode?`, `attachments?`, `responseTokenLimit?`, `resumeRunId?` | Start a turn and subscribe this socket to the conversation. `effort`, `thinking` and `permissionMode` override the conversation's defaults and become its new defaults. `thinking: false` disables extended thinking (`CLAUDE_CODE_DISABLE_THINKING=1`). The permission modes are `manual`, `manualLive` and `bypassPermissions`. The service refuses a mode it does not support. A prompt while a turn is running is refused with `conversation_busy`. `attachments` carries up to ten existing ids from `POST /hybridflow-runner/attachments` in the order the user attached them. Missing attachments cause `bad_attachment`. Attachments and `responseTokenLimit` apply to this prompt only. |
 | `between` | `conversationId`, `text` | Say something into the turn that is **already running**, without starting one. The text is written to the CLI's open stdin, which enqueues it and folds it into that turn at its next tool boundary; the model reads it there and carries on. No settings ride along — the turn's were fixed when it began — and no attachments. Refused with `no_running_turn` when there is no live turn to fold it into, or when its pipe has already closed; refused with `not_permitted` when the caller does not own the turn. Its length is bounded by the same two things a prompt's is — the 1 MiB frame cap, and the record cut — and by nothing of its own. An empty one is dropped in silence. Every subscriber gets a `between` frame carrying the same text. See [Between](/operation/worker/PROTOCOL/turn-control.md#between). |
 | `stop` | `conversationId` | Kill the conversation's running turn. An unknown or idle conversation is a no-op. |
 | `permission_decision` | `conversationId`, `requestId`, `behavior`, `message?` | Answer a `permission_request`. `behavior` is `allow` or `deny`; `message` is the reason the model is told on a deny. Anything unanswerable — a second answer to the same `requestId`, an unknown request, a turn that has since ended — is dropped without reaching the CLI. |
@@ -72,6 +72,16 @@ batching a single id has nothing to think about; the others read `conversationId
 `prompt` without one is dropped with a log line and no answer — every conversation-scoped frame is
 routed on that id, so a client that omitted it could not match a refusal to its request anyway.
 Unknown `type` values are logged and ignored, and one inbound frame is capped at 1 MiB.
+
+`responseTokenLimit` takes a positive decimal string of at most 22 digits. When present and
+non-empty, the worker appends a request to keep all messages to the user within that total for
+the turn. The rendered transcript keeps the original prompt and the replies produced by the
+harness. Omit the field to send the prompt without a token budget. Bare slash commands preserve
+their command text.
+
+A `prompt` can include `resumeRunId` to reclaim a suspended board run in this conversation and
+use the message as the interrupted task's next turn. A stale run or failed claim returns
+`resume_failed` to the sending socket.
 
 **The folder and the CLI session come from the conversation record.**
 The working directory is the conversation's folder,
@@ -87,12 +97,12 @@ frame carried `attachments`, the server appends a note naming each one's absolut
 **What the reply is rendered by is `--append-system-prompt`, not the prompt.** Dashboard renders a
 reply with the same markdown renderer it renders the store's documents with, and two of its
 capabilities are unusable unless the model knows it has them: a fenced `mermaid`, `plantuml`,
-`archdia`, `graph` or `svg` block is *drawn*, and a link whose destination is a store path with a
-leading slash — `/units/abc/cadre.md` — opens that file in the CMS. The briefing that says so
+`archdia`, `graph` or `svg` block is *drawn*, and a Markdown destination written as a DCMS link,
+such as `/units/abc/cadre.md`, opens its document in Dashboard. The briefing that says so
 (`internal/hybridflow-runner/harnesses/prompt/briefing.go`) is appended to the system prompt because it is a property of the surface,
 identical on every turn: putting it in the prompt would repeat it per message and leave it in the
-transcript the user reads back. It is anchored to this deployment's store root, so an absolute path
-the turn has just read can be turned into a link.
+transcript the user reads back. It is anchored to this deployment's DCMS root, so an absolute path
+the turn has just read can be turned into a DCMS link.
 
 ## Server → client
 

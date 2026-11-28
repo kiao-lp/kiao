@@ -1,7 +1,7 @@
 import React from 'react';
-import { Button, Dropdown } from 'antd';
+import { Dropdown } from 'antd';
 import { ThunderboltOutlined } from '@ant-design/icons';
-import { CENTER_2_BAR_ID, CENTER_BAR_ID, DOCUMENT_TAB_ID, Tooltip, useCentralStack, useToolBarsOptional } from '@kiao-dashboard-core';
+import { IconButton, CENTER_2_BAR_ID, CENTER_BAR_ID, DOCUMENT_TAB_ID, useCentralStack, useToolBarsOptional } from '@kiao-dashboard-core';
 import { useFlowNodeEditing } from '../FlowNodeEditing-ctx';
 import { templateName } from '../flowNodeTemplates';
 import { BOARD_TAB_ID } from '../constants';
@@ -51,17 +51,14 @@ export const FlowNodeTemplateMenu: React.FC = () => {
                 onClick: ({ key }) => instantiate(key),
             }}
         >
-            <Tooltip title={HELP}>
-                <Button
-                    type="text"
-                    size="small"
-                    icon={<ThunderboltOutlined />}
-                    aria-label="Instantiate template"
-                    aria-haspopup="menu"
-                    data-testid="instantiate-template"
-                    disabled={templates.length === 0}
-                />
-            </Tooltip>
+            <IconButton
+                label="Instantiate template"
+                tooltip={HELP}
+                icon={<ThunderboltOutlined />}
+                aria-haspopup="menu"
+                data-testid="instantiate-template"
+                disabled={templates.length === 0}
+            />
         </Dropdown>
     );
 };

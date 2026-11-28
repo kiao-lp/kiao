@@ -1,6 +1,6 @@
 import { test, expect, resetViewState } from '../harness';
 
-// The harness has no boards backend. Keep a small catalogue at the HTTP boundary;
+// The test stack has no boards backend. Keep a small catalogue at the HTTP boundary;
 // PostgreSQL persistence and prompt isolation are covered by their Go tests.
 test.afterEach(resetViewState);
 
@@ -17,7 +17,7 @@ test('edits agent selection guidance separately and keeps it out of the task age
         flowNodes: [{ id: 'review', title: 'Review the change', type: 'ai', status: 'ready',
             body: 'Review the diff.', settings: { agent: 'reviewer', effort: 'high', permission: 'manual', folder: '/' },
             spot: { x: 100, y: 100 }, ...stamp }],
-        flowNodeClasses: [], workflows: [], workflowClasses: [], cursor: 0,
+        workflows: [], cursor: 0,
     };
     const patches: unknown[] = [];
     await page.route('**/api/{hybridflow,agentic}/**', async route => {
@@ -47,7 +47,7 @@ test('edits agent selection guidance separately and keeps it out of the task age
     await page.goto('boards/selection');
     await expect(page.getByTestId('flow-node-card')).toBeVisible();
     await page.locator('.cms-top-banner .anticon-more').click();
-    await page.getByRole('menuitem', { name: /Agents…$/ }).click();
+    await page.getByRole('menuitem', { name: /Agentic resources…$/ }).click();
     await page.mouse.move(0, 0);
     // The list keeps the guidance folded until asked, and never shows the instructions.
     await expect(page.getByTestId('agent-card')).toBeVisible();

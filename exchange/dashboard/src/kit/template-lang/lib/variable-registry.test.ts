@@ -4,7 +4,6 @@ import { TemplateCollectionV0 } from './model';
 
 describe('VariableRegistry', () => {
     const template1: TemplateCollectionV0 = {
-        index: 'test1',
         name: 'Template1',
         rootTemplate: {
             id: 'root1',
@@ -14,7 +13,6 @@ describe('VariableRegistry', () => {
     };
 
     const template2: TemplateCollectionV0 = {
-        index: 'test2',
         name: 'Template2',
         rootTemplate: {
             id: 'root2',

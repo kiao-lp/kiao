@@ -1,3 +1,5 @@
+export { CodeMirrorEditor } from './CodeMirrorEditor';
+export type { CodeMirrorEditorProps } from './CodeMirrorEditor';
 export { CodeMirrorCodeEditor } from './CodeMirrorCodeEditor';
 export type {
     CodeMirrorCodeEditorRef,

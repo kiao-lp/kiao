@@ -51,7 +51,7 @@ func (svc *FileService) DiscardStaging(rel string) error {
 	if !isInsideStaging(svc.storage.Root, abs) {
 		return fmt.Errorf("%w: %s", ErrNotStaging, rel)
 	}
-	if err := os.RemoveAll(abs); err != nil {
+	if err := svc.storage.DeleteFile(rel); err != nil {
 		return err
 	}
 	logStaging.Info("staging area discarded", "path", rel)
@@ -85,7 +85,7 @@ func (svc *FileService) sweepStaging(rootAbs string) {
 			continue
 		}
 		stale := filepath.Join(rootAbs, entry.Name())
-		if err := os.RemoveAll(stale); err != nil {
+		if err := svc.storage.DeleteFile(pkgPath.Join(filesystem.StagingDirName, entry.Name())); err != nil {
 			logStaging.Warn("failed to sweep a stale staging area", "path", stale, "error", err)
 			continue
 		}

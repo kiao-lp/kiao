@@ -4,7 +4,7 @@ import {
     CaretRightOutlined, FastBackwardOutlined, FastForwardOutlined, PauseOutlined, ScissorOutlined,
     StepBackwardOutlined, StepForwardOutlined,
 } from '@ant-design/icons';
-import { useToolBars, Tooltip } from '@kiao-dashboard-core';
+import { IconButton, useToolBars, Tooltip } from '@kiao-dashboard-core';
 import { SEGMENTS_TAB_ID } from './constants';
 import { useMovieEdit, type MovieEditValue } from './MovieEdit-ctx';
 import { formatTime } from './segments';
@@ -27,46 +27,44 @@ export const TransportControls: React.FC = () => {
     return (
         <Flex align="center" gap={4} className={`movie-edit-controls ${styles.controls}`}>
             {!audio && <>
-                <Tooltip title={keyTitle(movie, 'Previous key image (Shift+←)')}>
-                    <Button
-                        size="small"
-                        icon={<FastBackwardOutlined />}
-                        disabled={!can.previousKey}
-                        onClick={() => movie.stepKeyImage(-1)}
-                        aria-label="Previous key image"
-                    />
-                </Tooltip>
-                <Button
-                    size="small"
+                <IconButton
+                    label="Previous key image"
+                    tooltip={keyTitle(movie, 'Previous key image (Shift+←)')}
+                    type="default"
+                    icon={<FastBackwardOutlined />}
+                    disabled={!can.previousKey}
+                    onClick={() => movie.stepKeyImage(-1)}
+                />
+                <IconButton
+                    label="Previous image"
+                    type="default"
                     icon={<StepBackwardOutlined />}
                     disabled={!can.previousImage}
                     onClick={() => movie.stepImage(-1)}
-                    aria-label="Previous image"
                 />
             </>}
-            <Button
-                size="small"
+            <IconButton
+                label={paused ? 'Play' : 'Pause'}
+                type="default"
                 icon={paused ? <CaretRightOutlined /> : <PauseOutlined />}
                 onClick={movie.togglePlay}
-                aria-label={paused ? 'Play' : 'Pause'}
             />
             {!audio && <>
-                <Button
-                    size="small"
+                <IconButton
+                    label="Next image"
+                    type="default"
                     icon={<StepForwardOutlined />}
                     disabled={!can.nextImage}
                     onClick={() => movie.stepImage(1)}
-                    aria-label="Next image"
                 />
-                <Tooltip title={keyTitle(movie, 'Next key image (Shift+→)')}>
-                    <Button
-                        size="small"
-                        icon={<FastForwardOutlined />}
-                        disabled={!can.nextKey}
-                        onClick={() => movie.stepKeyImage(1)}
-                        aria-label="Next key image"
-                    />
-                </Tooltip>
+                <IconButton
+                    label="Next key image"
+                    tooltip={keyTitle(movie, 'Next key image (Shift+→)')}
+                    type="default"
+                    icon={<FastForwardOutlined />}
+                    disabled={!can.nextKey}
+                    onClick={() => movie.stepKeyImage(1)}
+                />
             </>}
             <span aria-label="Playback position"
                 className={`${styles.time} ${styles.readout}`}

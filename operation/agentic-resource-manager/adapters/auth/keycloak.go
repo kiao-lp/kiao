@@ -20,16 +20,13 @@ import (
 
 var authLog = slog.Default().With("component", "auth")
 
-// Role is the realm role that reaches this service. Same word worker uses for the same
-// people: a board is edited by whoever edits the store.
+// Role is the realm role that grants access to managed agent resources, shared with worker.
 const Role = "files_user"
 
 // ActorHeader lets a caller bearing the **service token** say whose work this is.
 //
-// A run lasts hours and a user's token lasts minutes, so worker cannot carry the credential
-// of the person who clicked Play; it carries one of its own. Without this header every card a run
-// moved would be attributed to the service, and a board would stop being able to say whose run
-// touched it — which is most of what the change log is for.
+// Worker can attribute a service-to-service request to the user who initiated it after the
+// user's credential has expired.
 //
 // **Only the service token may use it.** A caller bearing a JWT is who its token says it is, and a
 // header that could override that would be a way to write under somebody else's name. So the right
@@ -43,9 +40,7 @@ const serviceTokenSource = "SERVICE_TOKEN"
 // ServiceUser is who a service-token caller is when it names nobody.
 const ServiceUser = "worker"
 
-// Identity is a redacted view of the caller, for the audit line and for the change log. It travels
-// with the request in its context, and it is what every write records as its actor — so a card that
-// moved says who moved it.
+// Identity carries the redacted caller details in the request context for attribution and audit.
 type Identity struct {
 	User   string
 	Roles  string
@@ -55,9 +50,7 @@ type Identity struct {
 // Anonymous is what a request carrying no credential is attributed to.
 var Anonymous = Identity{User: "anonymous", Roles: "-", Source: "NONE"}
 
-// Actor is the identity as the change log records it: the user name alone. Short on purpose — it is
-// read in a list of changes, not in a security review, and the roles a token carried at the moment
-// of a write are not what a reader of the board is asking.
+// Actor returns the user name used for attribution.
 func (i Identity) Actor() string {
 	if i.User == "" {
 		return "anonymous"

@@ -1,9 +1,10 @@
 import React, { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
-import { Button, Flex } from 'antd';
+import { Flex } from 'antd';
 import {
     AimOutlined, CaretRightOutlined, FileSearchOutlined, PauseOutlined,
 } from '@ant-design/icons';
 import {
+    IconButton,
     FileDto,
     DashboardPlugin,
     useFileBrowsingPersistenceContext,
@@ -14,7 +15,6 @@ import {
     extractName,
     LayoutContent,
     TopBanner,
-    Tooltip,
 } from '@kiao-dashboard-core';
 import type { ModelStageHandle } from './ModelStage';
 import type { CameraPose } from './scene';
@@ -88,28 +88,26 @@ const MainView: MainViewCmp = () => {
             <LayoutContent additionalPanels={
                 <Flex align="center" gap="small">
                     {clipCount > 0 && (
-                        <Button
-                            size="small"
+                        <IconButton
+                            label={view.playing ? 'Pause animation' : 'Play animation'}
+                            type="default"
                             icon={view.playing ? <PauseOutlined /> : <CaretRightOutlined />}
                             onClick={() => setView({ playing: !view.playing })}
-                            aria-label={view.playing ? 'Pause animation' : 'Play animation'}
                         />
                     )}
-                    <Tooltip title="Frame the model">
-                        <Button
-                            size="small"
-                            icon={<AimOutlined />}
-                            onClick={onFrame}
-                            aria-label="Frame the model"
-                        />
-                    </Tooltip>
+                    <IconButton
+                        label="Frame the model"
+                        tooltip
+                        type="default"
+                        icon={<AimOutlined />}
+                        onClick={onFrame}
+                    />
                     {file.report && (
-                        <Button
-                            size="small"
+                        <IconButton
+                            label={inspecting ? 'Close the inspector' : 'Inspect this file'}
                             type={inspecting ? 'primary' : 'default'}
                             icon={<FileSearchOutlined />}
                             onClick={() => setView({ inspecting: !view.inspecting })}
-                            aria-label={inspecting ? 'Close the inspector' : 'Inspect this file'}
                         />
                     )}
                 </Flex>

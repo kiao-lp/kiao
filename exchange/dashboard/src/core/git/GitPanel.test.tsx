@@ -20,14 +20,15 @@ const h = vi.hoisted(() => ({
 vi.mock('../files/nav-bar/NavTreeStore-ctx', () => ({
     useNavTreeStore: () => ({ focusedPath: h.focusedPath }),
 }));
-vi.mock('../files/service/ui', () => ({
-    useWorkerClient: () => ({
+vi.mock('../files/service/ui', () => {
+    const client = {
         gitStatus: h.gitStatus,
         gitBranches: h.gitBranches,
         gitCheckout: h.gitCheckout,
         gitCreateBranch: h.gitCreateBranch,
-    }),
-}));
+    };
+    return { useWorkerClient: () => client };
+});
 vi.mock('../files/core/CurrentFileList-ctx', () => ({
     useRefreshFileList: () => h.refreshFiles,
 }));

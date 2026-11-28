@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Button, Input } from 'antd';
 import { useDashboardConfig, CentralPanelControls, ConfiguredMarkdown, useCentralStack } from '@kiao-dashboard-core';
 import { ZoomControl } from '@kiao-dashboard-kit/zoom-control';
@@ -7,12 +7,12 @@ import type { JsonSchema } from '@kiao-dashboard-kit/code-editor';
 import { useHybridflow } from '../Hybridflow-ctx';
 import { useHybridflowClient } from '../service/HybridflowClient-ctx';
 import type { SchemaValueDto } from '../service/types';
-import { hasWork, isRunnable, type BoardContent, type FlowNode } from '../boardContent';
+import { flowNodeInput, hasWork, isRunnable, workflowFilesError, type BoardContent, type FlowNode } from '../boardContent';
 import { canPlay } from '../flowNodeStatus';
-import { usePlayFlowNode } from '../usePlayFlowNode';
+import { defaultChainRunName, usePlayFlowNode } from '../usePlayFlowNode';
+import { renderNodeContext, roleValues } from '../nodeContext';
 import { BOARD_TAB_ID } from '../constants';
 import { FlowNodeValueEditor } from './FlowNodeValueEditor';
-import { startedNow } from './StartChainRunModal';
 import styles from '../Hybridflow.module.css';
 
 export const WorkOnTaskHost: React.FC = () => {
@@ -57,13 +57,15 @@ export const successorToTodo = (content: BoardContent, flowNode: FlowNode): stri
     if (!nextId) return null;
     const next = content.flowNodes.find(node => node.id === nextId);
     if (!next || next.archived || next.type !== 'human') return null;
-    if (next.status === 'done' || next.status === 'todo' || next.status === 'running') return null;
+    if (workflowFilesError(content.workflows.find(workflow => workflow.id === next.workflow))) return null;
+    if (next.status === 'todo' || next.status === 'running') return null;
     return next.id;
 };
 
 export const successorToPlay = (content: BoardContent, flowNode: FlowNode): string | null => {
     const next = content.flowNodes.find(node => node.id === flowNode.onSuccess.flowNode);
-    return next && canPlay(next.status) && isRunnable(next) && hasWork(next) ? next.id : null;
+    if (!next || !isRunnable(next, content) || !hasWork(next)) return null;
+    return canPlay(next.status) || (next.type === 'exclusive-gateway' && next.status === 'running') ? next.id : null;
 };
 
 const validateAgainstSchema = async (text: string, schema: unknown): Promise<string> => {
@@ -96,9 +98,16 @@ export const WorkOnTask: React.FC<{ flowNodeId: string }> = ({ flowNodeId }) => 
     const typed = !!flowNode?.outputType;
     const [text, setText] = useState('');
     const [error, setError] = useState('');
-    const [schemas, setSchemas] = useState<SchemaValueDto[]>([]);
+    const [schemas, setSchemas] = useState<SchemaValueDto[] | null>(null);
     const [submitting, setSubmitting] = useState(false);
+    const submittingTask = useRef(false);
+    const mounted = useRef(false);
     const [zoom, setZoom] = useState(1);
+
+    useEffect(() => {
+        mounted.current = true;
+        return () => { mounted.current = false; };
+    }, []);
 
     useEffect(() => {
         if (!flowNode) return;
@@ -115,6 +124,7 @@ export const WorkOnTask: React.FC<{ flowNodeId: string }> = ({ flowNodeId }) => 
     useEffect(() => {
         if (!client || !typed) return;
         let cancelled = false;
+        setSchemas(null);
         client.schemaValues()
             .then(list => { if (!cancelled) setSchemas(list); })
             .catch(() => { if (!cancelled) setSchemas([]); });
@@ -125,10 +135,17 @@ export const WorkOnTask: React.FC<{ flowNodeId: string }> = ({ flowNodeId }) => 
         return <div className={styles.panelHint}>Task not found.</div>;
     }
 
-    const schema = schemas.find(item => item.id === flowNode.outputType);
+    const schema = schemas?.find(item => item.id === flowNode.outputType);
+    const loadingSchema = typed && !!client && schemas === null;
+    const context = {
+        input: flowNodeInput(content, flowNode),
+        workflow: content.workflows.find(item => item.id === flowNode.workflow),
+        roles: roleValues(content.flowNodes),
+    };
 
     const submit = async () => {
-        if (submitting) return;
+        if (submittingTask.current || loadingSchema) return;
+        submittingTask.current = true;
         setError('');
         setSubmitting(true);
         try {
@@ -159,11 +176,16 @@ export const WorkOnTask: React.FC<{ flowNodeId: string }> = ({ flowNodeId }) => 
                 return;
             }
             const playable = successorToPlay(content, flowNode);
-            if (chatAvailable && playable && !play.runOn(playable)) play.play(playable, startedNow());
-            setWorking(null);
+            if (chatAvailable && playable) {
+                const next = content.flowNodes.find(node => node.id === playable);
+                if (next?.type === 'exclusive-gateway') play.play(playable, defaultChainRunName(), true, flowNode.id);
+                else if (!play.runOn(playable)) play.play(playable, defaultChainRunName(), true);
+            }
+            if (mounted.current) setWorking(null);
         } catch (cause) {
             setError(cause instanceof Error ? cause.message : String(cause));
         } finally {
+            submittingTask.current = false;
             setSubmitting(false);
         }
     };
@@ -174,13 +196,13 @@ export const WorkOnTask: React.FC<{ flowNodeId: string }> = ({ flowNodeId }) => 
                 <ZoomControl zoom={zoom} onZoomChange={setZoom} />
             </CentralPanelControls>
             <div className={styles.workContent} style={{ zoom }} data-testid="work-on-task-content">
-                <div>{flowNode.title || 'Untitled'}</div>
+                <div>{renderNodeContext(flowNode.title, context) || 'Untitled'}</div>
                 {flowNode.body
-                    ? <ConfiguredMarkdown documentFolder="">{flowNode.body}</ConfiguredMarkdown>
+                    ? <ConfiguredMarkdown documentFolder="">{renderNodeContext(flowNode.body, context)}</ConfiguredMarkdown>
                     : null}
                 {flowNode.criteria.length > 0 && (
                     <ul data-testid="work-on-task-criteria">
-                        {flowNode.criteria.map(criterion => <li key={criterion.id}>{criterion.text}</li>)}
+                        {flowNode.criteria.map(criterion => <li key={criterion.id}>{renderNodeContext(criterion.text, context)}</li>)}
                     </ul>
                 )}
                 {typed ? (
@@ -190,6 +212,7 @@ export const WorkOnTask: React.FC<{ flowNodeId: string }> = ({ flowNodeId }) => 
                         error=""
                         testId="work-on-task-output"
                         schema={schema?.value as JsonSchema | undefined}
+                        readOnly={submitting}
                     />
                 ) : (
                     <Input.TextArea
@@ -197,6 +220,7 @@ export const WorkOnTask: React.FC<{ flowNodeId: string }> = ({ flowNodeId }) => 
                         onChange={event => setText(event.target.value)}
                         aria-label="Output"
                         data-testid="work-on-task-output"
+                        disabled={submitting}
                         autoSize={{ minRows: 6 }}
                     />
                 )}
@@ -204,11 +228,13 @@ export const WorkOnTask: React.FC<{ flowNodeId: string }> = ({ flowNodeId }) => 
             </div>
             <Button
                 type="primary"
-                loading={submitting}
+                disabled={submitting || loadingSchema}
+                loading={submitting || loadingSchema}
+                aria-busy={submitting || loadingSchema}
                 onClick={() => void submit()}
                 data-testid="work-on-task-submit"
             >
-                Submit
+                {loadingSchema ? 'Loading output schema…' : 'Submit'}
             </Button>
         </div>
     );

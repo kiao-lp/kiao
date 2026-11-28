@@ -1,18 +1,14 @@
 import React from 'react';
-import { render, screen, within, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, within, waitFor } from 'src/test/render';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { Modal, message } from 'antd';
 
-/** The boards page is a list you cross on the way to a board — and the one place a board itself is. */
-vi.mock('@kiao-dashboard-core', async () => ({
-    useAuthToken: () => 'tok',
-    Tooltip: (await import('antd')).Tooltip,
-}));
 vi.mock('../Hybridflow-ctx', () => ({ useHybridflow: () => ({ handle: null }) }));
 
 import { BoardsPage } from './BoardsPage';
+import { BoardsCatalogProvider } from '../BoardsCatalog-ctx';
 import { BoardSummary, FakeHybridflowClient, HybridflowClientProvider } from '../service';
 import { readBoardContent } from '../boardContent';
 
@@ -52,12 +48,16 @@ const renderPage = (basename = '/') => render(
     <MemoryRouter basename={basename} initialEntries={[`${basename.replace(/\/+$/, '')}/boards`]}>
         <HybridflowClientProvider client={service.asClient()}>
             <LocationProbe />
-            <BoardsPage />
+            <BoardsCatalogProvider><BoardsPage /></BoardsCatalogProvider>
         </HybridflowClientProvider>
     </MemoryRouter>,
 );
 
 const rows = () => screen.findAllByTestId(/board-row-/);
+const chooseBoardAction = async (slug: string, name: string) => {
+    fireEvent.contextMenu(within(screen.getByTestId(`board-row-${slug}`)).getByRole('link'));
+    await userEvent.click(await screen.findByRole('menuitem', { name }));
+};
 
 describe('BoardsPage', () => {
     it('keeps the list controls with the list inside the Board panel', async () => {
@@ -66,7 +66,7 @@ describe('BoardsPage', () => {
 
         const page = screen.getByTestId('boards-page');
         expect(within(page).getByRole('button', { name: 'Reload the boards' })).toBeInTheDocument();
-        expect(within(page).getByRole('button', { name: /New board/ })).toBeInTheDocument();
+        expect(within(page).getByRole('button', { name: 'Create board or folder' })).toBeInTheDocument();
         expect(within(page).getByText('Boards')).toBeInTheDocument();
     });
 
@@ -89,7 +89,7 @@ describe('BoardsPage', () => {
         renderPage();
         await rows();
 
-        await userEvent.click(screen.getByTestId('rename-board-major'));
+        await chooseBoardAction('major', 'Rename');
         const dialog = await screen.findByRole('dialog');
         expect(within(dialog).getByLabelText('Board name')).toHaveValue('Major');
         expect(within(dialog).getByText(/stays at \/boards\/major/)).toBeInTheDocument();
@@ -110,7 +110,7 @@ describe('BoardsPage', () => {
         renderPage();
         await rows();
 
-        await userEvent.click(screen.getByTestId('rename-board-minor'));
+        await chooseBoardAction('minor', 'Rename');
         const dialog = await screen.findByRole('dialog');
         await userEvent.clear(within(dialog).getByLabelText('Board name'));
         await userEvent.type(within(dialog).getByLabelText('Board name'), 'Major');
@@ -128,7 +128,7 @@ describe('BoardsPage', () => {
         renderPage();
         await rows();
 
-        await userEvent.click(screen.getByTestId('rename-board-major'));
+        await chooseBoardAction('major', 'Rename');
         const dialog = await screen.findByRole('dialog');
         await userEvent.click(within(dialog).getByRole('button', { name: 'Rename' }));
 
@@ -140,11 +140,8 @@ describe('BoardsPage', () => {
         renderPage();
         await rows();
 
-        await userEvent.click(screen.getByTestId('delete-board-minor'));
-        const dialog = await screen.findByRole('dialog');
-        const title = within(dialog).getByText('Delete “Minor”?',
-            { selector: '.ant-modal-confirm-title' });
-        expect(title).toBeInTheDocument();
+        await chooseBoardAction('minor', 'Delete');
+        const dialog = await screen.findByRole('dialog', { name: 'Delete “Minor”?' });
         await userEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
 
         await waitFor(
@@ -157,7 +154,7 @@ describe('BoardsPage', () => {
         renderPage();
         await rows();
 
-        await userEvent.click(screen.getByTestId('delete-board-minor'));
+        await chooseBoardAction('minor', 'Delete');
         const dialog = await screen.findByRole('dialog');
         await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
 
@@ -171,7 +168,8 @@ describe('BoardsPage', () => {
         renderPage('/dashboard');
         await rows();
 
-        await userEvent.click(screen.getByRole('button', { name: /New board/ }));
+        await userEvent.click(screen.getByRole('button', { name: 'Create board or folder' }));
+        await userEvent.click(await screen.findByRole('menuitem', { name: 'New board' }));
         const dialog = await screen.findByRole('dialog');
         await userEvent.type(within(dialog).getByRole('textbox'), 'Third');
         await userEvent.click(within(dialog).getByRole('button', { name: 'Create' }));
@@ -180,18 +178,17 @@ describe('BoardsPage', () => {
         await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent('/boards/third'));
     });
 
-    // A row is a box with a link in it rather than a link with buttons in it, so the two gestures must not navigate — and the link must.
-    it('keeps the list under the gestures, and opens the board under the link', async () => {
+    it('opens the actions on right-click and the board on left-click', async () => {
         renderPage();
         await rows();
 
-        await userEvent.click(screen.getByTestId('rename-board-major'));
+        await chooseBoardAction('major', 'Rename');
         const renaming = await screen.findByRole('dialog');
         expect(screen.getByTestId('location')).toHaveTextContent('/boards');
         await userEvent.click(within(renaming).getByRole('button', { name: 'Cancel' }));
         await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
 
-        await userEvent.click(screen.getByTestId('delete-board-major'));
+        await chooseBoardAction('major', 'Delete');
         const deleting = await screen.findByRole('dialog');
         expect(screen.getByTestId('location')).toHaveTextContent('/boards');
         await userEvent.click(within(deleting).getByRole('button', { name: 'Cancel' }));

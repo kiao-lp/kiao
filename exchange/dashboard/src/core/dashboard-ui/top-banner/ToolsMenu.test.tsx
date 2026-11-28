@@ -60,7 +60,7 @@ const Controls = () => {
     </>;
 };
 
-const Harness = ({ enabled = true, layout = true, version = 0 }) => (
+const ToolsMenuFixture = ({ enabled = true, layout = true, version = 0 }) => (
     <ToolsMenuProvider items={enabled ? items : []}>
         <ToolBarsProvider>
             <ToolBarTabRegistration tab={board} />
@@ -84,13 +84,13 @@ beforeEach(() => { vi.clearAllMocks(); });
 
 describe('plugin tools menu panels', () => {
     it('omits contributions from plugins outside the loaded set', async () => {
-        render(<Harness enabled={false} />);
+        render(<ToolsMenuFixture enabled={false} />);
         await openMenu();
         expect(screen.queryByText('Report…')).toBeNull();
     });
 
     it('opens on the document by default and preserves the draft when brought forward again', async () => {
-        render(<Harness />);
+        render(<ToolsMenuFixture />);
         await openReport();
         expect(bar('center')).toContainElement(report());
         fireEvent.change(screen.getByLabelText('Report draft'), { target: { value: 'draft' } });
@@ -100,7 +100,7 @@ describe('plugin tools menu panels', () => {
     });
 
     it('stacks over the selected central panel and returns to its unfinished form', async () => {
-        render(<Harness />);
+        render(<ToolsMenuFixture />);
         fireEvent.click(within(bar('center')).getByRole('tab', { name: 'Board' }));
         fireEvent.click(screen.getByText('Open form'));
         fireEvent.change(screen.getByLabelText('Unfinished form'), { target: { value: 'unfinished' } });
@@ -115,7 +115,7 @@ describe('plugin tools menu panels', () => {
     });
 
     it('targets the last central area used by pointer or keyboard, and falls back after closing it', async () => {
-        render(<Harness />);
+        render(<ToolsMenuFixture />);
         fireEvent.click(screen.getByText('Split'));
         fireEvent.pointerDown(screen.getByLabelText('Secondary draft'));
         await openReport();
@@ -134,14 +134,14 @@ describe('plugin tools menu panels', () => {
     });
 
     it('connects to the replacement layout and disables entries while no layout is mounted', async () => {
-        const { rerender } = render(<Harness />);
+        const { rerender } = render(<ToolsMenuFixture />);
         await openReport();
-        rerender(<Harness layout={false} />);
+        rerender(<ToolsMenuFixture layout={false} />);
         await openMenu();
         expect(screen.getByText('Report…').closest('li')).toHaveAttribute('aria-disabled', 'true');
         await openMenu();
 
-        rerender(<Harness version={1} />);
+        rerender(<ToolsMenuFixture version={1} />);
         await openReport();
         expect(bar('center')).toContainElement(report());
     });

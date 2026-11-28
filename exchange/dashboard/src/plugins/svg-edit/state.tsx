@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createSimpleContext } from 'react-concise';
-import { useDocumentFileSync, useFileViewState } from '@kiao-dashboard-core';
+import { clampSurfaceZoom, useDocumentFileSync, useFileViewState } from '@kiao-dashboard-core';
 import { decodeSvg, encodeSvg, SvgDocument } from './svgDocument';
 import {
     bboxOfShape, Box, idsOf, mapShapes, restackedShapes, shapesOf, SvgCanvas, SvgShape, withoutShapes,
@@ -114,7 +114,7 @@ const useSvgState = (props: SvgStateProps): SvgStateValue => {
     const setMode = useCallback((mode: SvgViewMode) => setView({ mode }), [setView]);
 
     const setZoom = useCallback((zoom: number) => {
-        setView({ zoom: Math.max(0.25, Math.min(2.0, zoom)) });
+        setView({ zoom: clampSurfaceZoom(zoom) });
     }, [setView]);
 
     const newShapeStyle = useMemo<NewShapeStyle>(() => ({

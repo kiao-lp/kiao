@@ -220,7 +220,7 @@ func TestReplyFaultLeavesAnAnsweredTurnAloneWhateverItReportedOnTheWay(t *testin
 // against and it is still not the flow node being done.
 func TestReplyFaultReadsALimitReportedAtTheFootOfAWorkedTurn(t *testing.T) {
 	zero := 0
-	work := "I have read the board and started on the first card."
+	work := "I have read the board and started on the first flow node."
 	reply := harnessfaults.TurnReply{
 		Text: work, Tail: work, ExitCode: &zero,
 		Failure: `{"type":"error","status":429,"error":{"type":"usage_limit_reached"}}`,
@@ -231,7 +231,7 @@ func TestReplyFaultReadsALimitReportedAtTheFootOfAWorkedTurn(t *testing.T) {
 	}
 }
 
-// The summary names the engine the turn ran on. "Claude is overloaded" under a Codex card is a
+// The summary names the harness the turn ran on. "Claude is overloaded" under a Codex flow node is a
 // sentence about a service the flow node never touched.
 func TestFaultSummariesNameTheAgentThatRanTheTurn(t *testing.T) {
 	notice := "API Error: 529 Overloaded. This is a server-side issue, usually temporary."
@@ -421,15 +421,14 @@ func TestRefreshAtFallsBackWhereTheAccountExplainsNothing(t *testing.T) {
 	for name, runner := range map[string]*playback.ChainRunner{
 		"no window is full":     runnerWithUsage(t, half, nil),
 		"the account is unread": runnerWithUsage(t, harnessapi.HarnessUsageDto{}, errors.New("signed out")),
-		"the agent has none":    runnerWithUsage(t, harnessapi.HarnessUsageDto{}, nil),
+		"no harness account":    runnerWithUsage(t, harnessapi.HarnessUsageDto{}, nil),
 	} {
-		agent := harnessapi.HarnessCodex
-		if name == "the agent has none" {
-			// Claude is left as the real agent here, which would spawn a CLI; a name nothing offers
-			// is the case being tested and reaches no agent at all.
-			agent = "an-agent-this-build-never-had"
+		harness := harnessapi.HarnessCodex
+		if name == "no harness account" {
+			// An unknown harness exercises the fallback without spawning a CLI.
+			harness = "unknown-harness"
 		}
-		at := runner.RefreshAt(harnessfaults.TurnFault{Limit: true, Retry: true}, agent)
+		at := runner.RefreshAt(harnessfaults.TurnFault{Limit: true, Retry: true}, harness)
 		if wait := time.Until(at); wait < 55*time.Minute {
 			t.Errorf("%s: refreshAt is in %s, want the blind wait the runner falls back on", name, wait)
 		}

@@ -1,16 +1,19 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from 'src/test/render';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { message } from 'antd';
 import { WorkerError } from 'kiao-worker';
 
-/** Archiving a card — or the several a Ctrl-click picked out — behind one question,. */
+/** Archiving a node — or the several a Ctrl-click picked out — behind one question,. */
 
 const board = vi.hoisted(() => ({ content: null as any, archiveFlowNodes: vi.fn() }));
 const client = vi.hoisted(() => ({ deleteHarnessConversation: vi.fn().mockResolvedValue(undefined) }));
 
 vi.mock('./Hybridflow-ctx', () => ({ useHybridflow: () => board }));
-vi.mock('@kiao-dashboard-core', () => ({ useWorkerClient: () => client }));
+vi.mock('@kiao-dashboard-core', async () => ({
+    useConfirmation: (await import('src/core/ui-foundation/forms/ConfirmationDialog')).useConfirmation,
+    useWorkerClient: () => client,
+}));
 
 import { useFlowNodeArchive } from './useFlowNodeArchive';
 import { newFlowNode, FlowNode } from './boardContent';
@@ -28,11 +31,11 @@ const showing = (flowNodes: FlowNode[]) => {
 const played = (title: string, chat: string): FlowNode => ({ ...newFlowNode(title), chat });
 
 /** The dialog being asked: the last one opened, an answered one lingering while it fades out. */
-const dialogs = (): HTMLElement[] => [...document.querySelectorAll<HTMLElement>('.ant-modal-confirm')];
+const dialogs = (): HTMLElement[] => screen.queryAllByRole('dialog');
 
 /** Whether a dialog on screen is asking this. */
 const asking = (title: string): boolean =>
-    [...document.querySelectorAll('.ant-modal-confirm-title')].some(node => node.textContent === title);
+    screen.queryByRole('dialog', { name: title }) !== null;
 
 /** Answers the dialog on screen by the label of one of its two buttons. */
 const answer = async (label: string) => {
@@ -84,7 +87,7 @@ describe('archiving a flow node', () => {
         expect(asking('Delete its chat too?')).toBe(false);
     });
 
-    it('asks nothing where the card is already archived', async () => {
+    it('asks nothing where the node is already archived', async () => {
         const flowNode = { ...newFlowNode('Gone'), archived: true };
         showing([flowNode]);
         render(<Probe flowNodeIds={[flowNode.id]} />);
@@ -96,8 +99,8 @@ describe('archiving a flow node', () => {
     });
 });
 
-describe('the chat of an archived card', () => {
-    it('is deleted when the user says so, after the card is archived', async () => {
+describe('the chat of an archived node', () => {
+    it('is deleted when the user says so, after the node is archived', async () => {
         const flowNode = played('Played', 'chat-1');
         showing([flowNode]);
         render(<Probe flowNodeIds={[flowNode.id]} />);
@@ -111,7 +114,7 @@ describe('the chat of an archived card', () => {
         await waitFor(() => expect(client.deleteHarnessConversation).toHaveBeenCalledWith('chat-1'));
     });
 
-    it('is left where it is when the user says no, and the card goes either way', async () => {
+    it('is left where it is when the user says no, and the node goes either way', async () => {
         const flowNode = played('Played', 'chat-1');
         showing([flowNode]);
         render(<Probe flowNodeIds={[flowNode.id]} />);
@@ -125,7 +128,7 @@ describe('the chat of an archived card', () => {
         expect(client.deleteHarnessConversation).not.toHaveBeenCalled();
     });
 
-    it('is not asked about while another live card is still played in it', async () => {
+    it('is not asked about while another live node is still played in it', async () => {
         const flowNode = played('First', 'chat-1');
         showing([flowNode, played('Second', 'chat-1')]);
         render(<Probe flowNodeIds={[flowNode.id]} />);
@@ -171,7 +174,7 @@ describe('the chat of an archived card', () => {
     });
 });
 
-describe('archiving several marked cards', () => {
+describe('archiving several marked nodes', () => {
     it('asks once, naming them, and archives them in one edit', async () => {
         const first = newFlowNode('One');
         const second = newFlowNode('Two');
@@ -202,7 +205,7 @@ describe('archiving several marked cards', () => {
         expect(board.archiveFlowNodes).not.toHaveBeenCalled();
     });
 
-    it('asks once about every conversation no live card still names', async () => {
+    it('asks once about every conversation no live node still names', async () => {
         const first = played('One', 'chat-1');
         const second = played('Two', 'chat-2');
         showing([first, second]);

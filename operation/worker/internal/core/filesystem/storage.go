@@ -9,10 +9,8 @@ import (
 	"strings"
 )
 
-// GitDirName is the work-tree directory Storage keeps out of every listing, and that every
-// automatic pass is excluded from whatever a store's declaration says: in production the storage
-// root IS the git work tree, and a pass that rewrote objects inside it would corrupt the history
-// the store's only backup lives in.
+// GitDirName identifies Git metadata. Listings and automatic passes skip it, including
+// when the DCMS root is itself a Git worktree.
 const GitDirName = ".git"
 
 // StagingDirName is the store folder an upload lands in before anybody has said what to keep — one
@@ -26,7 +24,7 @@ const GitDirName = ".git"
 const StagingDirName = ".kiao-uploads"
 
 // FileEntry is the internal representation of a filesystem entry.
-// Path is relative to the storage root, using forward slashes.
+// Path is relative to the DCMS root, using forward slashes.
 type FileEntry struct {
 	Path          string
 	IsDirectory   bool
@@ -43,17 +41,36 @@ type Storage struct {
 	// StateDir is relative to Root, or empty when state lives outside the store.
 	// It contains migration ledgers and verbatim transcripts, so the file API
 	// must not browse, read, rename or delete it.
-	StateDir string
+	StateDir          string
+	physicalStateDir  string
+	physicalStatePath string
 }
 
-// Resolve bounds-checks a root-relative path against the storage root, and refuses one that lands
+// Resolve bounds-checks a root-relative path against the DCMS root, and refuses one that lands
 // in the state directory.
 func (s *Storage) Resolve(rel string) (string, error) {
 	abs, err := ResolvePath(s.Root, rel)
 	if err != nil {
 		return "", err
 	}
-	if s.IsStatePath(abs) {
+	if s.IsStatePath(abs) || (s.physicalStatePath != "" && containsPath(s.physicalStatePath, physicalPath(abs))) {
+		return "", fmt.Errorf("%w: %s", ErrStatePath, rel)
+	}
+	return abs, nil
+}
+
+// ResolveForRemoval also protects an ancestor whose deletion or rename would move state.
+func (s *Storage) ResolveForRemoval(rel string) (string, error) {
+	abs, err := s.Resolve(rel)
+	if err != nil || abs == filepath.Clean(s.Root) {
+		return abs, err
+	}
+	for _, dir := range []string{s.StateDir, s.physicalStateDir} {
+		if dir != "" && containsPath(abs, filepath.Join(s.Root, dir)) {
+			return "", fmt.Errorf("%w: %s", ErrStatePath, rel)
+		}
+	}
+	if s.physicalStatePath != "" && containsPath(physicalPath(abs), s.physicalStatePath) {
 		return "", fmt.Errorf("%w: %s", ErrStatePath, rel)
 	}
 	return abs, nil
@@ -63,7 +80,7 @@ func (s *Storage) Resolve(rel string) (string, error) {
 // The comparison is made root-relative rather than absolute because Root itself may be a relative
 // path, in which case every resolved path is relative too.
 func (s *Storage) IsStatePath(abs string) bool {
-	if s.StateDir == "" {
+	if s.StateDir == "" && s.physicalStateDir == "" {
 		return false
 	}
 	rel, err := filepath.Rel(filepath.Clean(s.Root), abs)
@@ -71,11 +88,16 @@ func (s *Storage) IsStatePath(abs string) bool {
 		return false
 	}
 	rel = filepath.ToSlash(rel)
-	return rel == s.StateDir || strings.HasPrefix(rel, s.StateDir+"/")
+	for _, dir := range []string{s.StateDir, s.physicalStateDir} {
+		if dir != "" && (rel == dir || strings.HasPrefix(rel, dir+"/")) {
+			return true
+		}
+	}
+	return false
 }
 
 // IsStagingRoot reports whether an already-resolved path is the staging directory itself. Only the
-// directory, never what is under it: a listing of the store root must not show it, while a listing
+// directory, never what is under it: a listing of the DCMS root must not show it, while a listing
 // *of* a staging area — the review dialog's own — has to work like any other.
 //
 // The comparison is made root-relative, like IsStatePath, because Root itself may be a relative
@@ -125,9 +147,9 @@ func (s *Storage) SaveFile(rel string, r io.Reader) (string, error) {
 }
 
 // DeleteFile removes rel: a file or a directory with all its descendants.
-// A missing path succeeds. The storage root is refused, including an empty path, "/" or ".".
+// A missing path succeeds. The DCMS root is refused, including an empty path, "/" or ".".
 func (s *Storage) DeleteFile(rel string) error {
-	abs, err := s.Resolve(rel)
+	abs, err := s.ResolveForRemoval(rel)
 	if err != nil {
 		return err
 	}
@@ -212,7 +234,7 @@ func (s *Storage) CreateFolder(rel string) error {
 }
 
 func (s *Storage) RenameFile(rel, newRel string) error {
-	src, err := s.Resolve(rel)
+	src, err := s.ResolveForRemoval(rel)
 	if err != nil {
 		return err
 	}

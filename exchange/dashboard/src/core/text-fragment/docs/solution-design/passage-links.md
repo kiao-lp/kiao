@@ -39,11 +39,11 @@ synchronization remains active, bringing both panes to the passage.
 
 ## Copy and scope
 
-The custom context menu opens only over selected text. A native capture listener intercepts
-other context-menu events before antd suppresses them, preserving the browser menu for images,
-links and unselected content. Plain Copy remains beside Copy link.
+The preview checks for a passage in its current selection before opening the shared
+[context menu](../../../ui-foundation/interactions/ContextMenu.tsx) at the pointer. The browser
+offers its menu when the preview finds no passage. Plain Copy remains beside Copy link.
 
-Copied URLs are absolute for sharing; `toStoredLink` removes host and mount when pasted back
-into a document, preserving the fragment. Only the open Markdown file enables `passageLinks`
+Copied passage links are absolute Dashboard URLs for sharing. Pasting one into Markdown
+uses `normalizeDocumentLink` to produce a DCMS link with the same fragment. Only the open Markdown file enables `passageLinks`
 on `MarkdownEditorBody`. Embedded previews such as task descriptions have no document URL that
 identifies their text and must not offer passage links. See [internal links](../../../navigation/docs/solution-design/internal-links.md).

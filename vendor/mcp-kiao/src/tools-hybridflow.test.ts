@@ -16,6 +16,7 @@ describe('hybridflow MCP contract', () => {
     const schemaId = '00000000-0000-0000-0000-000000000001';
     const producerId = '00000000-0000-0000-0000-000000000002';
     const consumerId = '00000000-0000-0000-0000-000000000003';
+    const workflowId = '00000000-0000-0000-0000-000000000004';
     const settings = {
         agent: 'reviewer', effort: 'high', permission: 'bypassPermissions', folder: '/',
         runner: 'local', extra: { custom: 'preserve me' },
@@ -57,6 +58,32 @@ describe('hybridflow MCP contract', () => {
         expect(result).toEqual({ content: [{ type: 'text', text: JSON.stringify(catalogue) }] });
     });
 
+    it('copies and pastes the workflow clipboard through the board proxy', async () => {
+        const values = { phase: { steps: [false, null] }, ['__proto__']: 'a shared value' };
+        const clipboard = {
+            kind: 'kiao-workflow', version: 1, workflow: { name: 'Review', values },
+            flowNodes: [
+                { id: producerId, type: 'ai', onSuccess: { flowNode: consumerId },
+                    settings: { ...settings, harness: 'pi', profileId: 'profile' }, size: { w: 240, h: 200 } },
+                { id: consumerId, type: 'human', body: 'Read {{input}}.' },
+            ],
+        };
+        const created = { workflow: { id: 'second-workflow', name: 'Review', values }, flowNodes: [] };
+        fetchMock.mockResolvedValueOnce(Response.json(clipboard)).mockResolvedValueOnce(Response.json(created, { status: 201 }));
+
+        const copied = await client.callTool({ name: 'workflow_copy', arguments: { handle: 'source', id: 'first-workflow' } });
+        const spot = { x: 100, y: 40 };
+        const pasted = await client.callTool({ name: 'workflow_paste', arguments: { handle: 'target', clipboard, spot } });
+
+        expect(copied).toEqual({ content: [{ type: 'text', text: JSON.stringify(clipboard) }] });
+        expect(pasted).toEqual({ content: [{ type: 'text', text: JSON.stringify(created) }] });
+        expect(fetchMock.mock.calls.map(([url, init]) => [url, init?.method])).toEqual([
+            ['http://worker.test/hybridflow-runner/boards/source/workflows/first-workflow/clipboard', 'GET'],
+            ['http://worker.test/hybridflow-runner/boards/target/workflows/clipboard', 'POST'],
+        ]);
+        expect(JSON.parse(fetchMock.mock.calls[1][1]!.body as string)).toEqual({ clipboard, spot });
+    });
+
     it('creates schema values, typed values and a producer/consumer chain in one batch', async () => {
         const flowNodes = [
             {
@@ -69,12 +96,13 @@ describe('hybridflow MCP contract', () => {
             },
             { title: 'Example', type: 'value', valueType: schemaId, value: { message: 'hello' } },
             {
-                id: producerId, title: 'Write', type: 'ai', outputType: schemaId, settings,
+                id: producerId, title: 'Write', type: 'ai', outputType: schemaId, settings, workflow: workflowId,
+                body: 'Write the result.\n```currentWokflow.message\nReady for review\n```',
                 onSuccess: { flowNode: consumerId, mode: 'end', compact: false },
             },
             {
-                id: consumerId, title: 'Review', type: 'ai', settings,
-                body: 'Review {{input.message}} and {{input.items.0}}.',
+                id: consumerId, title: 'Review', type: 'ai', settings, workflow: workflowId,
+                body: 'Review {{input.message}} and {{input.items.0}}. Status is {{currentWokflow.message}}.',
                 criteria: [{ text: 'Check {{input.person.name}} against {{input}}.' }],
             },
         ];
@@ -134,6 +162,25 @@ describe('hybridflow MCP contract', () => {
         }
     });
 
+    it('returns saved workflow values in workflow and board reads', async () => {
+        const workflow = {
+            id: workflowId, name: 'Review', revision: 4,
+            values: { message: 'Ready for review', verdict: { approved: false, revisions: [null, 0] } },
+        };
+        const board = { workflows: [workflow], flowNodes: [{ id: consumerId, workflow: workflowId }] };
+        fetchMock.mockResolvedValueOnce(Response.json(workflow)).mockResolvedValueOnce(Response.json(board));
+
+        const readWorkflow = await client.callTool({ name: 'workflow_get', arguments: { handle: 'major', id: workflowId } });
+        const readBoard = await client.callTool({ name: 'board_get', arguments: { handle: 'major' } });
+
+        expect(readWorkflow).toEqual({ content: [{ type: 'text', text: JSON.stringify(workflow) }] });
+        expect(readBoard).toEqual({ content: [{ type: 'text', text: JSON.stringify(board) }] });
+        expect(fetchMock.mock.calls.map(([url, init]) => [url, init?.method])).toEqual([
+            [`http://worker.test/hybridflow-runner/boards/major/workflows/${workflowId}`, 'GET'],
+            ['http://worker.test/hybridflow-runner/boards/major', 'GET'],
+        ]);
+    });
+
     it('forwards gateway branches and explicit unlink requests', async () => {
         fetchMock.mockResolvedValueOnce(Response.json({}));
         await client.callTool({ name: 'board_patch_card', arguments: {
@@ -146,27 +193,88 @@ describe('hybridflow MCP contract', () => {
         expect(JSON.parse(fetchMock.mock.calls[1][1]!.body as string)).toEqual({ flowNode: '' });
     });
 
+    it('forwards a Start event and its successor', async () => {
+        const flowNodes = [{ type: 'start', onSuccess: { flowNode: consumerId } }];
+        fetchMock.mockResolvedValueOnce(Response.json({}));
+        await client.callTool({ name: 'board_add_cards', arguments: { handle: 'major', flowNodes } });
+        expect(JSON.parse(fetchMock.mock.calls[0][1]!.body as string)).toEqual({ flowNodes });
+    });
+
+    it('forwards exclusive gateway routes in order', async () => {
+        const routes = [{ condition: 'input.approved && currentWokflow.verdict.approved', flowNode: 'left' },
+            { condition: 'true', flowNode: 'right' }];
+        const flowNodes = [{ type: 'exclusive-gateway', workflow: workflowId, onSuccess: { flowNodes: ['left', 'right'] }, routes }];
+        fetchMock.mockResolvedValueOnce(Response.json({}));
+        await client.callTool({ name: 'board_add_cards', arguments: { handle: 'major', flowNodes } });
+        expect(JSON.parse(fetchMock.mock.calls[0][1]!.body as string)).toEqual({ flowNodes });
+
+        const patch = { routes: [...routes].reverse() };
+        fetchMock.mockResolvedValueOnce(Response.json({}));
+        await client.callTool({ name: 'board_patch_card', arguments: { handle: 'major', id: 'gateway', patch } });
+        expect(JSON.parse(fetchMock.mock.calls[1][1]!.body as string)).toEqual(patch);
+    });
+
+    it('sets the limiter maximum and branches and can reset its counter', async () => {
+        const flowNodes = [{ type: 'limiter', maxPasses: 0, onSuccess: { flowNodes: ['left', 'right'] } }];
+        fetchMock.mockResolvedValueOnce(Response.json({}));
+        await client.callTool({ name: 'board_add_cards', arguments: { handle: 'major', flowNodes } });
+        expect(JSON.parse(fetchMock.mock.calls[0][1]!.body as string)).toEqual({ flowNodes });
+
+        const patch = { resetPasses: true };
+        fetchMock.mockResolvedValueOnce(Response.json({}));
+        await client.callTool({ name: 'board_patch_card', arguments: { handle: 'major', id: 'limiter', patch } });
+        expect(JSON.parse(fetchMock.mock.calls[1][1]!.body as string)).toEqual(patch);
+    });
+
+    it.each([
+        [{ type: 'bitbucket-pr-status', pullRequestId: 'workspace/repo#42', pullRequestStatus: 'MERGED' },
+            { pullRequestStatus: '' }],
+        [{ type: 'bitbucket-commit-status', commitId: 'workspace/repo@a1b2c3d', commitStatus: 'SUCCESSFUL' },
+            { commitStatus: '' }],
+        [{ type: 'bitbucket-pr-status', pullRequestId: '{{input.pullRequestId}}', pullRequestStatus: '{{input.targetStatus}}' },
+            { pullRequestId: 'workspace/repo#{{input.pullRequestId}}' }],
+        [{ type: 'bitbucket-commit-status', commitId: '{{currentWorkflow.commitId}}', commitStatus: '{{currentWorkflow.targetStatus}}' },
+            { commitStatus: '{{ role.build-status }}' }],
+    ])('creates and edits Bitbucket wait cards (%j)', async (card, patch) => {
+        const flowNodes = [card];
+        fetchMock.mockResolvedValueOnce(Response.json({}));
+        await client.callTool({ name: 'board_add_cards', arguments: { handle: 'major', flowNodes } });
+        expect(JSON.parse(fetchMock.mock.calls[0][1]!.body as string)).toEqual({ flowNodes });
+
+        fetchMock.mockResolvedValueOnce(Response.json({}));
+        await client.callTool({ name: 'board_patch_card', arguments: { handle: 'major', id: 'wait', patch } });
+        expect(JSON.parse(fetchMock.mock.calls[1][1]!.body as string)).toEqual(patch);
+    });
+
+    it('creates a role with a description and edits its fields', async () => {
+        const flowNodes = [{
+            type: 'role', title: 'Reviewers', roleId: 'reviewers', people: ['Alex Rivera', 'Sam Lee'],
+            description: 'Review changes before release.',
+        }];
+        fetchMock.mockResolvedValueOnce(Response.json({}));
+        await client.callTool({ name: 'board_add_cards', arguments: { handle: 'major', flowNodes } });
+        expect(JSON.parse(fetchMock.mock.calls[0][1]!.body as string)).toEqual({ flowNodes });
+
+        const patch = { roleId: 'editors', people: [], description: '' };
+        fetchMock.mockResolvedValueOnce(Response.json({}));
+        await client.callTool({ name: 'board_patch_card', arguments: { handle: 'major', id: 'reviewers', patch } });
+        expect(JSON.parse(fetchMock.mock.calls[1][1]!.body as string)).toEqual(patch);
+    });
+
     it.each([
         ['board_add_cards', { handle: 'major', flowNodes: [{ type: 'ai', output: { message: 'forged' } }] }],
         ['board_patch_card', { handle: 'major', id: 'card', patch: { output: { message: 'forged' }, body: 'Keep' } }],
         ['board_patch_card', { handle: 'major', id: 'card', patch: { output_type: schemaId, body: 'Keep' } }],
+        ['board_patch_card', { handle: 'major', id: 'limiter', patch: { remainingPasses: 3 } }],
         ['board_patch_card', { handle: 'major', id: 'card', patch: { settings: { ...settings, effrot: 'max' } } }],
         ['board_patch_card', { handle: 'major', id: 'card', patch: { onSuccess: { flow_node: 'next', mode: 'continue' } } }],
         ['board_add_cards', { handle: 'major', flowNodes: [{ type: 'ai', criteria: [{ text: 'Done', checked: true }] }] }],
-        ['class_patch', { handle: 'major', id: 'class', patch: { outputType: schemaId, title: 'Keep' } }],
     ])('rejects unknown or read-only fields in %s before any HTTP write', async (name, args) => {
         const result = await client.callTool({ name, arguments: args });
         expect(result.isError).toBe(true);
         expect(fetchMock).not.toHaveBeenCalled();
     });
 
-    it.each(['gateway', 'note', 'value'])('rejects unsupported %s node classes', async (type) => {
-        const created = await client.callTool({ name: 'class_create', arguments: { handle: 'major', title: 'Class', type } });
-        const patched = await client.callTool({ name: 'class_patch', arguments: { handle: 'major', id: 'class', patch: { type } } });
-        expect(created.isError).toBe(true);
-        expect(patched.isError).toBe(true);
-        expect(fetchMock).not.toHaveBeenCalled();
-    });
 
     it.each([
         ['board_chain_card', { handle: 'major', id: 'source', flowNode: 'occupied' }],

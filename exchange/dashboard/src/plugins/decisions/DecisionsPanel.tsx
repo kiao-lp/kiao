@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Button, Input, Spin } from 'antd';
+import { Input } from 'antd';
 import { ReloadOutlined, SearchOutlined, SortAscendingOutlined, SortDescendingOutlined } from '@ant-design/icons';
-import { resolveInternalLink, useIsCoarsePointer, writeDraggedFiles } from '@kiao-dashboard-core';
+import { AsyncList, IconButton, resolveInternalLink, useIsCoarsePointer, writeDraggedFiles } from '@kiao-dashboard-core';
 import { useDecisions } from './Decisions-ctx';
 import { matchesQuery, sortByDate, sortById } from './decisionsFile';
 import styles from './Decisions.module.css';
@@ -41,23 +41,17 @@ export const DecisionsPanel: React.FC = () => {
                     onChange={event => setQuery(event.target.value)}
                     allowClear
                 />
-                <Button
-                    size="small"
-                    type="text"
+                <IconButton
+                    label="Read the sources again"
                     icon={<ReloadOutlined spin={loading} />}
-                    aria-label="Read the sources again"
                     onClick={reload}
                 />
             </div>
             <div className={styles.body}>
-                {loading && decisions.length === 0 && <div className={styles.center}><Spin /></div>}
-                {!loading && decisions.length === 0 && (
-                    <div className={styles.hint}>No decisions yet. Add a source from the … menu, Decision sources.</div>
-                )}
-                {!loading && decisions.length > 0 && visible.length === 0 && (
-                    <div className={styles.hint}>No decision matches the filter.</div>
-                )}
-                {visible.length > 0 && (
+                <AsyncList loading={loading && !visible.length}
+                    empty={!visible.length && (decisions.length
+                        ? 'No decision matches the filter.'
+                        : 'No decisions yet. Add a source from the … menu, Decision sources.')}>
                     <table className={styles.table}>
                         <thead>
                             <tr>
@@ -107,7 +101,7 @@ export const DecisionsPanel: React.FC = () => {
                             ))}
                         </tbody>
                     </table>
-                )}
+                </AsyncList>
             </div>
         </div>
     );

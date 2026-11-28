@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -49,7 +50,7 @@ func (s *Store) DraftAgentPackage(ctx context.Context, id string) (*entities.Dra
 		return nil, err
 	}
 	if _, err = s.compiler.Run(ctx, source, "install", "--trust-transitive-mcp", "--root", deployment); err != nil {
-		return nil, entities.Invalidf("could not install the draft's APM dependencies: %s", err)
+		return nil, &entities.OperationError{Message: err.Error(), Cause: errors.Join(entities.ErrInvalid, err)}
 	}
 	lock, err := installedAPMLock(deployment)
 	if err != nil {

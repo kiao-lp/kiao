@@ -1,14 +1,14 @@
 import { describe, it, expect } from 'vitest';
 
-/** One board in one file, and back: what the download writes is what the import replays — the cards. */
+/** One board in one file, and back: what the download writes is what the import replays — the nodes. */
 import {
     BOARD_ARCHIVE_KIND, BOARD_ARCHIVE_VERSION, boardArchiveFilename, boardArchiveText,
     importBoardArchive, readBoardArchive,
 } from './boardArchive';
 import { HybridflowError } from './service';
 import type {
-    AgentDto, BoardDetailDto, BoardSummary, ClassVersionDto, FlowNodeClassDto, FlowNodeDto,
-    RunnerDto, WorkflowClassDto, WorkflowDto,
+    AgentDto, BoardDetailDto, BoardSummary, FlowNodeDto,
+    RunnerDto, WorkflowDto,
 } from './service';
 
 const summary = (over: Partial<BoardSummary> = {}): BoardSummary => ({
@@ -19,25 +19,13 @@ const summary = (over: Partial<BoardSummary> = {}): BoardSummary => ({
 });
 
 const flowNode = (over: Partial<FlowNodeDto> & { id: string }): FlowNodeDto => ({
-    title: `card ${over.id}`, type: 'ai', status: 'ready',
-    createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-09-01T10:00:00.000Z', revision: 1,
-    ...over,
-});
-
-const version = (over: Partial<ClassVersionDto> & { id: string }): ClassVersionDto => ({
-    number: 1, status: 'published',
-    createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-09-01T10:00:00.000Z', revision: 1,
-    ...over,
-});
-
-const flowNodeClass = (over: Partial<FlowNodeClassDto> & { id: string }): FlowNodeClassDto => ({
-    title: `class ${over.id}`, type: 'ai', versions: [],
+    title: `node ${over.id}`, type: 'ai', status: 'ready',
     createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-09-01T10:00:00.000Z', revision: 1,
     ...over,
 });
 
 const detail = (over: Partial<BoardDetailDto> = {}): BoardDetailDto => ({
-    board: summary(), flowNodes: [], flowNodeClasses: [], workflows: [], workflowClasses: [],
+    board: summary(), flowNodes: [], workflows: [],
     cursor: 7,
     ...over,
 });
@@ -60,7 +48,7 @@ describe('boardArchiveText', () => {
         expect(text).not.toContain('cursor');
     });
 
-    it('keeps what a card says and drops what names something outside the board', () => {
+    it('keeps what a node says and drops what names something outside the board', () => {
         const text = boardArchiveText(detail({
             flowNodes: [flowNode({
                 id: 'card-1', title: 'First', type: 'ai', tags: ['majeur'],
@@ -69,10 +57,6 @@ describe('boardArchiveText', () => {
                 spot: { x: 10, y: 20 }, status: 'done', archived: true,
                 chat: 'chat-1', run: 'run-1',
                 onSuccess: { flowNode: 'card-2', mode: 'continue', compact: true },
-                classVersion: {
-                    classId: 'class-1', classTitle: 'First class',
-                    versionId: 'version-1', versionNumber: 1,
-                },
                 workflow: 'workflow-1',
             })],
         }));
@@ -84,50 +68,8 @@ describe('boardArchiveText', () => {
             settings: { agent: 'agent-1', effort: 'high', permission: 'manual', folder: '/' },
             spot: { x: 10, y: 20 }, status: 'done', archived: true,
             onSuccess: { flowNode: 'card-2', mode: 'continue', compact: true },
-            classVersion: 'version-1',
             workflow: 'workflow-1',
         }]);
-    });
-
-    it('keeps the classes with their versions, published or draft', () => {
-        const text = boardArchiveText(detail({
-            flowNodeClasses: [flowNodeClass({
-                id: 'class-1', title: 'First class', instantiable: true, type: 'ai',
-                tags: ['reuse'], spot: { x: 1, y: 2 },
-                onSuccess: { flowNode: 'class-2', mode: 'end' },
-                permission: 'manual', runner: 'runner-1', note: 'For later',
-                workflowClass: 'workflow-class-1',
-                versions: [
-                    version({ id: 'version-1', number: 1, body: 'First words', status: 'published' }),
-                    version({
-                        id: 'version-2', number: 2, body: 'Second words', template: true,
-                        status: 'draft',
-                    }),
-                ],
-            })],
-            workflows: [{ id: 'workflow-1', name: 'Round', createdAt: '', updatedAt: '', revision: 1 }],
-            workflowClasses: [{
-                id: 'workflow-class-1', name: 'Rounds', createdAt: '', updatedAt: '', revision: 1,
-            }],
-        }));
-
-        const parsed = JSON.parse(text) as Record<string, unknown>;
-        expect(parsed.flowNodeClasses).toEqual([{
-            id: 'class-1', title: 'First class', instantiable: true, type: 'ai',
-            tags: ['reuse'], spot: { x: 1, y: 2 },
-            onSuccess: { flowNode: 'class-2', mode: 'end' },
-            permission: 'manual', runner: 'runner-1', note: 'For later',
-            workflowClass: 'workflow-class-1',
-            versions: [
-                { id: 'version-1', body: 'First words', published: true },
-                {
-                    id: 'version-2', body: 'Second words', template: true,
-                    published: false,
-                },
-            ],
-        }]);
-        expect(parsed.workflows).toEqual([{ id: 'workflow-1', name: 'Round' }]);
-        expect(parsed.workflowClasses).toEqual([{ id: 'workflow-class-1', name: 'Rounds' }]);
     });
 
     it('names the file after the handle', () => {
@@ -141,7 +83,7 @@ describe('boardArchiveText', () => {
             flowNode({ id: 'gateway', type: 'gateway', onSuccess: { flowNodes: ['off'], mode: 'end' } }),
             flowNode({ id: 'off', type: 'shutdown', onSuccess: { mode: 'end' } }),
         ] })));
-        expect(parsed.version).toBe(1);
+        expect(parsed.version).toBe(BOARD_ARCHIVE_VERSION);
         expect(parsed.flowNodes.map((node: FlowNodeDto) => node.onSuccess)).toEqual([
             { flowNode: 'timer' }, { flowNode: 'gateway' }, { flowNodes: ['off'] }, undefined,
         ]);
@@ -153,7 +95,7 @@ describe('readBoardArchive', () => {
         const archive = readBoardArchive(boardArchiveText(detail({
             board: summary({ name: 'Major' }),
             flowNodes: [flowNode({
-                id: 'card-1', title: 'First',
+                id: 'card-1', title: 'First', body: 'Draft ${item:text}', multiPartTemplate: true,
                 onSuccess: { flowNode: 'card-2' }, workflow: 'workflow-1',
             }), flowNode({ id: 'card-2', title: 'Second' })],
             workflows: [{ id: 'workflow-1', name: 'Round', createdAt: '', updatedAt: '', revision: 1 }],
@@ -162,7 +104,9 @@ describe('readBoardArchive', () => {
         expect(archive?.name).toBe('Major');
         expect(archive?.flowNodes.map(flowNode => flowNode.id)).toEqual(['card-1', 'card-2']);
         expect(archive?.flowNodes[0].onSuccess).toEqual({ flowNode: 'card-2', mode: 'continue' });
-        expect(archive?.flowNodes[0].workflow).toBe('workflow-1');
+        expect(archive?.flowNodes[0]).toMatchObject({
+            workflow: 'workflow-1', body: 'Draft ${item:text}', multiPartTemplate: true,
+        });
     });
 
     it.each([
@@ -176,19 +120,18 @@ describe('readBoardArchive', () => {
     });
 
     it.each([
-        ['a card without an id', { flowNodes: [{ title: 'Nobody' }] }],
-        ['a class without an id', { flowNodeClasses: [{ title: 'Nobody' }] }],
+        ['a node without an id', { flowNodes: [{ title: 'Nobody' }] }],
         ['a workflow without an id', { workflows: [{ name: 'Nowhere' }] }],
-        ['a malformed card', { flowNodes: ['card-1'] }],
+        ['a malformed node', { flowNodes: ['card-1'] }],
     ])('refuses %s', (_what, lists) => {
         const text = JSON.stringify({
             kind: BOARD_ARCHIVE_KIND, version: BOARD_ARCHIVE_VERSION, name: 'Major',
-            flowNodes: [], flowNodeClasses: [], workflows: [], workflowClasses: [], ...lists,
+            flowNodes: [], workflows: [], ...lists,
         });
         expect(readBoardArchive(text)).toBeNull();
     });
 
-    it('settles a card downloaded mid-play as interrupted', () => {
+    it('settles a node downloaded mid-play as interrupted', () => {
         const text = JSON.stringify({
             kind: BOARD_ARCHIVE_KIND, version: BOARD_ARCHIVE_VERSION, name: 'Major',
             flowNodes: [
@@ -197,7 +140,7 @@ describe('readBoardArchive', () => {
                 { id: 'card-3', title: 'Ready', status: 'ready' },
                 { id: 'card-4', title: 'Unknown', status: 'flying' },
             ],
-            flowNodeClasses: [], workflows: [], workflowClasses: [],
+            workflows: [],
         });
 
         const archive = readBoardArchive(text);
@@ -209,23 +152,16 @@ describe('readBoardArchive', () => {
         const text = JSON.stringify({
             kind: BOARD_ARCHIVE_KIND, version: BOARD_ARCHIVE_VERSION, name: 'Major',
             flowNodes: [{
-                id: 'card-1', title: 'First',
+                id: 'card-1', title: 'First', body: 'Draft ${item:text}', multiPartTemplate: true,
                 onSuccess: { flowNode: 'card-gone', flowNodes: ['card-2', 'card-gone'], mode: 'continue' },
-                workflow: 'workflow-gone', classVersion: 'version-gone',
+                workflow: 'workflow-gone',
             }, { id: 'card-2', title: 'Second' }],
-            flowNodeClasses: [{
-                id: 'class-1', title: 'First class',
-                onSuccess: { flowNode: 'class-gone' }, workflowClass: 'grouping-gone', versions: [],
-            }],
-            workflows: [], workflowClasses: [],
+            workflows: [],
         });
 
         const archive = readBoardArchive(text);
         expect(archive?.flowNodes[0].onSuccess).toEqual({ flowNodes: ['card-2'], mode: 'continue' });
         expect(archive?.flowNodes[0].workflow).toBeUndefined();
-        expect(archive?.flowNodes[0].classVersion).toBeUndefined();
-        expect(archive?.flowNodeClasses[0].onSuccess).toBeUndefined();
-        expect(archive?.flowNodeClasses[0].workflowClass).toBeUndefined();
     });
 });
 
@@ -234,7 +170,6 @@ const stubClient = (over: {
     agents?: AgentDto[]; runners?: RunnerDto[]; failOn?: string; taken?: boolean;
 } = {}) => {
     const calls: string[] = [];
-    const mintedVersions: Record<string, ClassVersionDto> = {};
     const agent = (id: string): AgentDto => ({
         id, name: id, harness: 'muse',
         createdAt: '', updatedAt: '', revision: 1,
@@ -252,46 +187,15 @@ const stubClient = (over: {
             if (over.taken) throw new HybridflowError(409, 'board name is taken');
             return detail({ board: summary({ name, slug: 'imported' }) });
         },
-        createWorkflowClass: async (_handle: string, grouping: { id?: string }) => {
-            calls.push(`createWorkflowClass ${grouping.id}`);
-            fail('createWorkflowClass');
-            return { id: grouping.id } as WorkflowClassDto;
-        },
         createWorkflow: async (_handle: string, grouping: { id?: string }) => {
             calls.push(`createWorkflow ${grouping.id}`);
             fail('createWorkflow');
             return { id: grouping.id } as WorkflowDto;
         },
-        createFlowNodeClass: async (_handle: string, flowNodeClass: Record<string, unknown>) => {
-            calls.push(`createFlowNodeClass ${String(flowNodeClass.id)}`);
-            fail('createFlowNodeClass');
-            const made = version({ id: `new-${String(flowNodeClass.id)}-v1`, number: 1 });
-            mintedVersions[String(flowNodeClass.id)] = made;
-            return { id: flowNodeClass.id, versions: [made] } as FlowNodeClassDto;
-        },
-        createClassVersion: async (_handle: string, classId: string) => {
-            calls.push(`createClassVersion ${classId}`);
-            fail('createClassVersion');
-            return version({ id: `new-${classId}-v2`, number: 2 });
-        },
-        patchClassVersion: async (
-            _handle: string, classId: string, versionId: string, patch: Record<string, unknown>,
-        ) => {
-            calls.push(`patchClassVersion ${classId} ${versionId} ${String(patch.status)}`);
-            return undefined as unknown as ClassVersionDto;
-        },
-        chainFlowNodeClass: async (_handle: string, fromId: string, toId: string) => {
-            calls.push(`chainFlowNodeClass ${fromId} -> ${toId}`);
-            return undefined as unknown as FlowNodeClassDto;
-        },
         createFlowNodes: async (_handle: string, flowNodes: { id?: string }[]) => {
             calls.push(`createFlowNodes ${flowNodes.map(flowNode => flowNode.id).join(',')}`);
             fail('createFlowNodes');
             return [];
-        },
-        patchFlowNode: async (_handle: string, flowNodeId: string, patch: Record<string, unknown>) => {
-            calls.push(`patchFlowNode ${flowNodeId} classVersion=${String(patch.classVersion)}`);
-            return undefined as unknown as FlowNodeDto;
         },
         archiveBoard: async (handle: string, archive: boolean) => {
             calls.push(`archiveBoard ${handle} ${archive}`);
@@ -313,51 +217,22 @@ describe('importBoardArchive', () => {
         await expect(importBoardArchive(client as never, archive)).rejects.toThrow('one predecessor');
         expect(client.calls).toEqual([]);
     });
-    it('replays the rectangles, the classes with their versions, then the cards in one call', async () => {
-        const client = stubClient({ agents: [], runners: [] });
+    it('creates workflows before adding their nodes in one batch', async () => {
+        const client = stubClient();
         const archive = readBoardArchive(boardArchiveText(detail({
-            flowNodes: [flowNode({
-                id: 'card-1', title: 'First', workflow: 'workflow-1',
-                onSuccess: { flowNode: 'card-2' },
-                classVersion: {
-                    classId: 'class-1', classTitle: 'First class',
-                    versionId: 'version-1', versionNumber: 1,
-                },
-            }), flowNode({ id: 'card-2', title: 'Second' })],
-            flowNodeClasses: [flowNodeClass({
-                id: 'class-1', title: 'First class', workflowClass: 'grouping-1',
-                onSuccess: { flowNode: 'class-2' },
-                versions: [
-                    version({ id: 'version-1', number: 1, body: 'First', status: 'published' }),
-                    version({ id: 'version-2', number: 2, body: 'Second', status: 'published' }),
-                ],
-            }), flowNodeClass({
-                id: 'class-2', title: 'Second class',
-                versions: [version({ id: 'version-3', number: 1, status: 'draft' })],
-            })],
+            flowNodes: [
+                flowNode({ id: 'card-1', workflow: 'workflow-1', onSuccess: { flowNode: 'card-2' } }),
+                flowNode({ id: 'card-2', workflow: 'workflow-1' }),
+            ],
             workflows: [{ id: 'workflow-1', name: 'Round', createdAt: '', updatedAt: '', revision: 1 }],
-            workflowClasses: [{
-                id: 'grouping-1', name: 'Rounds', createdAt: '', updatedAt: '', revision: 1,
-            }],
         })))!;
 
-        const { board, droppedRefs } = await importBoardArchive(
-            client as never, archive);
+        const { board, droppedRefs } = await importBoardArchive(client as never, archive);
 
         expect(board.slug).toBe('imported');
         expect(droppedRefs).toBe(0);
         expect(client.calls).toEqual([
-            'agents', 'runners',
-            'createBoard Major',
-            'createWorkflowClass grouping-1',
-            'createWorkflow workflow-1',
-            'createFlowNodeClass class-1',
-            'createClassVersion class-1',
-            'patchClassVersion class-1 new-class-1-v2 published',
-            'createFlowNodeClass class-2',
-            'chainFlowNodeClass class-1 -> class-2',
-            'createFlowNodes card-1,card-2',
-            'patchFlowNode card-1 classVersion=new-class-1-v1',
+            'agents', 'runners', 'createBoard Major', 'createWorkflow workflow-1', 'createFlowNodes card-1,card-2',
         ]);
     });
 
@@ -366,7 +241,7 @@ describe('importBoardArchive', () => {
         const client = stubClient({
             agents: [held.agent('agent-here')], runners: [held.runner('runner-here')],
         });
-        const seen: { settings?: unknown; agent?: unknown; runner?: unknown }[] = [];
+        const seen: { settings?: unknown }[] = [];
         const recording = {
             ...client,
             createFlowNodes: async (handle: string, flowNodes: { id?: string }[]) => {
@@ -374,10 +249,6 @@ describe('importBoardArchive', () => {
                     seen.push({ settings: (flowNode as { settings?: unknown }).settings });
                 }
                 return client.createFlowNodes(handle, flowNodes);
-            },
-            createFlowNodeClass: async (handle: string, flowNodeClass: Record<string, unknown>) => {
-                seen.push({ agent: flowNodeClass.agent, runner: flowNodeClass.runner });
-                return client.createFlowNodeClass(handle, flowNodeClass);
             },
         };
         const archive = readBoardArchive(JSON.stringify({
@@ -392,26 +263,21 @@ describe('importBoardArchive', () => {
                     settings: { agent: 'agent-gone', runner: 'runner-gone' },
                 },
             ],
-            flowNodeClasses: [{
-                id: 'class-1', title: 'First class', runner: 'runner-gone',
-                versions: [{ id: 'version-1', agent: 'agent-gone', published: true }],
-            }],
-            workflows: [], workflowClasses: [],
+            workflows: [],
         }))!;
 
         const { droppedRefs } = await importBoardArchive(recording as never, archive);
 
-        expect(droppedRefs).toBe(3);
+        expect(droppedRefs).toBe(2);
         expect(seen).toContainEqual({ settings: { agent: 'agent-here', runner: 'runner-here' } });
         expect(seen).toContainEqual({ settings: {} });
-        expect(seen).toContainEqual({ agent: undefined, runner: undefined });
     });
 
     it('keeps the archived boards put away', async () => {
         const client = stubClient();
         const archive = readBoardArchive(JSON.stringify({
             kind: BOARD_ARCHIVE_KIND, version: BOARD_ARCHIVE_VERSION, name: 'Major', archived: true,
-            flowNodes: [], flowNodeClasses: [], workflows: [], workflowClasses: [],
+            flowNodes: [], workflows: [],
         }))!;
 
         await importBoardArchive(client as never, archive);
@@ -424,7 +290,7 @@ describe('importBoardArchive', () => {
         const archive = readBoardArchive(JSON.stringify({
             kind: BOARD_ARCHIVE_KIND, version: BOARD_ARCHIVE_VERSION, name: 'Major',
             flowNodes: [{ id: 'card-1', title: 'First' }],
-            flowNodeClasses: [], workflows: [], workflowClasses: [],
+            workflows: [],
         }))!;
 
         await expect(importBoardArchive(client as never, archive))
@@ -436,7 +302,7 @@ describe('importBoardArchive', () => {
         const client = stubClient({ taken: true });
         const archive = readBoardArchive(JSON.stringify({
             kind: BOARD_ARCHIVE_KIND, version: BOARD_ARCHIVE_VERSION, name: 'Major',
-            flowNodes: [], flowNodeClasses: [], workflows: [], workflowClasses: [],
+            flowNodes: [], workflows: [],
         }))!;
 
         await expect(importBoardArchive(client as never, archive))
@@ -444,11 +310,11 @@ describe('importBoardArchive', () => {
         expect(client.calls).not.toContain('deleteBoard imported');
     });
 
-    it('imports an empty board without creating cards', async () => {
+    it('imports an empty board without creating nodes', async () => {
         const client = stubClient();
         const archive = readBoardArchive(JSON.stringify({
             kind: BOARD_ARCHIVE_KIND, version: BOARD_ARCHIVE_VERSION, name: 'Major',
-            flowNodes: [], flowNodeClasses: [], workflows: [], workflowClasses: [],
+            flowNodes: [], workflows: [],
         }))!;
 
         await importBoardArchive(client as never, archive);

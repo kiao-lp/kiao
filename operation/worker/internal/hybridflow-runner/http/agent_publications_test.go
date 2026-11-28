@@ -5,7 +5,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"kiao/worker/internal/core/access"
+	coreconfig "kiao/worker/internal/core/config"
 	"kiao/worker/internal/core/equipment"
 	pkgBoards "kiao/worker/internal/hybridflow-runner/boards"
 	runnerconfig "kiao/worker/internal/hybridflow-runner/config"
@@ -15,6 +17,8 @@ import (
 	pkgTurns "kiao/worker/internal/hybridflow-runner/turns"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -82,6 +86,48 @@ type publicationHarness struct {
 	servers []equipment.MCPServer
 }
 
+func mcpEndpoint(t *testing.T, afterProbe func()) string {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request struct {
+			ID     json.RawMessage `json:"id"`
+			Method string          `json:"method"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Error(err)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		switch request.Method {
+		case "initialize":
+			fmt.Fprintf(w, `{"jsonrpc":"2.0","id":%s,"result":{"protocolVersion":"2024-11-05"}}`, request.ID)
+		case "tools/list":
+			if afterProbe != nil {
+				afterProbe()
+			}
+			fmt.Fprintf(w, `{"jsonrpc":"2.0","id":%s,"result":{"tools":[]}}`, request.ID)
+		case "notifications/initialized":
+			w.WriteHeader(http.StatusAccepted)
+		default:
+			t.Errorf("unexpected MCP request %s", request.Method)
+		}
+	}))
+	t.Cleanup(server.Close)
+	return server.URL
+}
+
+func allowAgentPackageTestCleanup(t *testing.T, state string) {
+	t.Helper()
+	t.Cleanup(func() {
+		_ = filepath.WalkDir(filepath.Join(state, coreconfig.AgentPackagesDirName), func(path string, entry os.DirEntry, err error) error {
+			if err == nil && entry.IsDir() {
+				return os.Chmod(path, 0700)
+			}
+			return err
+		})
+	})
+}
+
 func (h *publicationHarness) RenderMCP(servers []equipment.MCPServer) (string, error) {
 	h.servers = servers
 	return "rendered-tools", nil
@@ -89,6 +135,7 @@ func (h *publicationHarness) RenderMCP(servers []equipment.MCPServer) (string, e
 
 func TestManualTurnsUseThePublishedAgentPackage(t *testing.T) {
 	service, cfg := newConversationTestServer(t)
+	allowAgentPackageTestCleanup(t, cfg.StatePath)
 	t.Cleanup(service.hub.Shutdown)
 	cfg.RequireAgentPackages = true
 	harness := &publicationHarness{}
@@ -101,10 +148,32 @@ func TestManualTurnsUseThePublishedAgentPackage(t *testing.T) {
 		Model: "retired-model", Effort: "high", Instructions: "Published instructions.",
 		Commit: strings.Repeat("a", 40), LockDigest: hex.EncodeToString(digest[:]),
 	}
+	lockPath := func() (string, error) {
+		matches, err := filepath.Glob(filepath.Join(cfg.StatePath, coreconfig.AgentPackagesDirName, version.Commit+"-*", "deployment", "apm.lock.yaml"))
+		if err != nil || len(matches) != 1 {
+			return "", fmt.Errorf("expected one installed lockfile, got %v (%v)", matches, err)
+		}
+		return matches[0], nil
+	}
+	probe := mcpEndpoint(t, func() {
+		path, err := lockPath()
+		if err == nil {
+			err = os.Chmod(path, 0600)
+		}
+		if err == nil {
+			err = os.WriteFile(path, []byte("changed during MCP probe"), 0600)
+		}
+		if err != nil {
+			t.Error(err)
+		}
+	})
 	bundle := pkgBoards.AgentPackage{Format: "apm-deployment-v1", Project: "deployment", Commit: version.Commit, Files: map[string][]byte{
 		"deployment/apm.lock.yaml":                     lock,
 		"deployment/.claude/skills/checklist/SKILL.md": []byte("---\ndescription: Review checklist\n---\nPublished checklist\n"),
-		"deployment/.mcp.json":                         []byte(`{"mcpServers":{"review":{"type":"http","url":"http://127.0.0.1:1/review"}}}`),
+		"deployment/.mcp.json": []byte(fmt.Sprintf(`{"mcpServers":{
+		    "review": {"type":"http","url":%q},
+		    "missing": {"command":"kiao-mcp-missing"}
+		}}`, probe)),
 	}}
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/agents/reviewer/packages/"+version.Commit {
@@ -132,6 +201,13 @@ func TestManualTurnsUseThePublishedAgentPackage(t *testing.T) {
 		t.Fatalf("manual turn refused: %+v", refusal)
 	}
 	driver := harness.waitForDriver(t)
+	path, err := lockPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if actual, err := os.ReadFile(path); err != nil || string(actual) != string(lock) {
+		t.Fatalf("harness started with a modified lockfile: %q, %v", actual, err)
+	}
 	run := driver.spawnedWith()
 	if run.Model != version.Model || !strings.Contains(run.Instructions, version.Instructions) ||
 		!strings.Contains(run.Instructions, "checklist/SKILL.md") || !strings.Contains(run.Instructions, "Review checklist") {
@@ -139,6 +215,9 @@ func TestManualTurnsUseThePublishedAgentPackage(t *testing.T) {
 	}
 	if len(harness.servers) != 1 || harness.servers[0].Name != "review" || run.MCPConfig != "rendered-tools" {
 		t.Fatalf("turn tools = %+v, %q", harness.servers, run.MCPConfig)
+	}
+	if !strings.Contains(run.Instructions, `"missing" (runtime)`) || !strings.Contains(run.Instructions, "omit runtime for mcp-missing") {
+		t.Fatalf("diagnostic was not delivered to the agent: %q", run.Instructions)
 	}
 	driver.text("done")
 	driver.finish(0)
@@ -152,6 +231,7 @@ func TestManualTurnsUseThePublishedAgentPackage(t *testing.T) {
 
 func TestManualConversationRunsTheSavedDraftPackage(t *testing.T) {
 	service, cfg := newConversationTestServer(t)
+	allowAgentPackageTestCleanup(t, cfg.StatePath)
 	t.Cleanup(service.hub.Shutdown)
 	cfg.RequireAgentPackages = true
 	harness := &publicationHarness{}
@@ -167,7 +247,10 @@ func TestManualConversationRunsTheSavedDraftPackage(t *testing.T) {
 		Package: pkgBoards.AgentPackage{Format: "apm-deployment-v1", Project: "deployment", DraftID: strings.Repeat("A", 26), Files: map[string][]byte{
 			"deployment/apm.lock.yaml":                 lock,
 			"deployment/.agents/skills/draft/SKILL.md": []byte("---\ndescription: Working tree skill\n---\nDraft skill\n"),
-			"deployment/.mcp.json":                     []byte(`{"mcpServers":{"draft-tool":{"type":"stdio","command":"node"}}}`),
+			"deployment/.mcp.json": []byte(fmt.Sprintf(`{"mcpServers":{
+			    "draft-tool": {"type":"http","url":%q},
+			    "broken": {"command":"/bin/sh","args":["-c","echo 'Upstream service is absent' >&2; exit 3"]}
+			}}`, mcpEndpoint(t, nil))),
 		}},
 	}
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -183,6 +266,10 @@ func TestManualConversationRunsTheSavedDraftPackage(t *testing.T) {
 	t.Cleanup(upstream.Close)
 	cfg.AgenticURL = upstream.URL
 	service.agents = pkgBoards.NewHybridflowStore(upstream.URL, "")
+	diagnostics := do(service, jsonReq(http.MethodPost, "/hybridflow-runner/agents/reviewer/mcp-diagnostics", ""))
+	if diagnostics.Code != http.StatusOK || !strings.Contains(diagnostics.Body.String(), "Upstream service is absent") {
+		t.Fatalf("draft diagnostics: %d %s", diagnostics.Code, diagnostics.Body)
+	}
 
 	withoutDraft := httptest.NewRecorder()
 	service.HandleCreateConversation(withoutDraft, httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"agentId":"reviewer"}`)))
@@ -208,6 +295,9 @@ func TestManualConversationRunsTheSavedDraftPackage(t *testing.T) {
 	}
 	if len(harness.servers) != 1 || harness.servers[0].Name != "draft-tool" {
 		t.Fatalf("draft tools = %+v", harness.servers)
+	}
+	if !strings.Contains(run.Instructions, "Upstream service is absent") {
+		t.Fatalf("tool failure is missing from the model context: %q", run.Instructions)
 	}
 	driver.text("done")
 	driver.finish(0)

@@ -37,14 +37,14 @@ func serve(t *testing.T) (http.Handler, *memory.Store) {
 	clock := stubClock{}
 	ids := &stubIDs{}
 	api := httpapi.New(httpapi.Options{
-		Boards:          services.NewBoards(store, clock, ids),
-		FlowNodes:       services.NewFlowNodes(store, store, store, store, store, clock, ids),
-		FlowNodeClasses: services.NewFlowNodeClasses(store, store, store, store, store, clock, ids),
-		Workflows:       services.NewWorkflows(store, store, store, clock, ids),
-		Agents:          services.NewAgents(store, clock, ids),
-		Runners:         services.NewRunners(store, clock, ids),
-		Usage:           services.NewUsage(store, store, clock, ids),
-		Changes:         store,
+		Boards:       services.NewBoards(store, clock, ids),
+		BoardFolders: services.NewFolders(entities.BoardFolderScope, store, ids),
+		FlowNodes:    services.NewFlowNodes(store, store, store, store, clock, ids),
+		Workflows:    services.NewWorkflows(store, store, clock, ids),
+		Agents:       services.NewAgents(store, clock, ids),
+		Runners:      services.NewRunners(store, clock, ids),
+		Usage:        services.NewUsage(store, store, clock, ids),
+		Changes:      store,
 	})
 	// Debug mode: these tests are about the surface, and a Keycloak beside them would make them
 	// about something else. It is the same mode a throwaway stack runs in.
@@ -104,6 +104,62 @@ func TestHealthzIsUnauthenticatedAndUntraced(t *testing.T) {
 	}
 }
 
+func TestBoardFolderRoutes(t *testing.T) {
+	handler, _ := serve(t)
+	const collection = "/folders/boards"
+	created := call(t, handler, "POST", collection, `{"name":" Planning "}`)
+	if created.Code != http.StatusCreated {
+		t.Fatalf("create folder = %d %s", created.Code, created.Body)
+	}
+	folder := decodeBody[httpapi.FolderDto](t, created)
+	if folder.ID == "" || folder.Name != "Planning" {
+		t.Fatalf("created folder = %+v", folder)
+	}
+	folderPath := collection + "/" + folder.ID
+	renamed := call(t, handler, "PATCH", folderPath, `{"name":"Roadmap"}`)
+	if renamed.Code != http.StatusOK {
+		t.Fatalf("rename folder = %d %s", renamed.Code, renamed.Body)
+	}
+	list := decodeBody[struct{ Folders []httpapi.FolderDto }](t, call(t, handler, "GET", collection, ""))
+	if len(list.Folders) != 1 || list.Folders[0] != (httpapi.FolderDto{ID: folder.ID, Name: "Roadmap"}) {
+		t.Fatalf("folders = %+v", list.Folders)
+	}
+
+	nested := call(t, handler, "POST", "/boards", fmt.Sprintf(`{"name":"Nested","folderId":%q}`, folder.ID))
+	if nested.Code != http.StatusCreated {
+		t.Fatalf("create board in folder = %d %s", nested.Code, nested.Body)
+	}
+	if got := decodeBody[httpapi.BoardDetailDto](t, nested).Board; got.FolderID != folder.ID || got.Revision != 1 {
+		t.Fatalf("board created in folder = %+v", got)
+	}
+
+	boardPath := "/boards/major"
+	made := decodeBody[httpapi.BoardDetailDto](t, call(t, handler, "POST", "/boards", `{"name":"Major"}`))
+	move := call(t, handler, "PATCH", boardPath, fmt.Sprintf(`{"folderId":%q}`, folder.ID),
+		"If-Match", fmt.Sprint(made.Board.Revision))
+	if move.Code != http.StatusOK {
+		t.Fatalf("move board = %d %s", move.Code, move.Body)
+	}
+	moved := decodeBody[httpapi.BoardDto](t, move)
+	if moved.ID != made.Board.ID || moved.Slug != made.Board.Slug || moved.FolderID != folder.ID {
+		t.Fatalf("moved board = %+v", moved)
+	}
+	deleted := call(t, handler, "DELETE", folderPath, "")
+	if deleted.Code != http.StatusNoContent {
+		t.Fatalf("delete folder = %d %s", deleted.Code, deleted.Body)
+	}
+	reopened := decodeBody[httpapi.BoardDetailDto](t, call(t, handler, "GET", boardPath, ""))
+	if reopened.Board.ID != made.Board.ID || reopened.Board.FolderID != "" {
+		t.Fatalf("board after folder deletion = %+v", reopened.Board)
+	}
+	if w := call(t, handler, "POST", "/boards", fmt.Sprintf(`{"name":"Missing","folderId":%q}`, folder.ID)); w.Code != http.StatusNotFound {
+		t.Fatalf("create board in deleted folder = %d %s", w.Code, w.Body)
+	}
+	if w := call(t, handler, "GET", "/boards/missing", ""); w.Code != http.StatusNotFound {
+		t.Fatalf("board from rejected create = %d %s", w.Code, w.Body)
+	}
+}
+
 func TestABoardIsCreatedAndReadWhole(t *testing.T) {
 	handler, _ := serve(t)
 	w := call(t, handler, "POST", "/boards", `{"name":"Major"}`)
@@ -123,23 +179,41 @@ func TestABoardIsCreatedAndReadWhole(t *testing.T) {
 		  "settings":{"agent":%q,"effort":"high","permission":"bypassPermissions","folder":"/"}}]}`,
 		agent.ID))
 	if w.Code != http.StatusCreated {
-		t.Fatalf("create card = %d %q", w.Code, w.Body.String())
+		t.Fatalf("create flow node = %d %q", w.Code, w.Body.String())
 	}
 
 	w = call(t, handler, "GET", "/boards/major", "")
 	board := decodeBody[httpapi.BoardDetailDto](t, w)
 	if len(board.FlowNodes) != 1 {
-		t.Fatalf("the board holds %d cards", len(board.FlowNodes))
+		t.Fatalf("the board holds %d flow nodes", len(board.FlowNodes))
 	}
-	card := board.FlowNodes[0]
-	if card.Type != "ai" || card.Settings == nil || card.Settings.Agent != agent.ID {
-		t.Errorf("card = %+v", card)
+	flowNode := board.FlowNodes[0]
+	if flowNode.Type != "ai" || flowNode.Settings == nil || flowNode.Settings.Agent != agent.ID {
+		t.Errorf("flow node = %+v", flowNode)
 	}
-	if card.Status != "ready" {
-		t.Errorf("status = %q, want ready", card.Status)
+	if flowNode.Status != "ready" {
+		t.Errorf("status = %q, want ready", flowNode.Status)
 	}
 	if board.Cursor == 0 {
 		t.Error("the board came back with no change cursor to watch from")
+	}
+}
+
+func TestFindBoardByFlowNodeID(t *testing.T) {
+	handler, _ := serve(t)
+	board := decodeBody[httpapi.BoardDetailDto](t, call(t, handler, "POST", "/boards", `{"name":"Major"}`)).Board
+	made := decodeBody[map[string][]httpapi.FlowNodeDto](t, call(t, handler, "POST", "/boards/major/flow-nodes",
+		`{"flowNodes":[{"type":"human","title":"Review this"}]}`))
+
+	w := call(t, handler, "GET", "/flow-nodes/"+made["flowNodes"][0].ID+"/board", "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("lookup = %d %q", w.Code, w.Body.String())
+	}
+	if got := decodeBody[httpapi.BoardDto](t, w); got.ID != board.ID || got.Slug != board.Slug {
+		t.Errorf("lookup = %+v, want board %s (%s)", got, board.Slug, board.ID)
+	}
+	if w := call(t, handler, "GET", "/flow-nodes/missing/board", ""); w.Code != http.StatusNotFound {
+		t.Errorf("missing flow node lookup = %d %q", w.Code, w.Body.String())
 	}
 }
 
@@ -150,16 +224,40 @@ func TestAPatchTouchesOnlyWhatItNames(t *testing.T) {
 	board := decodeBody[httpapi.BoardDetailDto](t, call(t, handler, "POST", "/boards", `{"name":"Shared"}`))
 	made := decodeBody[map[string][]httpapi.FlowNodeDto](t, call(t, handler, "POST", "/boards/shared/flow-nodes",
 		`{"flowNodes":[{"title":"Both hands","body":"Go."}]}`))
-	card := made["flowNodes"][0]
+	flowNode := made["flowNodes"][0]
 	_ = board
 
-	w := call(t, handler, "PATCH", "/boards/shared/flow-nodes/"+card.ID, `{"title":"Renamed"}`)
+	w := call(t, handler, "PATCH", "/boards/shared/flow-nodes/"+flowNode.ID, `{"title":"Renamed"}`)
 	if w.Code != http.StatusOK {
 		t.Fatalf("patch = %d %q", w.Code, w.Body.String())
 	}
 	renamed := decodeBody[httpapi.FlowNodeDto](t, w)
 	if renamed.Title != "Renamed" || renamed.Body != "Go." {
-		t.Errorf("card = %+v, want the body untouched", renamed)
+		t.Errorf("flow node = %+v, want the body untouched", renamed)
+	}
+}
+
+func TestAFlowNodeKeepsTheDimensionsItWasGiven(t *testing.T) {
+	handler, _ := serve(t)
+	call(t, handler, "POST", "/boards", `{"name":"Sized"}`)
+	made := decodeBody[map[string][]httpapi.FlowNodeDto](t, call(t, handler, "POST", "/boards/sized/flow-nodes",
+		`{"flowNodes":[{"title":"Wide","spot":{"x":10,"y":20},"size":{"w":260,"h":140}}]}`))
+	flowNode := made["flowNodes"][0]
+	if flowNode.Size == nil || flowNode.Size.W != 260 || flowNode.Size.H != 140 {
+		t.Fatalf("flow node = %+v, want its stored size", flowNode)
+	}
+
+	// A width dragged alone leaves the height natural, and the position is still the flow node's.
+	w := call(t, handler, "PATCH", "/boards/sized/flow-nodes/"+flowNode.ID, `{"size":{"w":300}}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("patch = %d %q", w.Code, w.Body.String())
+	}
+	patched := decodeBody[httpapi.FlowNodeDto](t, w)
+	if patched.Size == nil || patched.Size.W != 300 || patched.Size.H != 0 {
+		t.Errorf("size = %+v, want the width alone", patched.Size)
+	}
+	if patched.Spot == nil || patched.Spot.X != 10 || patched.Spot.Y != 20 {
+		t.Errorf("spot = %+v, want it untouched", patched.Spot)
 	}
 }
 
@@ -168,64 +266,64 @@ func TestIfMatchIsWhatMakesAWriteConditional(t *testing.T) {
 	call(t, handler, "POST", "/boards", `{"name":"Guarded"}`)
 	made := decodeBody[map[string][]httpapi.FlowNodeDto](t, call(t, handler, "POST", "/boards/guarded/flow-nodes",
 		`{"flowNodes":[{"title":"Once"}]}`))
-	card := made["flowNodes"][0]
-	stale := fmt.Sprint(card.Revision)
+	flowNode := made["flowNodes"][0]
+	stale := fmt.Sprint(flowNode.Revision)
 
-	if w := call(t, handler, "PATCH", "/boards/guarded/flow-nodes/"+card.ID, `{"title":"Twice"}`,
+	if w := call(t, handler, "PATCH", "/boards/guarded/flow-nodes/"+flowNode.ID, `{"title":"Twice"}`,
 		"If-Match", stale); w.Code != http.StatusOK {
 		t.Fatalf("the first conditional write = %d %q", w.Code, w.Body.String())
 	}
-	w := call(t, handler, "PATCH", "/boards/guarded/flow-nodes/"+card.ID, `{"title":"Thrice"}`,
+	w := call(t, handler, "PATCH", "/boards/guarded/flow-nodes/"+flowNode.ID, `{"title":"Thrice"}`,
 		"If-Match", stale)
 	if w.Code != http.StatusConflict {
 		t.Errorf("the second write from the same revision = %d, want 409", w.Code)
 	}
 	// No If-Match is a write that does not care, which is what a run's status write means.
-	if w := call(t, handler, "PATCH", "/boards/guarded/flow-nodes/"+card.ID, `{"status":"done"}`); w.Code != http.StatusOK {
+	if w := call(t, handler, "PATCH", "/boards/guarded/flow-nodes/"+flowNode.ID, `{"status":"done"}`); w.Code != http.StatusOK {
 		t.Errorf("the unconditional write = %d %q", w.Code, w.Body.String())
 	}
 	// A malformed If-Match is refused rather than ignored: a client that meant to be conditional
 	// and was not would overwrite somebody silently.
-	if w := call(t, handler, "PATCH", "/boards/guarded/flow-nodes/"+card.ID, `{"title":"Four"}`,
+	if w := call(t, handler, "PATCH", "/boards/guarded/flow-nodes/"+flowNode.ID, `{"title":"Four"}`,
 		"If-Match", "nonsense"); w.Code != http.StatusBadRequest {
 		t.Errorf("a malformed If-Match = %d, want 400", w.Code)
 	}
 }
 
-func TestASecondRunIsToldTheCardIsHeld(t *testing.T) {
+func TestASecondRunIsToldTheFlowNodeIsHeld(t *testing.T) {
 	handler, _ := serve(t)
 	call(t, handler, "POST", "/boards", `{"name":"Contested"}`)
 	agent := decodeBody[httpapi.AgentDto](t, call(t, handler, "POST", "/agents",
 		`{"name":"Reviewer","harness":"claude","model":"opus"}`))
 	made := decodeBody[map[string][]httpapi.FlowNodeDto](t, call(t, handler, "POST", "/boards/contested/flow-nodes",
 		fmt.Sprintf(`{"flowNodes":[{"title":"One card","body":"Go.","settings":{"agent":%q,"effort":"high","permission":"bypassPermissions","folder":"/"}}]}`, agent.ID)))
-	card := made["flowNodes"][0]
+	flowNode := made["flowNodes"][0]
 
-	w := call(t, handler, "POST", "/boards/contested/flow-nodes/"+card.ID+"/play", `{"run":"run-1"}`)
+	w := call(t, handler, "POST", "/boards/contested/flow-nodes/"+flowNode.ID+"/play", `{"run":"run-1"}`)
 	if w.Code != http.StatusOK {
 		t.Fatalf("play = %d %q", w.Code, w.Body.String())
 	}
 	played := decodeBody[httpapi.FlowNodeDto](t, w)
 	if played.Status != "running" || played.Run != "run-1" {
-		t.Errorf("card = %+v, want it held by run-1", played)
+		t.Errorf("flow node = %+v, want it held by run-1", played)
 	}
-	// The description stays where it is: a play sends it, and writes nothing about it onto the card.
+	// The description stays where it is: a play sends it, and writes nothing about it onto the flow node.
 	if played.Body != "Go." {
 		t.Errorf("the box holds %q, want the description left alone", played.Body)
 	}
-	w = call(t, handler, "POST", "/boards/contested/flow-nodes/"+card.ID+"/play", `{"run":"run-2"}`)
+	w = call(t, handler, "POST", "/boards/contested/flow-nodes/"+flowNode.ID+"/play", `{"run":"run-2"}`)
 	if w.Code != http.StatusConflict && w.Code != http.StatusBadRequest && w.Code != http.StatusUnprocessableEntity {
 		t.Errorf("the second run = %d, want it refused", w.Code)
 	}
 
-	w = call(t, handler, "POST", "/boards/contested/flow-nodes/"+card.ID+"/played",
+	w = call(t, handler, "POST", "/boards/contested/flow-nodes/"+flowNode.ID+"/played",
 		`{"run":"run-1","status":"done"}`)
 	if w.Code != http.StatusOK {
 		t.Fatalf("played = %d %q", w.Code, w.Body.String())
 	}
 	done := decodeBody[httpapi.FlowNodeDto](t, w)
 	if done.Status != "done" || done.Run != "" {
-		t.Errorf("card = %+v", done)
+		t.Errorf("flow node = %+v", done)
 	}
 	if done.Body != "Go." {
 		t.Errorf("the box holds %q, want the description kept", done.Body)
@@ -259,7 +357,7 @@ func TestTheChangeFeedIsReadFromACursor(t *testing.T) {
 	}
 	feed := decodeBody[httpapi.ChangesDto](t, w)
 	if len(feed.Changes) == 0 {
-		t.Fatal("the feed is empty after a card was created")
+		t.Fatal("the feed is empty after a flow node was created")
 	}
 	if feed.Changes[0].Scope != string(entities.ScopeFlowNode) || feed.Changes[0].Kind != entities.ChangeCreated {
 		t.Errorf("the feed opens on %+v", feed.Changes[0])
@@ -298,12 +396,11 @@ func servedWith(t *testing.T, opts auth.Options) (http.Handler, *memory.Store) {
 	clock := stubClock{}
 	ids := &stubIDs{}
 	api := httpapi.New(httpapi.Options{
-		Boards:          services.NewBoards(store, clock, ids),
-		FlowNodes:       services.NewFlowNodes(store, store, store, store, store, clock, ids),
-		FlowNodeClasses: services.NewFlowNodeClasses(store, store, store, store, store, clock, ids),
-		Workflows:       services.NewWorkflows(store, store, store, clock, ids),
-		Agents:          services.NewAgents(store, clock, ids),
-		Changes:         store,
+		Boards:    services.NewBoards(store, clock, ids),
+		FlowNodes: services.NewFlowNodes(store, store, store, store, clock, ids),
+		Workflows: services.NewWorkflows(store, store, clock, ids),
+		Agents:    services.NewAgents(store, clock, ids),
+		Changes:   store,
 	})
 	return api.Handler(auth.New(opts), []string{"*"}), store
 }
@@ -396,12 +493,11 @@ func servedOverChanges(t *testing.T, changes ports.ChangeLog) http.Handler {
 	clock := stubClock{}
 	ids := &stubIDs{}
 	api := httpapi.New(httpapi.Options{
-		Boards:          services.NewBoards(store, clock, ids),
-		FlowNodes:       services.NewFlowNodes(store, store, store, store, store, clock, ids),
-		FlowNodeClasses: services.NewFlowNodeClasses(store, store, store, store, store, clock, ids),
-		Workflows:       services.NewWorkflows(store, store, store, clock, ids),
-		Agents:          services.NewAgents(store, clock, ids),
-		Changes:         changes,
+		Boards:    services.NewBoards(store, clock, ids),
+		FlowNodes: services.NewFlowNodes(store, store, store, store, clock, ids),
+		Workflows: services.NewWorkflows(store, store, clock, ids),
+		Agents:    services.NewAgents(store, clock, ids),
+		Changes:   changes,
 	})
 	return api.Handler(auth.New(auth.Options{Mode: "debug"}), []string{"*"})
 }
@@ -575,9 +671,9 @@ func TestAnAgentRefusesWhatItCannotHold(t *testing.T) {
 	}
 }
 
-// A card naming an agent this store does not hold is refused at the write rather than at its
+// A flow node naming an agent this store does not hold is refused at the write rather than at its
 // first play.
-func TestACardNamingNoAgentIsRefused(t *testing.T) {
+func TestAFlowNodeNamingNoAgentIsRefused(t *testing.T) {
 	handler, _ := serve(t)
 	call(t, handler, "POST", "/boards", `{"name":"Major"}`)
 	w := call(t, handler, "POST", "/boards/major/flow-nodes",
@@ -587,36 +683,36 @@ func TestACardNamingNoAgentIsRefused(t *testing.T) {
 	}
 }
 
-// The task's own two travel the wire: created with the card, read back with it, replaced whole
+// The task's own two travel the wire: created with the flow node, read back with it, replaced whole
 // by a patch, and taken off on purpose.
 func TestCriteriaAndComplexityTravelTheWire(t *testing.T) {
 	handler, _ := serve(t)
 	call(t, handler, "POST", "/boards", `{"name":"Measured"}`)
 	made := decodeBody[map[string][]httpapi.FlowNodeDto](t, call(t, handler, "POST", "/boards/measured/flow-nodes",
 		`{"flowNodes":[{"title":"Do it","body":"Go.","criteria":[{"text":"It holds"}],"complexity":5}]}`))
-	card := made["flowNodes"][0]
-	if len(card.Criteria) != 1 || card.Criteria[0].Text != "It holds" || card.Criteria[0].ID == "" {
-		t.Fatalf("card = %+v, want one criterion with a minted id", card)
+	flowNode := made["flowNodes"][0]
+	if len(flowNode.Criteria) != 1 || flowNode.Criteria[0].Text != "It holds" || flowNode.Criteria[0].ID == "" {
+		t.Fatalf("flow node = %+v, want one criterion with a minted id", flowNode)
 	}
-	if card.Complexity == nil || *card.Complexity != 5 {
-		t.Fatalf("card = %+v, want complexity 5", card)
+	if flowNode.Complexity == nil || *flowNode.Complexity != 5 {
+		t.Fatalf("flow node = %+v, want complexity 5", flowNode)
 	}
 
-	w := call(t, handler, "PATCH", "/boards/measured/flow-nodes/"+card.ID,
-		fmt.Sprintf(`{"criteria":[{"id":%q,"text":"It holds, still"}],"clearComplexity":true}`, card.Criteria[0].ID))
+	w := call(t, handler, "PATCH", "/boards/measured/flow-nodes/"+flowNode.ID,
+		fmt.Sprintf(`{"criteria":[{"id":%q,"text":"It holds, still"}],"clearComplexity":true}`, flowNode.Criteria[0].ID))
 	if w.Code != http.StatusOK {
 		t.Fatalf("patch = %d %q", w.Code, w.Body.String())
 	}
 	patched := decodeBody[httpapi.FlowNodeDto](t, w)
-	if len(patched.Criteria) != 1 || patched.Criteria[0].ID != card.Criteria[0].ID ||
+	if len(patched.Criteria) != 1 || patched.Criteria[0].ID != flowNode.Criteria[0].ID ||
 		patched.Criteria[0].Text != "It holds, still" {
-		t.Errorf("card = %+v, want the replacement keeping its id", patched)
+		t.Errorf("flow node = %+v, want the replacement keeping its id", patched)
 	}
 	if patched.Complexity != nil {
-		t.Errorf("card = %+v, want no complexity after clearing", patched)
+		t.Errorf("flow node = %+v, want no complexity after clearing", patched)
 	}
 
-	// Read back whole: what the board holds is what the card said.
+	// Read back whole: what the board holds is what the flow node said.
 	board := decodeBody[httpapi.BoardDetailDto](t, call(t, handler, "GET", "/boards/measured", ""))
 	if len(board.FlowNodes) != 1 || len(board.FlowNodes[0].Criteria) != 1 {
 		t.Errorf("the board holds %+v, want the criterion", board.FlowNodes)
@@ -708,9 +804,9 @@ func TestAHeartbeatStampsLastSeen(t *testing.T) {
 	}
 }
 
-// A card naming a runner this store does not hold is refused at the write rather than at its
+// A flow node naming a runner this store does not hold is refused at the write rather than at its
 // first play — and one naming a runner there is carries the pin on the wire.
-func TestACardNamingNoRunnerIsRefused(t *testing.T) {
+func TestAFlowNodeNamingNoRunnerIsRefused(t *testing.T) {
 	handler, _ := serve(t)
 	call(t, handler, "POST", "/boards", `{"name":"Major"}`)
 	w := call(t, handler, "POST", "/boards/major/flow-nodes",
@@ -731,236 +827,31 @@ func TestACardNamingNoRunnerIsRefused(t *testing.T) {
 		t.Fatalf("create = %d %q", w.Code, w.Body.String())
 	}
 	made := decodeBody[map[string][]httpapi.FlowNodeDto](t, w)
-	card := made["flowNodes"][0]
-	if card.Settings == nil || card.Settings.Runner != runner.ID {
-		t.Errorf("card = %+v, want the runner pin", card)
+	flowNode := made["flowNodes"][0]
+	if flowNode.Settings == nil || flowNode.Settings.Runner != runner.ID {
+		t.Errorf("flow node = %+v, want the runner pin", flowNode)
 	}
 }
 
-// A class is filed on a board, versioned, chained, published and instantiated over the wire:
-// the routes are the routes, and a board read whole carries its classes beside its cards.
-func TestFlowNodeClassesOverTheWire(t *testing.T) {
-	handler, _ := serve(t)
-	if w := call(t, handler, "POST", "/boards", `{"name":"Major"}`); w.Code != http.StatusCreated {
-		t.Fatalf("create board = %d %q", w.Code, w.Body.String())
-	}
-	if w := call(t, handler, "POST", "/boards", `{"name":"Minor"}`); w.Code != http.StatusCreated {
-		t.Fatalf("create board = %d %q", w.Code, w.Body.String())
-	}
-
-	w := call(t, handler, "POST", "/boards/major/flow-node-classes",
-		`{"title":"Review","type":"ai","permission":"manualLive","body":"Read the diff.",
-		  "criteria":[{"id":"","text":"No nits left"}],"published":true}`)
-	if w.Code != http.StatusCreated {
-		t.Fatalf("create class = %d %q", w.Code, w.Body.String())
-	}
-	class := decodeBody[httpapi.FlowNodeClassDto](t, w)
-	if len(class.Versions) != 1 || class.Versions[0].Status != "published" {
-		t.Fatalf("class = %+v, want one published version", class)
-	}
-	second := decodeBody[httpapi.FlowNodeClassDto](t, call(t, handler, "POST",
-		"/boards/major/flow-node-classes", `{"title":"Follow up","body":"Then this."}`))
-
-	// A chain between classes, drawn over the wire.
-	w = call(t, handler, "POST", "/boards/major/flow-node-classes/"+class.ID+"/chain",
-		fmt.Sprintf(`{"flowNode":%q}`, second.ID))
-	if w.Code != http.StatusOK {
-		t.Fatalf("chain = %d %q", w.Code, w.Body.String())
-	}
-
-	// A chain onto a simple flow node is refused: the two kinds chain among themselves.
-	cards := decodeBody[struct {
-		FlowNodes []httpapi.FlowNodeDto `json:"flowNodes"`
-	}](t, call(t, handler, "POST", "/boards/major/flow-nodes", `{"flowNodes":[{"title":"Card"}]}`))
-	w = call(t, handler, "POST", "/boards/major/flow-node-classes/"+class.ID+"/chain",
-		fmt.Sprintf(`{"flowNode":%q}`, cards.FlowNodes[0].ID))
-	if w.Code != http.StatusNotFound {
-		t.Errorf("chain onto a flow node = %d, want 404", w.Code)
-	}
-
-	// The second class published, then the chain instantiated onto the other board.
-	published := decodeBody[httpapi.ClassVersionDto](t, call(t, handler, "PATCH",
-		"/boards/major/flow-node-classes/"+second.ID+"/versions/"+second.Versions[0].ID,
-		`{"status":"published"}`))
-	if published.Status != "published" {
-		t.Fatalf("publish = %+v", published)
-	}
-	w = call(t, handler, "POST", "/boards/minor/flow-node-classes/"+class.ID+"/instantiate",
-		`{"spot":{"x":40,"y":80}}`)
-	if w.Code != http.StatusCreated {
-		t.Fatalf("instantiate = %d %q", w.Code, w.Body.String())
-	}
-	made := decodeBody[struct {
-		FlowNodes []httpapi.FlowNodeDto `json:"flowNodes"`
-	}](t, w)
-	if len(made.FlowNodes) != 2 {
-		t.Fatalf("instantiated %d flow nodes, want 2", len(made.FlowNodes))
-	}
-	headNext := ""
-	if made.FlowNodes[0].OnSuccess != nil {
-		headNext = made.FlowNodes[0].OnSuccess.FlowNode
-	}
-	if headNext != made.FlowNodes[1].ID {
-		t.Errorf("the links were not recreated between the instances: %+v", made.FlowNodes)
-	}
-	if made.FlowNodes[0].ClassVersion == nil || made.FlowNodes[0].ClassVersion.ClassTitle != "Review" {
-		t.Errorf("head = %+v, want the class and version named", made.FlowNodes[0])
-	}
-
-	// The menu lists the classes of all boards.
-	listed := decodeBody[struct {
-		FlowNodeClasses []httpapi.ListedClassDto `json:"flowNodeClasses"`
-	}](t, call(t, handler, "GET", "/flow-node-classes", ""))
-	if len(listed.FlowNodeClasses) != 2 || listed.FlowNodeClasses[0].BoardSlug != "major" {
-		t.Fatalf("listed = %+v, want both classes with their board", listed.FlowNodeClasses)
-	}
-
-	// And a board read whole carries its classes beside its cards.
-	board := decodeBody[httpapi.BoardDetailDto](t, call(t, handler, "GET", "/boards/major", ""))
-	if len(board.FlowNodeClasses) != 2 || len(board.FlowNodes) != 1 {
-		t.Errorf("board holds %d classes and %d cards", len(board.FlowNodeClasses), len(board.FlowNodes))
-	}
-
-	// A draft somebody changed their mind about is deleted; a published one is kept.
-	draft := decodeBody[httpapi.ClassVersionDto](t, call(t, handler, "POST",
-		"/boards/major/flow-node-classes/"+class.ID+"/versions",
-		fmt.Sprintf(`{"from":%q}`, class.Versions[0].ID)))
-	if w := call(t, handler, "DELETE",
-		"/boards/major/flow-node-classes/"+class.ID+"/versions/"+draft.ID, ""); w.Code != http.StatusNoContent {
-		t.Fatalf("delete draft = %d %q", w.Code, w.Body.String())
-	}
-	if w := call(t, handler, "DELETE",
-		"/boards/major/flow-node-classes/"+class.ID+"/versions/"+class.Versions[0].ID, ""); w.Code != http.StatusBadRequest {
-		t.Errorf("delete published = %d, want 400", w.Code)
-	}
-}
-
-// A version's template mode travels the wire both ways, and instantiating with bodies asks each
-// named class's flow node the instantiated text instead of its version's body.
-func TestClassVersionTemplateOverTheWire(t *testing.T) {
-	handler, _ := serve(t)
-	if w := call(t, handler, "POST", "/boards", `{"name":"Major"}`); w.Code != http.StatusCreated {
-		t.Fatalf("create board = %d %q", w.Code, w.Body.String())
-	}
-	class := decodeBody[httpapi.FlowNodeClassDto](t, call(t, handler, "POST",
-		"/boards/major/flow-node-classes",
-		`{"title":"Review","body":"Read ${what:text}.","template":true}`))
-	if !class.Versions[0].Template {
-		t.Fatalf("class = %+v, want the template mode filed", class)
-	}
-	// The checkbox writes the one field, like every other patch on this surface.
-	off := decodeBody[httpapi.ClassVersionDto](t, call(t, handler, "PATCH",
-		"/boards/major/flow-node-classes/"+class.ID+"/versions/"+class.Versions[0].ID,
-		`{"template":false}`))
-	if off.Template {
-		t.Fatalf("patch = %+v, want the template mode off", off)
-	}
-	on := decodeBody[httpapi.ClassVersionDto](t, call(t, handler, "PATCH",
-		"/boards/major/flow-node-classes/"+class.ID+"/versions/"+class.Versions[0].ID,
-		`{"template":true,"status":"published"}`))
-	if !on.Template || on.Status != "published" {
-		t.Fatalf("publish = %+v, want a published template", on)
-	}
-	// And the instantiated text is what the flow node is asked — the version's body stays the
-	// template it was.
-	w := call(t, handler, "POST", "/boards/major/flow-node-classes/"+class.ID+"/instantiate",
-		fmt.Sprintf(`{"bodies":{%q:"Read the auth module."}}`, class.ID))
-	if w.Code != http.StatusCreated {
-		t.Fatalf("instantiate = %d %q", w.Code, w.Body.String())
-	}
-	made := decodeBody[struct {
-		FlowNodes []httpapi.FlowNodeDto `json:"flowNodes"`
-	}](t, w)
-	if len(made.FlowNodes) != 1 || made.FlowNodes[0].Body != "Read the auth module." {
-		t.Fatalf("instantiated = %+v, want the instantiated text", made.FlowNodes)
-	}
-	board := decodeBody[httpapi.BoardDetailDto](t, call(t, handler, "GET", "/boards/major", ""))
-	if len(board.FlowNodeClasses) != 1 || board.FlowNodeClasses[0].Versions[0].Body != "Read ${what:text}." {
-		t.Errorf("board = %+v, want the version still holding its template", board.FlowNodeClasses)
-	}
-}
-
-// The instantiable tick travels the wire both ways, and a workflow class is listed with its
-// board and instantiated into a workflow of nodes onto another board.
-func TestWorkflowClassInstantiateOverTheWire(t *testing.T) {
-	handler, _ := serve(t)
-	if w := call(t, handler, "POST", "/boards", `{"name":"Major"}`); w.Code != http.StatusCreated {
-		t.Fatalf("create board = %d %q", w.Code, w.Body.String())
-	}
-	if w := call(t, handler, "POST", "/boards", `{"name":"Minor"}`); w.Code != http.StatusCreated {
-		t.Fatalf("create board = %d %q", w.Code, w.Body.String())
-	}
-	class := decodeBody[httpapi.FlowNodeClassDto](t, call(t, handler, "POST",
-		"/boards/major/flow-node-classes",
-		`{"title":"Review","instantiable":true,"body":"Read the diff.","published":true}`))
-	if !class.Instantiable {
-		t.Fatalf("class = %+v, want the tick filed", class)
-	}
-	off := decodeBody[httpapi.FlowNodeClassDto](t, call(t, handler, "PATCH",
-		"/boards/major/flow-node-classes/"+class.ID, `{"instantiable":false}`))
-	if off.Instantiable {
-		t.Fatalf("patch = %+v, want the tick off", off)
-	}
-	second := decodeBody[httpapi.FlowNodeClassDto](t, call(t, handler, "POST",
-		"/boards/major/flow-node-classes",
-		`{"title":"Follow up","body":"Then this.","published":true}`))
-	if second.Instantiable {
-		t.Fatalf("class = %+v, want off by default", second)
-	}
-	rectangle := decodeBody[httpapi.WorkflowClassDto](t, call(t, handler, "POST",
-		"/boards/major/workflow-classes",
-		fmt.Sprintf(`{"name":"Shapes","classes":[%q,%q]}`, class.ID, second.ID)))
-	listed := decodeBody[struct {
-		WorkflowClasses []httpapi.ListedWorkflowClassDto `json:"workflowClasses"`
-	}](t, call(t, handler, "GET", "/workflow-classes", ""))
-	if len(listed.WorkflowClasses) != 1 || listed.WorkflowClasses[0].BoardSlug != "major" {
-		t.Fatalf("listed = %+v, want the rectangle with its board", listed.WorkflowClasses)
-	}
-	w := call(t, handler, "POST", "/boards/minor/workflow-classes/"+rectangle.ID+"/instantiate",
-		`{"spot":{"x":40,"y":80}}`)
-	if w.Code != http.StatusCreated {
-		t.Fatalf("instantiate = %d %q", w.Code, w.Body.String())
-	}
-	made := decodeBody[struct {
-		Workflow  httpapi.WorkflowDto   `json:"workflow"`
-		FlowNodes []httpapi.FlowNodeDto `json:"flowNodes"`
-	}](t, w)
-	if made.Workflow.Name != "Shapes" || len(made.FlowNodes) != 2 {
-		t.Fatalf("instantiated = %+v, want Shapes with two nodes", made)
-	}
-	for _, one := range made.FlowNodes {
-		if one.Workflow != made.Workflow.ID {
-			t.Errorf("%q names workflow %q, want %q", one.Title, one.Workflow, made.Workflow.ID)
-		}
-	}
-	if made.FlowNodes[0].Spot == nil || made.FlowNodes[1].Spot != nil {
-		t.Errorf("spots = %+v, want the head placed and the rest unplaced", made.FlowNodes)
-	}
-	board := decodeBody[httpapi.BoardDetailDto](t, call(t, handler, "GET", "/boards/minor", ""))
-	if len(board.Workflows) != 1 || len(board.FlowNodes) != 2 {
-		t.Errorf("board holds %d workflows and %d cards", len(board.Workflows), len(board.FlowNodes))
-	}
-}
-
-// A workflow is filed with its cards, renamed, and read back on the board beside them — and a
-// card made inside it says so at creation. The workflow classes travel the same wire.
+// A workflow is filed with its flow nodes, renamed, and read back on the board beside them — and a
+// flow node made inside it says so at creation.
 func TestWorkflowsOverTheWire(t *testing.T) {
 	handler, _ := serve(t)
 	if w := call(t, handler, "POST", "/boards", `{"name":"Major"}`); w.Code != http.StatusCreated {
 		t.Fatalf("create board = %d %q", w.Code, w.Body.String())
 	}
-	cards := decodeBody[struct {
+	flowNodes := decodeBody[struct {
 		FlowNodes []httpapi.FlowNodeDto `json:"flowNodes"`
 	}](t, call(t, handler, "POST", "/boards/major/flow-nodes",
 		`{"flowNodes":[{"title":"One"},{"title":"Two"}]}`))
-	if len(cards.FlowNodes) != 2 {
-		t.Fatalf("cards = %+v, want two", cards.FlowNodes)
+	if len(flowNodes.FlowNodes) != 2 {
+		t.Fatalf("flow nodes = %+v, want two", flowNodes.FlowNodes)
 	}
 
-	// Filed with its cards: each names the workflow afterwards.
+	// Filed with its flow nodes: each names the workflow afterwards.
 	w := call(t, handler, "POST", "/boards/major/workflows",
 		fmt.Sprintf(`{"name":"Sprint","flowNodes":[%q,%q]}`,
-			cards.FlowNodes[0].ID, cards.FlowNodes[1].ID))
+			flowNodes.FlowNodes[0].ID, flowNodes.FlowNodes[1].ID))
 	if w.Code != http.StatusCreated {
 		t.Fatalf("create workflow = %d %q", w.Code, w.Body.String())
 	}
@@ -972,19 +863,19 @@ func TestWorkflowsOverTheWire(t *testing.T) {
 	if len(board.Workflows) != 1 {
 		t.Fatalf("board holds %d workflows, want one", len(board.Workflows))
 	}
-	for _, card := range board.FlowNodes {
-		if card.Workflow != made.ID {
-			t.Errorf("card %q names workflow %q, want %q", card.Title, card.Workflow, made.ID)
+	for _, flowNode := range board.FlowNodes {
+		if flowNode.Workflow != made.ID {
+			t.Errorf("flow node %q names workflow %q, want %q", flowNode.Title, flowNode.Workflow, made.ID)
 		}
 	}
 
-	// A card made inside the rectangle says so at creation.
+	// A flow node made inside the rectangle says so at creation.
 	inside := decodeBody[struct {
 		FlowNodes []httpapi.FlowNodeDto `json:"flowNodes"`
 	}](t, call(t, handler, "POST", "/boards/major/flow-nodes",
 		fmt.Sprintf(`{"flowNodes":[{"title":"Inside","workflow":%q}]}`, made.ID)))
 	if len(inside.FlowNodes) != 1 || inside.FlowNodes[0].Workflow != made.ID {
-		t.Fatalf("inside = %+v, want the card grouped", inside.FlowNodes)
+		t.Fatalf("inside = %+v, want the flow node grouped", inside.FlowNodes)
 	}
 
 	// Renamed through a conditional write; a stale revision is refused.
@@ -998,8 +889,26 @@ func TestWorkflowsOverTheWire(t *testing.T) {
 		`{"name":"Stale"}`, "If-Match", "1"); w.Code != http.StatusConflict {
 		t.Errorf("stale rename = %d, want 409", w.Code)
 	}
+	workflowPath := "/boards/major/workflows/" + made.ID
+	if w := call(t, handler, "PATCH", workflowPath,
+		`{"setValues":{"review":{"passed":true},"decision":null}}`); w.Code != http.StatusOK {
+		t.Fatalf("set workflow values = %d %s", w.Code, w.Body)
+	}
+	for _, invalid := range []string{`{"setValues":[]}`, `{"setValues":{"id":"new"}}`, `{"removeValues":["name"]}`} {
+		if w := call(t, handler, "PATCH", workflowPath, invalid); w.Code != http.StatusBadRequest {
+			t.Errorf("workflow patch %s = %d, want 400", invalid, w.Code)
+		}
+	}
+	trimmed := call(t, handler, "PATCH", workflowPath, `{"removeValues":["review"]}`)
+	if trimmed.Code != http.StatusOK {
+		t.Fatalf("remove workflow value = %d %s", trimmed.Code, trimmed.Body)
+	}
+	updated := decodeBody[httpapi.WorkflowDto](t, trimmed)
+	if string(updated.Values) != `{"decision":null}` || updated.Name != "Release" || updated.Revision != 4 {
+		t.Fatalf("workflow after edits = %+v, values %s", updated, updated.Values)
+	}
 
-	// A card of another board refuses the workflow.
+	// A flow node of another board refuses the workflow.
 	if w := call(t, handler, "POST", "/boards", `{"name":"Minor"}`); w.Code != http.StatusCreated {
 		t.Fatalf("create board = %d %q", w.Code, w.Body.String())
 	}
@@ -1012,7 +921,7 @@ func TestWorkflowsOverTheWire(t *testing.T) {
 		t.Errorf("cross-board member = %d, want 400", w.Code)
 	}
 
-	// Deleted: the rectangle goes and the cards stay, ungrouped.
+	// Deleted: the rectangle goes and the flow nodes stay, ungrouped.
 	if w := call(t, handler, "DELETE", "/boards/major/workflows",
 		fmt.Sprintf(`{"workflows":[%q]}`, made.ID)); w.Code != http.StatusNoContent {
 		t.Fatalf("delete workflow = %d %q", w.Code, w.Body.String())
@@ -1022,64 +931,18 @@ func TestWorkflowsOverTheWire(t *testing.T) {
 		t.Fatalf("board holds %d workflows, want none", len(board.Workflows))
 	}
 	if len(board.FlowNodes) != 3 {
-		t.Fatalf("board holds %d cards, want the three still there", len(board.FlowNodes))
+		t.Fatalf("board holds %d flow nodes, want the three still there", len(board.FlowNodes))
 	}
-	for _, card := range board.FlowNodes {
-		if card.Workflow != "" {
-			t.Errorf("card %q still names workflow %q", card.Title, card.Workflow)
+	for _, flowNode := range board.FlowNodes {
+		if flowNode.Workflow != "" {
+			t.Errorf("flow node %q still names workflow %q", flowNode.Title, flowNode.Workflow)
 		}
 	}
 }
 
-// The workflow classes mirror the workflows: filed with their classes, renamed, read back on
-// the board, and deleted into ungrouped classes.
-func TestWorkflowClassesOverTheWire(t *testing.T) {
-	handler, _ := serve(t)
-	if w := call(t, handler, "POST", "/boards", `{"name":"Major"}`); w.Code != http.StatusCreated {
-		t.Fatalf("create board = %d %q", w.Code, w.Body.String())
-	}
-	first := decodeBody[httpapi.FlowNodeClassDto](t, call(t, handler, "POST",
-		"/boards/major/flow-node-classes", `{"title":"One"}`))
-	second := decodeBody[httpapi.FlowNodeClassDto](t, call(t, handler, "POST",
-		"/boards/major/flow-node-classes", `{"title":"Two"}`))
-
-	w := call(t, handler, "POST", "/boards/major/workflow-classes",
-		fmt.Sprintf(`{"name":"Shapes","classes":[%q,%q]}`, first.ID, second.ID))
-	if w.Code != http.StatusCreated {
-		t.Fatalf("create workflow class = %d %q", w.Code, w.Body.String())
-	}
-	made := decodeBody[httpapi.WorkflowClassDto](t, w)
-	board := decodeBody[httpapi.BoardDetailDto](t, call(t, handler, "GET", "/boards/major", ""))
-	if len(board.WorkflowClasses) != 1 {
-		t.Fatalf("board holds %d workflow classes, want one", len(board.WorkflowClasses))
-	}
-	for _, class := range board.FlowNodeClasses {
-		if class.WorkflowClass != made.ID {
-			t.Errorf("class %q names workflow class %q, want %q",
-				class.Title, class.WorkflowClass, made.ID)
-		}
-	}
-
-	renamed := decodeBody[httpapi.WorkflowClassDto](t, call(t, handler, "PATCH",
-		"/boards/major/workflow-classes/"+made.ID, `{"name":"Forms"}`))
-	if renamed.Name != "Forms" {
-		t.Fatalf("rename = %+v, want Forms", renamed)
-	}
-
-	if w := call(t, handler, "DELETE", "/boards/major/workflow-classes",
-		fmt.Sprintf(`{"workflowClasses":[%q]}`, made.ID)); w.Code != http.StatusNoContent {
-		t.Fatalf("delete workflow class = %d %q", w.Code, w.Body.String())
-	}
-	board = decodeBody[httpapi.BoardDetailDto](t, call(t, handler, "GET", "/boards/major", ""))
-	if len(board.WorkflowClasses) != 0 || len(board.FlowNodeClasses) != 2 {
-		t.Fatalf("board holds %d workflow classes and %d classes",
-			len(board.WorkflowClasses), len(board.FlowNodeClasses))
-	}
-}
-
-// usageCard files a board, an agent and one AI card on it, and answers the card's id: what a
+// usageNode files a board, an agent and one AI flow node on it, and answers the flow node's id: what a
 // usage test plays against.
-func usageCard(t *testing.T, handler http.Handler) string {
+func usageNode(t *testing.T, handler http.Handler) string {
 	t.Helper()
 	if w := call(t, handler, "POST", "/boards", `{"name":"Major"}`); w.Code != http.StatusCreated {
 		t.Fatalf("create board = %d %q", w.Code, w.Body.String())
@@ -1091,7 +954,7 @@ func usageCard(t *testing.T, handler http.Handler) string {
 			`"settings":{"agent":%q,"effort":"high","permission":"bypassPermissions","folder":"/"}}]}`,
 		agent.ID))
 	if w.Code != http.StatusCreated {
-		t.Fatalf("create card = %d %q", w.Code, w.Body.String())
+		t.Fatalf("create flow node = %d %q", w.Code, w.Body.String())
 	}
 	created := decodeBody[struct {
 		FlowNodes []httpapi.FlowNodeDto `json:"flowNodes"`
@@ -1101,9 +964,9 @@ func usageCard(t *testing.T, handler http.Handler) string {
 
 func TestAUsageReportIsFiledAndTotalled(t *testing.T) {
 	handler, _ := serve(t)
-	card := usageCard(t, handler)
+	flowNode := usageNode(t, handler)
 
-	w := call(t, handler, "POST", "/boards/major/flow-nodes/"+card+"/usage",
+	w := call(t, handler, "POST", "/boards/major/flow-nodes/"+flowNode+"/usage",
 		`{"id":"123e4567-e89b-42d3-a456-426614174000","run":"run-1","model":"muse-spark",`+
 			`"inputTokens":100,"outputTokens":50,"cacheReadTokens":10,"costUsdMicros":23400}`)
 	if w.Code != http.StatusCreated {
@@ -1118,13 +981,13 @@ func TestAUsageReportIsFiledAndTotalled(t *testing.T) {
 	}
 
 	// The same row again is the replay landing on nothing, not a double count.
-	if w := call(t, handler, "POST", "/boards/major/flow-nodes/"+card+"/usage",
+	if w := call(t, handler, "POST", "/boards/major/flow-nodes/"+flowNode+"/usage",
 		`{"id":"123e4567-e89b-42d3-a456-426614174000","run":"run-1",`+
 			`"inputTokens":100,"outputTokens":50}`); w.Code != http.StatusCreated {
 		t.Fatalf("replay = %d %q", w.Code, w.Body.String())
 	}
 
-	w = call(t, handler, "GET", "/boards/major/flow-nodes/"+card+"/usage", "")
+	w = call(t, handler, "GET", "/boards/major/flow-nodes/"+flowNode+"/usage", "")
 	if w.Code != http.StatusOK {
 		t.Fatalf("totals = %d %q", w.Code, w.Body.String())
 	}
@@ -1138,18 +1001,18 @@ func TestAUsageReportIsFiledAndTotalled(t *testing.T) {
 	}
 }
 
-func TestUsageOnACardThatIsNotThereIsA404(t *testing.T) {
+func TestUsageOnAFlowNodeThatIsNotThereIsA404(t *testing.T) {
 	handler, _ := serve(t)
-	if w := call(t, handler, "POST", "/boards/major/flow-nodes/no-such-card/usage",
+	if w := call(t, handler, "POST", "/boards/major/flow-nodes/no-such-node/usage",
 		`{"inputTokens":1}`); w.Code != http.StatusNotFound {
 		t.Errorf("record = %d %q, want 404", w.Code, w.Body.String())
 	}
-	if w := call(t, handler, "GET", "/boards/major/flow-nodes/no-such-card/usage", ""); w.Code != http.StatusNotFound {
+	if w := call(t, handler, "GET", "/boards/major/flow-nodes/no-such-node/usage", ""); w.Code != http.StatusNotFound {
 		t.Errorf("totals = %d %q, want 404", w.Code, w.Body.String())
 	}
 }
 
-func TestUsageRefusesWhatIsNotAnAICard(t *testing.T) {
+func TestUsageRefusesWhatIsNotAnAIFlowNode(t *testing.T) {
 	handler, _ := serve(t)
 	if w := call(t, handler, "POST", "/boards", `{"name":"Major"}`); w.Code != http.StatusCreated {
 		t.Fatalf("create board = %d %q", w.Code, w.Body.String())
@@ -1157,18 +1020,18 @@ func TestUsageRefusesWhatIsNotAnAICard(t *testing.T) {
 	w := call(t, handler, "POST", "/boards/major/flow-nodes",
 		`{"flowNodes":[{"title":"Do it"}]}`)
 	if w.Code != http.StatusCreated {
-		t.Fatalf("create card = %d %q", w.Code, w.Body.String())
+		t.Fatalf("create flow node = %d %q", w.Code, w.Body.String())
 	}
 	created := decodeBody[struct {
 		FlowNodes []httpapi.FlowNodeDto `json:"flowNodes"`
 	}](t, w)
 	if w := call(t, handler, "POST", "/boards/major/flow-nodes/"+created.FlowNodes[0].ID+"/usage",
 		`{"inputTokens":1}`); w.Code != http.StatusBadRequest {
-		t.Errorf("record on a human card = %d %q, want 400", w.Code, w.Body.String())
+		t.Errorf("record on a human flow node = %d %q, want 400", w.Code, w.Body.String())
 	}
 }
 
-// A Gateway's branches travel the wire beside the single card: created and patched as the
+// A Gateway's branches travel the wire beside the single flow node: created and patched as the
 // `flowNodes` list, added one at a time by the link call, and read back in order.
 func TestAGatewaysBranchesTravelTheWire(t *testing.T) {
 	handler, _ := serve(t)
@@ -1180,7 +1043,7 @@ func TestAGatewaysBranchesTravelTheWire(t *testing.T) {
 	}](t, call(t, handler, "POST", "/boards/major/flow-nodes",
 		`{"flowNodes":[{"title":"Branch one"},{"title":"Branch two"},{"title":"Join","type":"gateway"}]}`))
 	if len(created.FlowNodes) != 3 {
-		t.Fatalf("created %d cards, want 3", len(created.FlowNodes))
+		t.Fatalf("created %d flow nodes, want 3", len(created.FlowNodes))
 	}
 	first, second, join := created.FlowNodes[0].ID, created.FlowNodes[1].ID, created.FlowNodes[2].ID
 

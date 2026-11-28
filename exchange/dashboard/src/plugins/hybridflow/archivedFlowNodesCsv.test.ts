@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 
-/** Every archived card as a spreadsheet row: the card's title, the agent that played it. */
+/** Every archived node as a spreadsheet row: the node's title, the agent that played it. */
 import {
     ARCHIVED_FLOW_NODES_CSV_FILENAME, archivedFlowNodesCsv, fetchArchivedFlowNodesCsv,
 } from './archivedFlowNodesCsv';
@@ -10,7 +10,7 @@ import { boardOf, boardNamed } from './test/fixtures';
 import { newFlowNode } from './boardContent';
 
 const flowNode = (over: Partial<FlowNodeDto> & { id: string }): FlowNodeDto => ({
-    title: `card ${over.id}`, type: 'ai', status: 'ready',
+    title: `node ${over.id}`, type: 'ai', status: 'ready',
     createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-09-01T10:00:00.000Z', revision: 1,
     ...over,
 });
@@ -33,16 +33,12 @@ describe('archivedFlowNodesCsv', () => {
         expect(ARCHIVED_FLOW_NODES_CSV_FILENAME).toBe('archived-flow-nodes.csv');
     });
 
-    it('writes one row per archived card, with what played it and what it spent', () => {
+    it('writes one row per archived node, with what played it and what it spent', () => {
         const text = archivedFlowNodesCsv([{
             boardName: 'Major',
             flowNode: flowNode({
                 id: 'card-1', title: 'First', archived: true, complexity: 5,
                 settings: { agent: 'agent-1', effort: 'high' },
-                classVersion: {
-                    classId: 'class-1', classTitle: 'First class',
-                    versionId: 'version-1', versionNumber: 1,
-                },
             }),
             agents: [agent({ id: 'agent-1', name: 'Scribe', model: 'muse-spark' })],
             usage: usage(),
@@ -50,9 +46,8 @@ describe('archivedFlowNodesCsv', () => {
 
         const [header, row] = text.trim().split('\n');
         expect(header).toBe('board,title,agent,model,effort,reports,input_tokens,output_tokens,'
-            + 'cache_read_tokens,cache_write_tokens,reasoning_tokens,cost_usd,node_class,complexity');
-        expect(row).toBe('Major,First,Scribe,muse-spark,high,2,12380,4210,8000,1200,900,2.5,'
-            + 'First class,5');
+            + 'cache_read_tokens,cache_write_tokens,reasoning_tokens,cost_usd,complexity');
+        expect(row).toBe('Major,First,Scribe,muse-spark,high,2,12380,4210,8000,1200,900,2.5,5');
     });
 
     it('quotes what a comma, a quote or a line break would otherwise split', () => {
@@ -64,9 +59,9 @@ describe('archivedFlowNodesCsv', () => {
         }]);
 
         expect(text).toBe('board,title,agent,model,effort,reports,input_tokens,output_tokens,'
-            + 'cache_read_tokens,cache_write_tokens,reasoning_tokens,cost_usd,node_class,'
+            + 'cache_read_tokens,cache_write_tokens,reasoning_tokens,cost_usd,'
             + 'complexity\n"Major, the ""first""\nboard","Do it, ""well""\nplease",,,,2,12380,4210,'
-            + '8000,1200,900,,,\n');
+            + '8000,1200,900,,\n');
     });
 
     it('leaves the consumption cells blank where the usage could not be read', () => {
@@ -78,10 +73,10 @@ describe('archivedFlowNodesCsv', () => {
         }]);
 
         const [, row] = text.trim().split('\n');
-        expect(row).toBe('Major,First,,,,,,,,,,,,');
+        expect(row).toBe('Major,First,,,,,,,,,,,');
     });
 
-    it('keeps a legacy engine name and model where no managed agent answers', () => {
+    it('keeps a legacy harness name and model where no managed agent answers', () => {
         const text = archivedFlowNodesCsv([{
             boardName: 'Major',
             flowNode: flowNode({
@@ -113,7 +108,7 @@ describe('archivedFlowNodesCsv', () => {
 });
 
 describe('fetchArchivedFlowNodesCsv', () => {
-    it('reads the archived cards of every board, live cards left out', async () => {
+    it('reads the archived nodes of every board, live nodes left out', async () => {
         const kept = newFlowNode('Live');
         const away = { ...newFlowNode('Away'), archived: true };
         const service = new FakeHybridflowClient(boardOf([kept, away]));
@@ -128,15 +123,15 @@ describe('fetchArchivedFlowNodesCsv', () => {
         const { text, flowNodes } = await fetchArchivedFlowNodesCsv(service.asClient());
 
         expect(flowNodes).toBe(2);
-        expect(text).toContain('Major,Away,Scribe,muse-spark,high,2,12380,4210,8000,1200,900,2.5,,');
-        expect(text).toContain('Minor,Away,Scribe,muse-spark,high,2,12380,4210,8000,1200,900,2.5,,');
+        expect(text).toContain('Major,Away,Scribe,muse-spark,high,2,12380,4210,8000,1200,900,2.5,');
+        expect(text).toContain('Minor,Away,Scribe,muse-spark,high,2,12380,4210,8000,1200,900,2.5,');
         expect(text).not.toContain('Live');
         expect(service.calls).toContain('boards');
         expect(service.calls).toContain('board major');
         expect(service.calls).toContain('board minor');
     });
 
-    it('leaves a card blank where its usage refuses, and still exports the rest', async () => {
+    it('leaves a node blank where its usage refuses, and still exports the rest', async () => {
         const failing = {
             boards: async () => [{ name: 'Major', slug: 'major' }],
             agents: async () => [],
@@ -156,12 +151,12 @@ describe('fetchArchivedFlowNodesCsv', () => {
 
         expect(flowNodes).toBe(2);
         const [, first, second] = text.trim().split('\n');
-        expect(first).toBe('Major,First,,,,,,,,,,,,');
+        expect(first).toBe('Major,First,,,,,,,,,,,');
         expect(second).toBe(
-            'Major,Second,,,,2,12380,4210,8000,1200,900,2.5,,');
+            'Major,Second,,,,2,12380,4210,8000,1200,900,2.5,');
     });
 
-    it('says zero where no board holds an archived card', async () => {
+    it('says zero where no board holds an archived node', async () => {
         const service = new FakeHybridflowClient(boardNamed('Live'));
 
         const { text, flowNodes } = await fetchArchivedFlowNodesCsv(service.asClient());

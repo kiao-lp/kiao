@@ -1,3 +1,4 @@
+export { BlockFrame } from './BlockFrame';
 export { SplitRow } from './SplitRow';
 export type { SplitRowProps, SplitPart, SplitPartBox } from './SplitRow';
 export {

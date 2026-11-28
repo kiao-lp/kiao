@@ -29,16 +29,17 @@ const banner = () => document.querySelector('.cms-top-banner');
 
 describe('TopBanner', () => {
 
-    it('groups the visibility switches on the right, immediately before the tools menu', () => {
+    it('places the tools menu, search and layout controls in left-to-right order', () => {
         render(<TopBanner />);
 
-        expect(banner()).toBeInTheDocument();
-        expect(screen.getByTestId('search')).toBeInTheDocument();
-        expect(banner()).toContainElement(screen.getByTestId('zoom-slider'));
         const switches = screen.getByRole('group', { name: 'Layout visibility' });
+        expect(Array.from(banner()!.children)).toEqual([
+            screen.getByTestId('tools-menu'),
+            screen.getByTestId('search').parentElement,
+            switches.parentElement,
+        ]);
         expect([...switches.querySelectorAll('button')].map(button => button.dataset.testid))
             .toEqual(['toggle-left', 'toggle-center-2', 'toggle-right']);
-        expect(switches.nextElementSibling).toBe(screen.getByTestId('tools-menu'));
         expect(switches.parentElement).toContainElement(screen.getByTestId('zoom-slider'));
     });
 

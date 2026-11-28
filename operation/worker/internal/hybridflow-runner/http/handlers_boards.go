@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-// maxBoardProxyRequest bounds a proxied request body. A paste of cards is the largest thing on
+// maxBoardProxyRequest bounds a proxied request body. A paste of flow nodes is the largest thing on
 // the wire and is measured in kilobytes; four megabytes are room for a very long one and a
 // refusal for anything that is not a board — the same bound the store itself applies.
 const maxBoardProxyRequest = 4 << 20
@@ -28,7 +28,7 @@ func (s *Service) HandleCreateBoard(w http.ResponseWriter, r *http.Request) {
 	s.proxyBoards(w, r, http.MethodPost, "/boards")
 }
 
-// HandleGetBoard serves GET /hybridflow-runner/boards/{handle}: the board whole — its cards, and a cursor.
+// HandleGetBoard serves GET /hybridflow-runner/boards/{handle}: the board whole — its flow nodes, and a cursor.
 func (s *Service) HandleGetBoard(w http.ResponseWriter, r *http.Request) {
 	s.proxyBoards(w, r, http.MethodGet, s.boardsUpstream.BoardPath(r.PathValue("handle")))
 }
@@ -43,13 +43,27 @@ func (s *Service) HandleDeleteBoard(w http.ResponseWriter, r *http.Request) {
 	s.proxyBoards(w, r, http.MethodDelete, s.boardsUpstream.BoardPath(r.PathValue("handle")))
 }
 
-// HandleCreateFlowNodes serves POST /hybridflow-runner/boards/{handle}/flow-nodes: one or more cards, made
+// HandleBoardFolders forwards requests for the board folder collection and its entries.
+func (s *Service) HandleBoardFolders(w http.ResponseWriter, r *http.Request) {
+	path := "/folders/boards"
+	if id := r.PathValue("id"); id != "" {
+		path += "/" + pkgUrl.PathEscape(id)
+	}
+	s.proxyBoards(w, r, r.Method, path)
+}
+
+// HandleGetFlowNodeBoard finds the board for a link that specifies only the task ID.
+func (s *Service) HandleGetFlowNodeBoard(w http.ResponseWriter, r *http.Request) {
+	s.proxyBoards(w, r, http.MethodGet, "/flow-nodes/"+pkgUrl.PathEscape(r.PathValue("id"))+"/board")
+}
+
+// HandleCreateFlowNodes serves POST /hybridflow-runner/boards/{handle}/flow-nodes: one or more flow nodes, made
 // in the order given.
 func (s *Service) HandleCreateFlowNodes(w http.ResponseWriter, r *http.Request) {
 	s.proxyBoards(w, r, http.MethodPost, s.boardsUpstream.BoardPath(r.PathValue("handle"))+"/flow-nodes")
 }
 
-// HandleGetFlowNode serves GET /hybridflow-runner/boards/{handle}/flow-nodes/{id}: one card.
+// HandleGetFlowNode serves GET /hybridflow-runner/boards/{handle}/flow-nodes/{id}: one flow node.
 func (s *Service) HandleGetFlowNode(w http.ResponseWriter, r *http.Request) {
 	s.proxyBoards(w, r, http.MethodGet,
 		s.boardsUpstream.FlowNodePath(r.PathValue("handle"), r.PathValue("id")))
@@ -62,102 +76,27 @@ func (s *Service) HandlePatchFlowNode(w http.ResponseWriter, r *http.Request) {
 		s.boardsUpstream.FlowNodePath(r.PathValue("handle"), r.PathValue("id")))
 }
 
-// HandleDeleteFlowNodes serves DELETE /hybridflow-runner/boards/{handle}/flow-nodes: remove cards.
+// HandleDeleteFlowNodes serves DELETE /hybridflow-runner/boards/{handle}/flow-nodes: remove flow nodes.
 func (s *Service) HandleDeleteFlowNodes(w http.ResponseWriter, r *http.Request) {
 	s.proxyBoards(w, r, http.MethodDelete, s.boardsUpstream.BoardPath(r.PathValue("handle"))+"/flow-nodes")
 }
 
 // HandleChainFlowNode serves POST /hybridflow-runner/boards/{handle}/flow-nodes/{id}/chain: link to the
-// card played next, or unlink.
+// flow node played next, or unlink.
 func (s *Service) HandleChainFlowNode(w http.ResponseWriter, r *http.Request) {
 	s.proxyBoards(w, r, http.MethodPost,
 		s.boardsUpstream.FlowNodePath(r.PathValue("handle"), r.PathValue("id"))+"/chain")
 }
 
 // HandleGetFlowNodeUsage serves GET /hybridflow-runner/boards/{handle}/flow-nodes/{id}/usage: what one
-// card spent, whole.
+// flow node spent, whole.
 func (s *Service) HandleGetFlowNodeUsage(w http.ResponseWriter, r *http.Request) {
 	s.proxyBoards(w, r, http.MethodGet,
 		s.boardsUpstream.FlowNodePath(r.PathValue("handle"), r.PathValue("id"))+"/usage")
 }
 
-// HandleConvertFlowNode serves POST /hybridflow-runner/boards/{handle}/flow-nodes/{id}/to-class: file a
-// class from a task.
-func (s *Service) HandleConvertFlowNode(w http.ResponseWriter, r *http.Request) {
-	s.proxyBoards(w, r, http.MethodPost,
-		s.boardsUpstream.FlowNodePath(r.PathValue("handle"), r.PathValue("id"))+"/to-class")
-}
-
-// HandleListFlowNodeClasses serves GET /hybridflow-runner/flow-node-classes: every class of every board.
-func (s *Service) HandleListFlowNodeClasses(w http.ResponseWriter, r *http.Request) {
-	s.proxyBoards(w, r, http.MethodGet, "/flow-node-classes")
-}
-
-// HandleCreateFlowNodeClass serves POST /hybridflow-runner/boards/{handle}/flow-node-classes: one class,
-// with its first version's words beside it.
-func (s *Service) HandleCreateFlowNodeClass(w http.ResponseWriter, r *http.Request) {
-	s.proxyBoards(w, r, http.MethodPost, s.boardsUpstream.BoardPath(r.PathValue("handle"))+"/flow-node-classes")
-}
-
-// HandleGetFlowNodeClass serves GET /hybridflow-runner/boards/{handle}/flow-node-classes/{id}: one class,
-// with its succession beneath it.
-func (s *Service) HandleGetFlowNodeClass(w http.ResponseWriter, r *http.Request) {
-	s.proxyBoards(w, r, http.MethodGet,
-		s.boardsUpstream.ClassPath(r.PathValue("handle"), r.PathValue("id")))
-}
-
-// HandlePatchFlowNodeClass serves PATCH /hybridflow-runner/boards/{handle}/flow-node-classes/{id}: the
-// class's own fields, never its versions'.
-func (s *Service) HandlePatchFlowNodeClass(w http.ResponseWriter, r *http.Request) {
-	s.proxyBoards(w, r, http.MethodPatch,
-		s.boardsUpstream.ClassPath(r.PathValue("handle"), r.PathValue("id")))
-}
-
-// HandleDeleteFlowNodeClasses serves DELETE /hybridflow-runner/boards/{handle}/flow-node-classes: remove
-// classes and their versions.
-func (s *Service) HandleDeleteFlowNodeClasses(w http.ResponseWriter, r *http.Request) {
-	s.proxyBoards(w, r, http.MethodDelete, s.boardsUpstream.BoardPath(r.PathValue("handle"))+"/flow-node-classes")
-}
-
-// HandleChainFlowNodeClass serves POST /hybridflow-runner/boards/{handle}/flow-node-classes/{id}/chain:
-// link to the class after this one, or unlink.
-func (s *Service) HandleChainFlowNodeClass(w http.ResponseWriter, r *http.Request) {
-	s.proxyBoards(w, r, http.MethodPost,
-		s.boardsUpstream.ClassPath(r.PathValue("handle"), r.PathValue("id"))+"/chain")
-}
-
-// HandleCreateClassVersion serves POST /hybridflow-runner/boards/{handle}/flow-node-classes/{id}/versions:
-// one version filed under its class.
-func (s *Service) HandleCreateClassVersion(w http.ResponseWriter, r *http.Request) {
-	s.proxyBoards(w, r, http.MethodPost,
-		s.boardsUpstream.ClassPath(r.PathValue("handle"), r.PathValue("id"))+"/versions")
-}
-
-// HandlePatchClassVersion serves PATCH
-// /hybridflow-runner/boards/{handle}/flow-node-classes/{id}/versions/{versionId}: what a draft says, or
-// publish it.
-func (s *Service) HandlePatchClassVersion(w http.ResponseWriter, r *http.Request) {
-	s.proxyBoards(w, r, http.MethodPatch,
-		s.boardsUpstream.ClassVersionPath(r.PathValue("handle"), r.PathValue("id"), r.PathValue("versionId")))
-}
-
-// HandleDeleteClassVersion serves DELETE
-// /hybridflow-runner/boards/{handle}/flow-node-classes/{id}/versions/{versionId}.
-func (s *Service) HandleDeleteClassVersion(w http.ResponseWriter, r *http.Request) {
-	s.proxyBoards(w, r, http.MethodDelete,
-		s.boardsUpstream.ClassVersionPath(r.PathValue("handle"), r.PathValue("id"), r.PathValue("versionId")))
-}
-
-// HandleInstantiateFlowNodeClass serves POST
-// /hybridflow-runner/boards/{handle}/flow-node-classes/{id}/instantiate: make flow nodes from a class
-// and all its successors, on the board the handle names.
-func (s *Service) HandleInstantiateFlowNodeClass(w http.ResponseWriter, r *http.Request) {
-	s.proxyBoards(w, r, http.MethodPost,
-		s.boardsUpstream.ClassPath(r.PathValue("handle"), r.PathValue("id"))+"/instantiate")
-}
-
 // HandleCreateWorkflow serves POST /hybridflow-runner/boards/{handle}/workflows: file a workflow with the
-// cards it groups.
+// flow nodes it groups.
 func (s *Service) HandleCreateWorkflow(w http.ResponseWriter, r *http.Request) {
 	s.proxyBoards(w, r, http.MethodPost, s.boardsUpstream.BoardPath(r.PathValue("handle"))+"/workflows")
 }
@@ -168,54 +107,27 @@ func (s *Service) HandleGetWorkflow(w http.ResponseWriter, r *http.Request) {
 		s.boardsUpstream.WorkflowPath(r.PathValue("handle"), r.PathValue("id")))
 }
 
-// HandlePatchWorkflow serves PATCH /hybridflow-runner/boards/{handle}/workflows/{id}: rename it.
+// HandleCopyWorkflow returns the portable JSON for a workflow and its members.
+func (s *Service) HandleCopyWorkflow(w http.ResponseWriter, r *http.Request) {
+	s.proxyBoards(w, r, http.MethodGet,
+		s.boardsUpstream.WorkflowPath(r.PathValue("handle"), r.PathValue("id"))+"/clipboard")
+}
+
+// HandlePasteWorkflow creates a workflow and its members from clipboard JSON.
+func (s *Service) HandlePasteWorkflow(w http.ResponseWriter, r *http.Request) {
+	s.proxyBoards(w, r, http.MethodPost, s.boardsUpstream.BoardPath(r.PathValue("handle"))+"/workflows/clipboard")
+}
+
+// HandlePatchWorkflow serves PATCH /hybridflow-runner/boards/{handle}/workflows/{id}.
 func (s *Service) HandlePatchWorkflow(w http.ResponseWriter, r *http.Request) {
 	s.proxyBoards(w, r, http.MethodPatch,
 		s.boardsUpstream.WorkflowPath(r.PathValue("handle"), r.PathValue("id")))
 }
 
 // HandleDeleteWorkflows serves DELETE /hybridflow-runner/boards/{handle}/workflows: remove workflows,
-// ungrouping their cards.
+// ungrouping their flow nodes.
 func (s *Service) HandleDeleteWorkflows(w http.ResponseWriter, r *http.Request) {
 	s.proxyBoards(w, r, http.MethodDelete, s.boardsUpstream.BoardPath(r.PathValue("handle"))+"/workflows")
-}
-
-// HandleListWorkflowClasses serves GET /hybridflow-runner/workflow-classes: every workflow class of every
-// board.
-func (s *Service) HandleListWorkflowClasses(w http.ResponseWriter, r *http.Request) {
-	s.proxyBoards(w, r, http.MethodGet, "/workflow-classes")
-}
-
-// HandleCreateWorkflowClass serves POST /hybridflow-runner/boards/{handle}/workflow-classes: file a
-// workflow class with the classes it groups.
-func (s *Service) HandleCreateWorkflowClass(w http.ResponseWriter, r *http.Request) {
-	s.proxyBoards(w, r, http.MethodPost, s.boardsUpstream.BoardPath(r.PathValue("handle"))+"/workflow-classes")
-}
-
-// HandleGetWorkflowClass serves GET /hybridflow-runner/boards/{handle}/workflow-classes/{id}.
-func (s *Service) HandleGetWorkflowClass(w http.ResponseWriter, r *http.Request) {
-	s.proxyBoards(w, r, http.MethodGet,
-		s.boardsUpstream.WorkflowClassPath(r.PathValue("handle"), r.PathValue("id")))
-}
-
-// HandlePatchWorkflowClass serves PATCH /hybridflow-runner/boards/{handle}/workflow-classes/{id}: rename it.
-func (s *Service) HandlePatchWorkflowClass(w http.ResponseWriter, r *http.Request) {
-	s.proxyBoards(w, r, http.MethodPatch,
-		s.boardsUpstream.WorkflowClassPath(r.PathValue("handle"), r.PathValue("id")))
-}
-
-// HandleDeleteWorkflowClasses serves DELETE /hybridflow-runner/boards/{handle}/workflow-classes: remove
-// workflow classes, ungrouping their classes.
-func (s *Service) HandleDeleteWorkflowClasses(w http.ResponseWriter, r *http.Request) {
-	s.proxyBoards(w, r, http.MethodDelete, s.boardsUpstream.BoardPath(r.PathValue("handle"))+"/workflow-classes")
-}
-
-// HandleInstantiateWorkflowClass serves POST
-// /hybridflow-runner/boards/{handle}/workflow-classes/{id}/instantiate: make a workflow from a workflow
-// class, on the board the handle names.
-func (s *Service) HandleInstantiateWorkflowClass(w http.ResponseWriter, r *http.Request) {
-	s.proxyBoards(w, r, http.MethodPost,
-		s.boardsUpstream.WorkflowClassPath(r.PathValue("handle"), r.PathValue("id"))+"/instantiate")
 }
 
 // HandleListAgents serves GET /hybridflow-runner/agents: every managed agent, by name.
@@ -288,7 +200,7 @@ func (s *Service) HandleGetHybridflowSchema(w http.ResponseWriter, r *http.Reque
 
 // proxyBoards forwards one boards call to the hybridflow-store and hands its answer back
 // verbatim — status, body and all. The store's refusals are the caller's to read: a 409 is a
-// revision that has moved on, a 404 a board or card that is gone, and neither is improved by a
+// revision that has moved on, a 404 a board or flow node that is gone, and neither is improved by a
 // paraphrase here.
 //
 // The outbound request is built fresh rather than cloned from the inbound one, so nothing the
@@ -326,7 +238,7 @@ func (s *Service) proxyBoards(w http.ResponseWriter, r *http.Request, method, up
 	if r.URL.RawQuery != "" {
 		target += "?" + r.URL.RawQuery
 	}
-	req, err := http.NewRequest(method, target, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(r.Context(), method, target, bytes.NewReader(body))
 	if err != nil {
 		httpkit.WriteError(w, r, err)
 		return
@@ -348,7 +260,8 @@ func (s *Service) proxyBoards(w http.ResponseWriter, r *http.Request, method, up
 	}
 
 	client := upstream.Client
-	if strings.HasPrefix(upstreamPath, "/agentic-resources/") || strings.HasSuffix(upstreamPath, "/publish") {
+	// The store can hold a changes request for 25 seconds by default.
+	if upstreamPath == "/changes" || strings.HasPrefix(upstreamPath, "/agentic-resources/") || strings.HasSuffix(upstreamPath, "/publish") {
 		copy := *client
 		copy.Timeout = 3 * time.Minute
 		client = &copy

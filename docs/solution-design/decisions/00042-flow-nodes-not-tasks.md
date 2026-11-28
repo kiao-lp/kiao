@@ -43,6 +43,9 @@ by flow node. Shutdown and Scheduler data remain outside it.
 
 ## More Information
 
+The current distinction between a flow node and its graphical representation is recorded
+in [ADR 00072](00072-flow-node-and-card.md).
+
 Frozen `V009__task-is-a-flow-node.sql` renames the table, constraints, indexes, triggers,
 change-log column and `scope`, including existing log rows.
 `V013__workflow-tasks-are-flow-nodes.js` renames document keys and

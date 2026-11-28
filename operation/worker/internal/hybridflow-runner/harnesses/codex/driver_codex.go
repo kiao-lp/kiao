@@ -94,8 +94,8 @@ type codexRun struct {
 	instructions                             string
 	// False suppresses reasoning summaries, not model reasoning.
 	thinking bool
-	// Absolute store root, conveyed through the briefing rather than --add-dir.
-	storeRoot string
+	// Absolute DCMS root, conveyed through the briefing rather than --add-dir.
+	dcmsRoot string
 	// Rendered mcp_servers table; credentials still use ${KIAO_MCP_TURN_TOKEN}.
 	mcpConfig        string
 	mcpToken         string
@@ -116,7 +116,7 @@ func (d *CodexDriver) runFor(run harnessapi.HarnessRun) codexRun {
 		instructions:     run.Instructions,
 		sessionID:        run.SessionID,
 		thinking:         run.Thinking,
-		storeRoot:        run.StoreRoot,
+		dcmsRoot:         run.DCMSRoot,
 		mcpConfig:        run.MCPConfig,
 		mcpToken:         run.MCPToken,
 		ignoreUserConfig: ignoreUserConfig,
@@ -131,7 +131,7 @@ var errCodexNeedsBypass = errors.New(
 // codexArgs uses stdin for the prompt to avoid exposing it through ps or hitting argv limits.
 // Resume has a narrower flag set; all flags here must work after `exec resume`.
 // Use the process working directory because resume lacks --cd. Omit --add-dir because
-// bypass mode disables the sandbox; the briefing conveys the store root.
+// bypass mode disables the sandbox; the briefing conveys the DCMS root.
 func codexArgs(run codexRun) ([]string, error) {
 	if !run.allowBypass || runnerconfig.AsksBeforeTools(run.permissionMode) {
 		return nil, errCodexNeedsBypass
@@ -147,7 +147,7 @@ func codexArgs(run codexRun) ([]string, error) {
 		"--skip-git-repo-check",
 		"--dangerously-bypass-approvals-and-sandbox",
 		// developer_instructions adds to the model instructions; model_instructions_file replaces them.
-		"-c", "developer_instructions="+tomlString(briefing.HarnessBriefingWith(run.storeRoot, run.instructions)))
+		"-c", "developer_instructions="+tomlString(briefing.HarnessBriefingWith(run.dcmsRoot, run.instructions)))
 	if model := strings.TrimSpace(run.model); model != "" {
 		// The worker encodes the service tier as model@tier; the CLI takes separate values.
 		if slug, tier, ok := strings.Cut(model, "@"); ok && slug != "" && tier != "" {
@@ -208,7 +208,11 @@ const maxCodexStderrLines = 20
 // Spawn must close stdin after the prompt: exec waits for EOF before starting the turn.
 func (d *CodexDriver) Spawn(run harnessapi.HarnessRun) error {
 	d.run = run
-	args, err := codexArgs(d.runFor(run))
+	options := d.runFor(run)
+	if !options.ignoreUserConfig {
+		options.mcpConfig = excludeUnavailableMCP(d.Binary, run.WorkDir, options.mcpConfig, run.MCPUnavailable)
+	}
+	args, err := codexArgs(options)
 	if err != nil {
 		return err
 	}
@@ -274,7 +278,7 @@ func (d *CodexDriver) Spawn(run harnessapi.HarnessRun) error {
 	harnessapi.LogClaudeWS.Info("spawned",
 		"harness", harnessapi.HarnessCodex, "conversation", run.Conversation, "turn", run.Turn,
 		"pid", process.Pid, "supervisor_pid", process.Cmd.Process.Pid,
-		"work_dir", run.WorkDir, "store_root", run.StoreRoot)
+		"work_dir", run.WorkDir, "store_root", run.DCMSRoot)
 	run.Trace.Exec(d.execRecord(cmd))
 	run.Trace.Note(fmt.Sprintf("harness process supervisor pid %d", process.Cmd.Process.Pid))
 	// argv omits the stdin prompt, so record it as the first input frame.

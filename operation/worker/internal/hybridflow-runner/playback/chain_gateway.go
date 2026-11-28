@@ -1,6 +1,7 @@
 package playback
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"kiao/worker/internal/core/http"
@@ -30,32 +31,28 @@ func (r *ChainRunner) playGateway(
 		out.Round = roundStop
 		return out, nil
 	}
-	if waiting := waitingBranches(board, *at); len(waiting) > 0 {
+	r.Mu.Lock()
+	afterPredecessor := run.afterPredecessor || len(run.trail) > 0
+	r.Mu.Unlock()
+	if waiting := board.GatewayWaiting(*at, afterPredecessor); len(waiting) > 0 {
 		r.LogChain(run, at.ID, ChainRunChainDecision{Done: *at, Decision: chainRunChainGatewayWaiting})
 		r.say(run, runstate.NoticeInfo, fmt.Sprintf("“%s” waits for %s; this branch ends here.",
 			at.Title, strings.Join(waiting, ", ")))
 		out.Round = roundStop
 		return out, nil
 	}
-	if at.Status == pkgBoards.FlowNodeStatusDone {
-		// Fired already — branches played again after the Gateway went through. There is nothing
-		// to fire a second time.
-		r.say(run, runstate.NoticeInfo, fmt.Sprintf("“%s” already fired; this branch ends here.", at.Title))
-		out.Round = roundStop
-		return out, nil
-	}
+	input := board.Input(at.ID)
 	// No holder check before the claim: this run may itself be standing on the Gateway — a
 	// direct Play starts on it — and the claim below is what settles two branches firing together
 	// anyway, letting exactly one of them through.
 	r.setState(run, at.ID, "", ChainRunStatePlaying)
-	if err := r.mark(run, func() (*pkgBoards.BoardContent, error) { return r.Boards.Start(run.Handle, at.ID, run.Id) }); err != nil {
+	if err := r.mark(run, func() (*pkgBoards.BoardContent, error) {
+		return r.Boards.Start(run.Handle, at.ID, run.Id, afterPredecessor)
+	}); err != nil {
 		var refused *httpkit.HTTPError
 		if errors.As(err, &refused) && refused.Status == http.StatusConflict {
-			// The race the claim exists for: two branches finished together, and the other play
-			// fired the Gateway first.
 			r.LogChain(run, at.ID, ChainRunChainDecision{Done: *at, Decision: chainRunChainHeld})
-			r.say(run, runstate.NoticeInfo, fmt.Sprintf("“%s” was fired by another play; this branch ends here.",
-				at.Title))
+			r.say(run, runstate.NoticeInfo, fmt.Sprintf("“%s” could not fire: %s. This branch ends here.", at.Title, refused.Msg))
 		} else {
 			r.say(run, runstate.NoticeError, "The board could not be written, so the play stops here: "+err.Error())
 		}
@@ -63,7 +60,7 @@ func (r *ChainRunner) playGateway(
 		return out, nil
 	}
 	if err := r.mark(run, func() (*pkgBoards.BoardContent, error) {
-		return r.finishAutomatic(run, at.ID)
+		return r.Boards.Finish(run.Handle, at.ID, run.Id, pkgBoards.PlayResult{Status: pkgBoards.FlowNodeStatusDone, Output: input})
 	}); err != nil {
 		r.say(run, runstate.NoticeError, "The board could not be written, so the play stops here: "+err.Error())
 		out.Round = roundStop
@@ -86,25 +83,14 @@ func (r *ChainRunner) playGateway(
 		out.Round = roundStop
 		return out, nil
 	}
-	r.forkBranches(run, board, *fired)
+	r.forkBranches(run, board, *fired, input)
 	out.Round = roundStop
 	return out, nil
 }
 
-// waitingBranches lists unfinished predecessors by title. No predecessors means ready.
-func waitingBranches(board *pkgBoards.BoardContent, gateway pkgBoards.FlowNode) []string {
-	var waiting []string
-	for _, pred := range board.PredecessorsOf(gateway.ID) {
-		if pred.Status != pkgBoards.FlowNodeStatusDone {
-			waiting = append(waiting, "“"+pred.Title+"”")
-		}
-	}
-	return waiting
-}
-
 // forkBranches checks and starts each outgoing branch independently.
 // An ineligible branch raises its own notice and leaves the others available.
-func (r *ChainRunner) forkBranches(run *ChainRun, board *pkgBoards.BoardContent, gateway pkgBoards.FlowNode) {
+func (r *ChainRunner) forkBranches(run *ChainRun, board *pkgBoards.BoardContent, gateway pkgBoards.FlowNode, output json.RawMessage) {
 	behind := map[string]bool{}
 	r.Mu.Lock()
 	for _, id := range run.trail {
@@ -116,6 +102,10 @@ func (r *ChainRunner) forkBranches(run *ChainRun, board *pkgBoards.BoardContent,
 	branches := board.SuccessorsOf(gateway)
 	for _, next := range branches {
 		branch := next
+		if err := board.Workflow(branch.Workflow).ValidateFiles(); err != nil {
+			r.say(run, runstate.NoticeError, err.Error())
+			continue
+		}
 		if branch.IsHuman() {
 			if err := r.mark(run, func() (*pkgBoards.BoardContent, error) { return r.Boards.Todo(run.Handle, branch.ID) }); err != nil {
 				r.say(run, runstate.NoticeError, fmt.Sprintf("“%s” could not be marked to do: %s", branch.Title, err.Error()))
@@ -159,7 +149,11 @@ func (r *ChainRunner) forkBranches(run *ChainRun, board *pkgBoards.BoardContent,
 				branch.Title, strings.TrimPrefix(refusal, "this flow node ")))
 			continue
 		}
-		if held := r.holderOf(run.Handle, branch.ID); held != "" {
+		var input *json.RawMessage
+		if branch.Type == pkgBoards.FlowNodeTypeExclusiveGateway {
+			input = &output
+		}
+		if held := r.holderOf(run.Handle, branch.ID); held != "" && input == nil {
 			r.LogChain(run, gateway.ID, ChainRunChainDecision{
 				Done: gateway, NextID: branch.ID, ToFolder: branch.Settings.WorkFolder(),
 				Holder: held, Decision: chainRunChainHeld,
@@ -168,23 +162,25 @@ func (r *ChainRunner) forkBranches(run *ChainRun, board *pkgBoards.BoardContent,
 				" no branch starts there.", branch.Title, held))
 			continue
 		}
-		// A card a run died holding is taken back first, so the branch meets a free card rather
+		// A flow node a run died holding is taken back first, so the branch meets a free flow node rather
 		// than the run that is gone.
-		freed, err := r.reclaim(run.Handle, board, branch.ID)
-		if err != nil {
-			r.say(run, runstate.NoticeError, fmt.Sprintf("“%s” could not be freed for its branch: %s",
-				branch.Title, err.Error()))
-			continue
-		}
-		board = freed
-		if at := board.FlowNode(branch.ID); at != nil {
-			branch = *at
+		if input == nil {
+			freed, err := r.reclaim(run.Handle, board, branch.ID)
+			if err != nil {
+				r.say(run, runstate.NoticeError, fmt.Sprintf("“%s” could not be freed for its branch: %s",
+					branch.Title, err.Error()))
+				continue
+			}
+			board = freed
+			if at := board.FlowNode(branch.ID); at != nil {
+				branch = *at
+			}
 		}
 		r.LogChain(run, gateway.ID, ChainRunChainDecision{
 			Done: gateway, NextID: branch.ID, ToFolder: branch.Settings.WorkFolder(),
-			Chat: branch.Chat, Decision: chainRunChainGatewayForked,
+			Chat: branch.ChatForPlay(), Decision: chainRunChainGatewayForked,
 		})
-		r.forkRun(run, board, branch.ID)
+		r.forkRun(run, board, branch.ID, input)
 		started = append(started, "“"+branch.Title+"”")
 	}
 	switch {
@@ -204,13 +200,13 @@ func (r *ChainRunner) forkBranches(run *ChainRun, board *pkgBoards.BoardContent,
 
 // forkRun creates an independent run with the parent's owner and copied trail.
 // The inherited trail prevents branches from forking back onto completed ancestors.
-func (r *ChainRunner) forkRun(parent *ChainRun, board *pkgBoards.BoardContent, startID string) {
+func (r *ChainRunner) forkRun(parent *ChainRun, board *pkgBoards.BoardContent, startID string, input *json.RawMessage) {
 	r.Mu.Lock()
 	trail := append([]string(nil), parent.trail...)
 	name, owner := parent.Name, parent.Owner
 	chat := ""
 	if at := board.FlowNode(startID); at != nil {
-		chat = at.Chat
+		chat = at.ChatForPlay()
 	}
 	child := &ChainRun{
 		Id:             "run-" + idgen.NowMillisStr() + "-" + idgen.RandID()[:4],
@@ -220,11 +216,15 @@ func (r *ChainRunner) forkRun(parent *ChainRun, board *pkgBoards.BoardContent, s
 		RootFlowNodeID: startID,
 		FlowNodeID:     startID,
 		Chat:           chat,
+		input:          input,
 		trail:          trail,
 		State:          ChainRunStatePlaying,
 		startedAt:      time.Now(),
 	}
-	execution := r.startLocked(child, board, false)
+	if input != nil {
+		child.State = ChainRunStateQueued
+	}
+	execution := r.startLocked(child, board, playHow{})
 	r.Mu.Unlock()
 
 	pkgBoards.LogChainRun.Info("branch started", "run", child.Id, "name", child.Name,
@@ -234,7 +234,7 @@ func (r *ChainRunner) forkRun(parent *ChainRun, board *pkgBoards.BoardContent, s
 	go r.loop(child, execution)
 }
 
-// startTitle names a branch after its card, falling back to its id.
+// startTitle names a branch after its flow node, falling back to its id.
 func startTitle(board *pkgBoards.BoardContent, startID string) string {
 	if at := board.FlowNode(startID); at != nil && strings.TrimSpace(at.Title) != "" {
 		return strings.TrimSpace(at.Title)

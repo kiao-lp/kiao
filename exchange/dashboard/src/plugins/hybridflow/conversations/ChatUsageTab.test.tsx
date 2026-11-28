@@ -23,7 +23,8 @@ const client = {
     },
 };
 
-vi.mock('@kiao-dashboard-core', () => ({
+vi.mock('@kiao-dashboard-core', async () => ({
+    AsyncList: (await import('src/core/ui-foundation/feedback/AsyncList')).AsyncList,
     useWorkerClient: () => client,
     TOOLBOX_CHANGED_EVENT: 'kiao:toolbox-changed',
 }));

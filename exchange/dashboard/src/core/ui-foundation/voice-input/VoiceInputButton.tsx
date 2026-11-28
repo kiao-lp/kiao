@@ -1,44 +1,49 @@
-import React, { MouseEvent } from 'react';
-import { Button } from 'antd';
+import React, { type MouseEvent } from 'react';
 import { AudioOutlined } from '@ant-design/icons';
-import { useVoiceInput as useVoiceInputContext } from './VoiceInputContext';
+import { ConfigProvider } from 'antd';
+import { IconButton } from '../toolbar/IconButton';
 import { useVoiceInputHook } from './useVoiceInputHook';
 
 export interface VoiceInputButtonProps {
-    /** What the box being dictated into holds; speech is appended to it. */
     value?: string;
     onChange: (next: string) => void;
-    /** The field takes no dictation, so there is no microphone to press. */
     disabled?: boolean;
+    inline?: boolean;
+    /** Place the microphone in a field, with null when dictation is unavailable. */
+    children?: (button: React.ReactElement | null) => React.ReactElement;
 }
 
-/**
- * The microphone for a box that cannot carry one of its own — a plain `<textarea>` in a row of
- * controls. Dictation lands in the box without taking its focus. Nothing renders where the
- * browser has no speech recognition.
- */
+const keepFocus = (event: MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+};
+
 export const VoiceInputButton: React.FC<VoiceInputButtonProps> = ({
-    value, onChange, disabled,
+    value, onChange, disabled, inline, children,
 }) => {
-    const { language } = useVoiceInputContext();
-    const { showMic, listening, toggleListening } = useVoiceInputHook(
-        event => onChange(event.target.value), value, language, !disabled);
-
-    if (!showMic) return null;
-
-    // The box keeps its caret and its focus: the click dictates without ending what was being typed.
-    const keepFocus = (event: MouseEvent) => event.preventDefault();
-
-    return (
-        <Button
-            size="small"
-            type={listening ? 'primary' : 'default'}
+    const { componentDisabled } = ConfigProvider.useConfig();
+    const { showMic, listening, busy, toggleListening } = useVoiceInputHook(
+        value, onChange, !(disabled ?? componentDisabled),
+    );
+    const button = showMic ? (
+        <IconButton
+            label="Voice Input"
+            type={listening ? 'primary' : inline ? 'text' : 'default'}
+            style={inline ? { width: 20, height: 20 } : undefined}
             icon={<AudioOutlined />}
-            aria-label="Voice Input"
+            disabled={busy}
             aria-pressed={listening}
             onMouseDown={keepFocus}
             onMouseUp={keepFocus}
-            onClick={toggleListening}
+            onKeyDown={event => {
+                if (event.key === 'Enter' || event.key === ' ') event.stopPropagation();
+            }}
+            onClick={event => {
+                event.stopPropagation();
+                void toggleListening();
+            }}
         />
-    );
+    ) : null;
+
+    return children ? children(button) : button;
 };

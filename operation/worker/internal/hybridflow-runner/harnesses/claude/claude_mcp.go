@@ -58,10 +58,10 @@ func SweepMCPConfigs(cfg *runnerconfig.Config) {
 	}
 }
 
-// writeMCPConfig returns the --mcp-config path, or empty for no servers.
+// writeMCPConfig returns the --mcp-config path. A nil list uses the operator's CLI config.
 // Content-addressed files are reused across turns; registry changes take effect on the next turn.
 func writeMCPConfig(cfg *runnerconfig.Config, servers []equipment.MCPServer) (string, error) {
-	if len(servers) == 0 {
+	if servers == nil {
 		return "", nil
 	}
 	body, err := json.MarshalIndent(buildMCPConfig(servers), "", "  ")

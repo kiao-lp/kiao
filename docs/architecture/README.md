@@ -31,7 +31,7 @@ copy and link to it. Package READMEs, API references and user instructions remai
 code or in their respective manuals; their design rationale belongs in the relevant solution design.
 
 All references within this repository must resolve within it when opened independently.
-Use document-relative links or paths rooted at this repository's root, without a monorepo prefix
+Use document-relative links or DCMS links rooted at this repository's root, without a monorepo prefix
 or traversal outside the repository. See the
 [documentation decision](../solution-design/decisions/00060-direct-solution-design-and-reference-packages.md).
 
@@ -43,9 +43,13 @@ designs and to each container's local documentation.
 
 ## Domain concepts
 
-The [DCMS concept catalog](./data/dcms-concept-catalog.md) defines documents and content.
+The [DCMS concept catalog](./data/dcms-concept-catalog.md) defines documents, content, the DCMS root
+and DCMS links.
 Documents are the central information artifacts managed by DCMS; content has an intended
 publication or distribution purpose.
 
-The [agent resource DFD](./data/agentic-resources.md) follows **definitions, publications and
+The [Hybridflow concept catalog](./data/hybridflow-concept-catalog.md) defines flow nodes,
+cards, tasks, agentic resources, agents and harnesses.
+
+The [agentic resource flows](./data/agentic-resources.md) follow **definitions, publications and
 execution resources** through source repositories, caches and harness binding.

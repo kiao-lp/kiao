@@ -47,7 +47,7 @@ export interface BoardSettings {
     model?: string;
     effort?: string;
     permission?: string;
-    /** The folder the turn runs in, as a link from the store root with a leading slash. */
+    /** DCMS link or context expression locating the task's working folder. */
     folder?: string;
     /** Which runner plays the task — a runner's id, or absent for wherever a Play is pressed. */
     runner?: string;
@@ -58,7 +58,7 @@ export interface BoardSettings {
 export interface BoardSuccess {
     /** Next card on the same board, for tasks and Schedulers. Empty when nothing follows. */
     flowNode?: string;
-    /** The cards a gateway starts when it fires. A gateway's alone. */
+    /** Linked branches of a gateway. */
     flowNodes?: string[];
     /** Who gets the conversation: `end` (the default) or `continue`. */
     mode?: string;
@@ -66,12 +66,9 @@ export interface BoardSuccess {
     compact?: boolean;
 }
 
-/** What a flow node says about the class version it was made from. Read-only. */
-export interface BoardClassRef {
-    classId: string;
-    classTitle: string;
-    versionId: string;
-    versionNumber: number;
+export interface BoardGatewayRoute {
+    condition: string;
+    flowNode: string;
 }
 
 /** One card, flat over the two rows the store keeps it on. */
@@ -84,9 +81,13 @@ export interface BoardFlowNode {
     value?: unknown;
     /** Empty, "json-schema", or another schema value's id on the same board. */
     valueType?: string;
+    roleId?: string;
+    people?: string[];
+    description?: string;
     /** Task output schema value id, from any board. Empty disables schema selection. */
     outputType?: string;
     body?: string;
+    multiPartTemplate?: boolean;
     criteria?: BoardCriterion[];
     complexity?: number;
     settings?: BoardSettings;
@@ -94,16 +95,21 @@ export interface BoardFlowNode {
     at?: string;
     /** Positive scheduler wait from play, such as 30s, 15m or 1h30m; alternative to at. */
     duration?: string;
+    pullRequestId?: string;
+    pullRequestStatus?: string;
+    commitId?: string;
+    commitStatus?: string;
+    maxPasses?: number;
+    remainingPasses?: number;
     spot?: BoardSpot;
     status: string;
     /** Hides the card everywhere without deleting it. Absent is false. */
     archived?: boolean;
     chat?: string;
     onSuccess?: BoardSuccess;
+    routes?: BoardGatewayRoute[];
     /** The run holding the card, or empty when it is free. Read-only. */
     run?: string;
-    /** The class version the flow node was instantiated from. Read-only; patch `classVersion` to move it. */
-    classVersion?: BoardClassRef;
     /** The workflow the card is grouped in, or absent for none. */
     workflow?: string;
     createdAt: string;
@@ -114,88 +120,21 @@ export interface BoardFlowNode {
     output?: unknown;
 }
 
-/** One version of a node class: the words, under a successive number. */
-export interface BoardClassVersion {
-    id: string;
-    number: number;
-    body?: string;
-    criteria?: BoardCriterion[];
-    /** Whether the body is a template the instantiation fills in rather than copies. */
-    template?: boolean;
-    /** `draft` or `published`. Only a draft may be changed. */
-    status: string;
-    createdAt: string;
-    updatedAt: string;
-    revision: number;
-}
-
-/** One node class: the reusable card, with its succession beneath it. */
-export interface BoardFlowNodeClass {
-    id: string;
-    title: string;
-    instantiable?: boolean;
-    type: string;
-    tags?: string[];
-    /** A Scheduler's preset datetime, as the class writes it. */
-    at?: string;
-    /** Positive scheduler wait from play, such as 30s, 15m or 1h30m; alternative to at. */
-    duration?: string;
-    spot?: BoardSpot;
-    /** The class after this one — a class, never a version or a flow node. */
-    onSuccess?: BoardSuccess;
-    /** How an AI instance's turn answers its tool calls. Asked of an AI class alone. */
-    permission?: string;
-    /** Which runner plays an AI instance — a runner's id, or empty. Asked of an AI class alone. */
-    runner?: string;
-    /** What the class is for. Asked of every kind of class and copied to no instance. */
-    note?: string;
-    /** The workflow class the class is grouped in, or absent for none. */
-    workflowClass?: string;
-    /** The succession, oldest first. */
-    versions: BoardClassVersion[];
-    createdAt: string;
-    updatedAt: string;
-    /** The class's own revision — a version carries a revision of its own. */
-    revision: number;
-}
-
-/** One class for the instantiate menu: the class and the board it is filed on. */
-export interface BoardListedClass extends BoardFlowNodeClass {
-    boardSlug: string;
-    boardName: string;
-}
-
-/** One workflow: a name round a set of cards. */
+/** A group of cards with shared runtime values. */
 export interface BoardWorkflow {
     id: string;
     name: string;
+    values?: Record<string, unknown>;
     createdAt: string;
     updatedAt: string;
     revision: number;
 }
 
-/** One workflow class: a name round a set of node classes. */
-export interface BoardWorkflowClass {
-    id: string;
-    name: string;
-    createdAt: string;
-    updatedAt: string;
-    revision: number;
-}
-
-/** One workflow class for the instantiate menu: the rectangle and the board it is filed on. */
-export interface BoardListedWorkflowClass extends BoardWorkflowClass {
-    boardSlug: string;
-    boardName: string;
-}
-
-/** A whole board: its own row, its cards, its classes, its workflows — and the cursor it was read at. */
+/** A whole board: its metadata, cards and workflows — and the cursor it was read at. */
 export interface BoardWhole {
     board: Board;
     flowNodes: BoardFlowNode[];
-    flowNodeClasses: BoardFlowNodeClass[];
     workflows: BoardWorkflow[];
-    workflowClasses: BoardWorkflowClass[];
     cursor: number;
 }
 
@@ -208,19 +147,29 @@ export interface NewBoardFlowNode {
     note?: string;
     value?: unknown;
     valueType?: string;
+    roleId?: string;
+    people?: string[];
+    description?: string;
     outputType?: string;
     body?: string;
+    multiPartTemplate?: boolean;
     criteria?: NewBoardCriterion[];
     complexity?: number;
     settings?: BoardSettings;
     at?: string;
     /** Positive scheduler wait from play, such as 30s, 15m or 1h30m; alternative to at. */
     duration?: string;
+    pullRequestId?: string;
+    pullRequestStatus?: string;
+    commitId?: string;
+    commitStatus?: string;
+    maxPasses?: number;
     spot?: BoardSpot;
     status?: string;
     /** Create the card hidden. Ordinary creates leave it absent. */
     archived?: boolean;
     onSuccess?: BoardSuccess;
+    routes?: BoardGatewayRoute[];
     /** The workflow the card is grouped in — one of this board — or absent for none. */
     workflow?: string;
 }
@@ -231,10 +180,14 @@ export interface BoardFlowNodePatch {
     note?: string;
     value?: unknown;
     valueType?: string;
+    roleId?: string;
+    people?: string[];
+    description?: string;
     outputType?: string;
     type?: string;
     tags?: string[];
     body?: string;
+    multiPartTemplate?: boolean;
     criteria?: NewBoardCriterion[];
     complexity?: number;
     /** Takes the estimation off, which a complexity of nil cannot say. */
@@ -243,85 +196,23 @@ export interface BoardFlowNodePatch {
     at?: string;
     /** Positive scheduler wait from play, such as 30s, 15m or 1h30m; alternative to at. */
     duration?: string;
+    pullRequestId?: string;
+    pullRequestStatus?: string;
+    commitId?: string;
+    commitStatus?: string;
+    maxPasses?: number;
+    resetPasses?: boolean;
     status?: string;
     /** Flip the boolean hide without deleting the card. */
     archived?: boolean;
     onSuccess?: BoardSuccess;
+    routes?: BoardGatewayRoute[];
     spot?: BoardSpot;
     /** Takes the card off the board, which a spot of nil cannot say. */
     clearSpot?: boolean;
     /** Binds the flow node to a class version, or breaks the link with the empty string. */
-    classVersion?: string;
     /** Groups the card in the workflow it names — one of this board — or takes it out with "". */
     workflow?: string;
-}
-
-/** One class to create, with its first version's words beside it. */
-export interface NewBoardFlowNodeClass {
-    id?: string;
-    title: string;
-    instantiable?: boolean;
-    type?: string;
-    tags?: string[];
-    body?: string;
-    criteria?: NewBoardCriterion[];
-    template?: boolean;
-    /** The first version's default agent. Asked of an AI class's versions alone. */
-    at?: string;
-    /** Positive scheduler wait from play, such as 30s, 15m or 1h30m; alternative to at. */
-    duration?: string;
-    spot?: BoardSpot;
-    permission?: string;
-    runner?: string;
-    note?: string;
-    onSuccess?: BoardSuccess;
-    /** Freezes the first version at creation. */
-    published?: boolean;
-    workflowClass?: string;
-}
-
-/** What changes about a class — its own fields, never its versions'. */
-export interface BoardFlowNodeClassPatch {
-    title?: string;
-    instantiable?: boolean;
-    type?: string;
-    tags?: string[];
-    at?: string;
-    /** Positive scheduler wait from play, such as 30s, 15m or 1h30m; alternative to at. */
-    duration?: string;
-    onSuccess?: BoardSuccess;
-    permission?: string;
-    runner?: string;
-    note?: string;
-    spot?: BoardSpot;
-    clearSpot?: boolean;
-    workflowClass?: string;
-}
-
-/** One version to be filed under its class. */
-export interface NewBoardClassVersion {
-    body?: string;
-    criteria?: NewBoardCriterion[];
-    template?: boolean;
-    /** Names a version to copy the words from. Empty is a blank draft. */
-    from?: string;
-}
-
-/** What changes about a draft: the words, the template box, the default agent, or publish it. */
-export interface BoardClassVersionPatch {
-    body?: string;
-    criteria?: NewBoardCriterion[];
-    template?: boolean;
-    /** Publishing freezes the version; a published version is never drafted again. */
-    status?: string;
-}
-
-/** What instantiating a class or a workflow class is asked: where the head lands, and what the
- * instantiated templates are asked instead of their version's body, by class id. */
-export interface BoardInstantiateRequest {
-    spot?: BoardSpot;
-    bodies?: Record<string, string>;
-    agents?: Record<string, string>;
 }
 
 /** One workflow to file, with the cards it groups. */
@@ -332,21 +223,21 @@ export interface NewBoardWorkflow {
     flowNodes?: string[];
 }
 
+/** The same portable JSON used by the Dashboard clipboard. */
+export interface BoardWorkflowClipboard {
+    kind: 'kiao-workflow';
+    version: 1;
+    workflow: { name: string; values?: Record<string, unknown> };
+    flowNodes: (NewBoardFlowNode & { id: string })[];
+}
+
+export interface BoardWorkflowWithFlowNodes {
+    workflow: BoardWorkflow;
+    flowNodes: BoardFlowNode[];
+}
+
 /** What changes about a workflow: its name, which is all it has. */
 export interface BoardWorkflowPatch {
-    name?: string;
-}
-
-/** One workflow class to file, with the classes it groups. */
-export interface NewBoardWorkflowClass {
-    id?: string;
-    name?: string;
-    /** The node classes the workflow class groups: classes of this board. */
-    classes?: string[];
-}
-
-/** What changes about a workflow class: its name. */
-export interface BoardWorkflowClassPatch {
     name?: string;
 }
 
@@ -451,11 +342,9 @@ export interface BoardChange {
     kind: string;
     board?: string;
     flowNode?: string;
-    flowNodeClass?: string;
     agent?: string;
     runner?: string;
     workflow?: string;
-    workflowClass?: string;
     actor?: string;
     revision?: number;
 }

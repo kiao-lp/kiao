@@ -19,7 +19,10 @@ const nav = vi.hoisted(() => ({ open: vi.fn(), openInNewTab: vi.fn(), openInNewW
 vi.mock('../conversations/ChatChainRuns-ctx', () => ({ useChatChainRuns: () => runner }));
 vi.mock('../conversations/ChatShow-ctx', () => ({ useShowChat: () => showChat }));
 
-vi.mock('@kiao-dashboard-core', async () => ({ useNavigation: () => nav, Tooltip: (await import('antd')).Tooltip }));
+vi.mock('@kiao-dashboard-core', async () => ({
+    IconButton: (await import('src/core/ui-foundation/toolbar/IconButton')).IconButton,
+    useNavigation: () => nav,
+}));
 
 const { HybridflowPanel } = await import('./HybridflowPanel');
 
@@ -62,7 +65,7 @@ describe('HybridflowPanel', () => {
     });
 
     // The chain travels with the run, so the flow nodes are drawn for a board this panel never opened.
-    it('opens into the cards of the chain, with where each of them stands', () => {
+    it('opens into the nodes of the chain, with where each of them stands', () => {
         runner.runs = [run()];
         render(<HybridflowPanel />);
 

@@ -23,18 +23,15 @@ const MOVED = 'cours/abc/abc.mmap.json';
 /** The op a unit that moved would be fixed with. The path is given bare; the pattern anchors it. */
 const movedUnit = () => renameOp(DOC, MOVED);
 
-test('a markdown scheme carries a path, and the path is maintained', () => {
+test('repairs DCMS links carried by Markdown schemes', () => {
     const op = movedUnit();
     assert.strictEqual(fixLine(`[a](unit::/${DOC})`, op).line, `[a](unit::/${MOVED})`);
     assert.strictEqual(fixLine(`[b](template::/${DOC})`, op).line, `[b](template::/${MOVED})`);
-    // No leading slash, so not a link — the scheme in front of it changes nothing.
+    // A scheme prefix alone leaves a slashless path outside the fixer's match.
     assert.strictEqual(fixLine(`bare unit::${DOC} here`, op).line, `bare unit::${DOC} here`);
 });
 
-test('a link is a path with a leading slash, and nothing else is one', () => {
-    // The rule the whole pass now rests on. A store's root folders are ordinary words, and a bare
-    // path token in prose, in a shell snippet or in a pasted stack trace is not a reference. What
-    // it costs is a document-relative markdown link, which points somewhere else anyway.
+test('repairs DCMS links and preserves slashless paths', () => {
     const op = movedUnit();
     const unchanged = [
         `cp ${DOC} /tmp`,
@@ -54,9 +51,8 @@ test('a members entry and a quoted value are the same token', () => {
     assert.strictEqual(fixLine(`unit: /${DOC}`, op).line, `unit: /${MOVED}`);
 });
 
-test('a url that ends in a store path is not a link to it', () => {
-    // Not because a scheme is recognised — nothing here parses one — but because the byte in front
-    // of the path is the '/' that follows the host, and a '/' is no boundary.
+test('preserves absolute URLs and mounted Dashboard hrefs', () => {
+    // A preceding slash prevents the DCMS link's path from matching at a token boundary.
     const op = movedUnit();
     const unchanged = [
         `see http://host/${DOC} ok`,
@@ -79,9 +75,7 @@ test('a colon ends a token as well as starting one', () => {
     assert.strictEqual(fixLine('[a](/docs/old/my:file.md)', folder).line, '[a](/docs/new/my:file.md)');
 });
 
-test('`config` is only a link when it carries a leading slash', () => {
-    // The case that first asked for the anchoring, back when it was an option. A ':' in front of a
-    // bare `config/values` does not make it a link either: there is no leading slash to match.
+test('repairs DCMS links to config and preserves slashless config paths', () => {
     const op = renameOp('/config', '/kiao-user-config');
     const unchanged = ['cd config/values && ls', 'read ~/.config/app.json', 'note:config/values'];
     for (const line of unchanged) {

@@ -1,7 +1,7 @@
 package configuration
 
 const (
-	// The program adopts these two legacy documents from the data root.
+	// The program adopts these two legacy documents from the DCMS root.
 	ConfigDocDashboard = "dashboard.json"
 	ConfigDocViewState = "dashboard-view-state.json"
 	// Separate narrow-screen state prevents phone and desktop layouts overwriting each other.

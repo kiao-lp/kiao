@@ -5,6 +5,13 @@ import { loadConfig, type Config } from './config.js';
 import { WorkerClient } from './files.js';
 import { installToolLogging } from './logging.js';
 
+interface ServerContext {
+    server: McpServer;
+    files: WorkerClient;
+    config: Config;
+    tokens: TokenProvider;
+}
+
 /**
  * Bootstrap shared by every entrypoint: resolve config, wire the token provider and files
  * client, let the caller register its tool family on the MCP server, then connect over stdio.
@@ -16,12 +23,8 @@ import { installToolLogging } from './logging.js';
  */
 export async function startServer(
     name: string,
-    register: (ctx: {
-        server: McpServer;
-        files: WorkerClient;
-        config: Config;
-        tokens: TokenProvider;
-    }) => void,
+    register: (ctx: ServerContext) => void,
+    diagnose?: (ctx: ServerContext) => Promise<void>,
 ): Promise<void> {
     const config = loadConfig();
     const tokens = tokenProvider(config);
@@ -31,7 +34,16 @@ export async function startServer(
     // Before `register`, not after: McpServer installs its `tools/call` handler on the first
     // registerTool, and the log wraps that handler as it goes in. See logging.ts.
     installToolLogging(server, name, config);
-    register({ server, files, config, tokens });
+    const context = { server, files, config, tokens };
+    register(context);
+
+    if (diagnose && process.env.KIAO_MCP_DIAGNOSTIC === '1') {
+        try {
+            await diagnose(context);
+        } catch (err) {
+            throw new Error(`Internal diagnostic failed for ${name}. ${err instanceof Error ? err.message : String(err)}`);
+        }
+    }
 
     const transport = new StdioServerTransport();
     await server.connect(transport);

@@ -1,15 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import { plugin } from './index';
-import { BOARDS_PREFIX } from './boardRoute';
-import { AGENTS_TAB_ID, BOARD_TAB_ID, RUNNERS_TAB_ID } from './constants';
+import { BOARDS_PREFIX, TASKS_PREFIX } from './boardRoute';
+import { AGENTIC_RESOURCES_PANEL_ID, BOARD_TAB_ID, RUNNERS_TAB_ID } from './constants';
 
 describe('hybridflow plugin', () => {
-    it('claims the boards prefix, with no entry in the `...` menu', () => {
-        expect(plugin.appRoutes).toHaveLength(1);
-        const [page] = plugin.appRoutes ?? [];
-        expect(page.prefix).toBe(BOARDS_PREFIX);
-        expect(page.panel).toBe(BOARD_TAB_ID);
-        expect(page.menu).toBeUndefined();
+    it('opens board and task routes in the Board panel', () => {
+        expect(plugin.appRoutes?.map(({ prefix, panel, menu }) => ({ prefix, panel, menu }))).toEqual([
+            { prefix: BOARDS_PREFIX, panel: BOARD_TAB_ID, menu: undefined },
+            { prefix: TASKS_PREFIX, panel: BOARD_TAB_ID, menu: undefined },
+        ]);
     });
 
     it('claims no file type at all', () => {
@@ -19,20 +18,20 @@ describe('hybridflow plugin', () => {
 
     it('keeps its tool bar tabs, boards included', () => {
         expect((plugin.toolBars ?? []).map(tab => tab.title))
-            .toEqual(['Board', 'Node', 'Workflow', 'Chain runs', 'Boards', 'Conversations', 'Usage']);
+            .toEqual(['Board', 'Flow node', 'Workflow', 'Chain runs', 'Boards', 'Conversations', 'Usage']);
     });
 
     it('keeps board editing available when conversation execution is disabled', () => {
         const config = { plugins: ['hybridflow'], gitEnabled: true, chatEnabled: false };
         expect(plugin.toolBars?.filter(tab => tab.isEnabled?.(config) ?? true).map(tab => tab.title))
-            .toEqual(['Board', 'Node', 'Workflow', 'Boards']);
+            .toEqual(['Board', 'Flow node', 'Workflow', 'Boards']);
     });
 
-    it('offers agents and runners as tools menu panels', () => {
+    it('offers the resource catalogue, legacy editor and runners in the Tools menu', () => {
         expect((plugin.toolsMenuItems ?? []).map(item => [item.id, item.label, item.panel.label]))
             .toEqual([
-                ['agentic-resources', 'Agentic resources…', 'Agentic resources'],
-                [AGENTS_TAB_ID, 'Agents…', 'Agents'],
+                [AGENTIC_RESOURCES_PANEL_ID, 'Agentic resources…', 'Agentic resources'],
+                ['agentic-resources', 'Agentic resources (legacy)…', 'Agentic resources (legacy)'],
                 [RUNNERS_TAB_ID, 'Runners…', 'Runners'],
             ]);
     });

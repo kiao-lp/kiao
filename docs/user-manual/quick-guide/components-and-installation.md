@@ -14,7 +14,7 @@ Choose one of the two forms of Kiao:
 
 | Form | What it runs | What you provide |
 |---|---|---|
-| **`kiao` executable** | Dashboard, worker and a local diagram renderer; it can also start hybridflow-store when configured with a database | A Debian-based Linux machine (Debian, Ubuntu or Mint). For boards, a boards service or PostgreSQL database; for workflow agents, the shared agentic-resource-manager |
+| **`kiao` executable** | Dashboard, worker and a local diagram renderer; it can also start hybridflow-store when configured with a database | A Debian-based Linux machine (Debian, Ubuntu or Mint). For boards, a boards service or PostgreSQL database. For agents, the shared agentic-resource-manager |
 | **`kiao` Docker image** | Dashboard, worker, hybridflow-store, PostgreSQL and a diagram renderer in one container | Docker, or Docker Desktop on Windows; a folder for your files and volumes to retain the container's data |
 
 **Dashboard** is the browser interface. **worker** serves your files and runs harness work.

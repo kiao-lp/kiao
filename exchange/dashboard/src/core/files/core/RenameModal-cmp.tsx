@@ -1,7 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Modal } from 'antd';
+import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { VoiceInput } from '../../ui-foundation/voice-input';
+import { NameDialog } from '../../ui-foundation/forms/NameDialog';
 import { parentPath, extractName, renameSelectionRange } from 'src/core/files/service';
 import { usePluginListContext } from 'src/core/extensibility/PluginList-ctx';
 import { useWorkerClient } from 'src/core/files/service/ui';
@@ -18,65 +17,30 @@ export const RenameModal: React.FC = () => {
     const client = useWorkerClient();
     const refreshFileList = useRefreshFileList();
 
-    const isOpen = renameTarget !== null;
     const currentName = renameTarget ? extractName(renameTarget) : '';
-    const [name, setName] = useState('');
-    const wrapperRef = useRef<HTMLDivElement>(null);
+    const isDirectory = fileList.find(file => file.path === renameTarget)?.isDirectory;
 
-    useEffect(() => {
-        if (isOpen) {
-            setName(currentName);
-        }
-    }, [isOpen, currentName]);
-
-    const targetIsDirectory = useMemo(
-        () => !!renameTarget && !!fileList.find(file => file.path === renameTarget)?.isDirectory,
-        [renameTarget, fileList],
-    );
-
-    const finishRename = useCallback(async () => {
-        if (!renameTarget) return;
-        const finalName = name.trim();
-        if (finalName && finalName !== currentName) {
-            const newPath = `${parentPath(renameTarget)}/${finalName}`;
-            await client.rename(renameTarget, newPath);
-            refreshFileList();
-            if (currentFile && renameTarget === currentFile.path) {
-                navigate(newPath);
-            }
-        }
-        cancelRename();
-    }, [renameTarget, name, currentName, client, refreshFileList, currentFile, navigate, cancelRename]);
-
-    const focusInput = useCallback((open: boolean) => {
-        if (!open) return;
-        const input = wrapperRef.current?.querySelector('input');
-        if (!input) return;
-        input.focus();
-        const { start, end } = renameSelectionRange(currentName, targetIsDirectory ? [] : knownExtensions);
-        input.setSelectionRange(start, end);
-    }, [currentName, knownExtensions, targetIsDirectory]);
+    const rename = async (name: string) => {
+        if (!renameTarget || !name || name === currentName) return;
+        const newPath = `${parentPath(renameTarget)}/${name}`;
+        await client.rename(renameTarget, newPath);
+        refreshFileList();
+        if (renameTarget === currentFile?.path) navigate(newPath);
+    };
 
     return (
-        <Modal
+        <NameDialog
+            open={renameTarget !== null}
             title="Rename"
-            open={isOpen}
-            onOk={finishRename}
-            onCancel={cancelRename}
+            label={isDirectory ? 'Folder name' : 'File name'}
             okText="Rename"
-            afterOpenChange={focusInput}
-            destroyOnHidden
-        >
-            <div ref={wrapperRef}>
-                <VoiceInput
-                    type='text'
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    onPressEnter={finishRename}
-                    autoFocus
-                    data-testid="rename-input"
-                />
-            </div>
-        </Modal>
+            initialName={currentName}
+            selection={renameSelectionRange(currentName, isDirectory ? [] : knownExtensions)}
+            inputTestId="rename-input"
+            voice
+            allowEmpty
+            onSubmit={rename}
+            onClose={cancelRename}
+        />
     );
 };

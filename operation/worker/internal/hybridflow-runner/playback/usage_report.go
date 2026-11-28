@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// ReportTurnUsage queues a settled turn's bill on its AI card and returns filing failures.
+// ReportTurnUsage queues a settled turn's bill on its AI flow node and returns filing failures.
 // Interactive turns and turns without reported usage have no task bill.
 func (r *ChainRunner) ReportTurnUsage(job *turns.Turn) error {
 	if r == nil || r.Boards == nil || job == nil {

@@ -62,7 +62,7 @@ func (s *PiProfiles) modelsFor(profile harnessapi.PiProfile, in equipment.Harnes
 	if err := verifyPiVersion(in, piEnvironment(env)); err != nil {
 		return nil, err
 	}
-	rpc, err := startPiRPC(in.Path, piArgs(dir, filepath.Join(dir, "sessions"), ""), piEnvironment(env), s.cfg.RootPath, nil, secrets)
+	rpc, err := startPiRPC(in.Path, piArgs(dir, filepath.Join(dir, "sessions"), ""), piEnvironment(env), s.cfg.DCMSRoot, nil, secrets)
 	if err != nil {
 		return nil, errors.New("Pi installation could not start RPC")
 	}
@@ -158,7 +158,7 @@ func (s *PiProfiles) checkConnection(id, model string) error {
 		return &PiConnectionDiagnostic{Status: "runtime_error", Message: "The worker could not prepare the Pi connection test. API access was not tested.", Details: err.Error()}
 	}
 	defer os.RemoveAll(dir)
-	rpc, err := startPiRPC(resolved.Installation.Path, append(piArgs(dir, filepath.Join(dir, "sessions"), ""), "--no-tools"), piEnvironment(env), s.cfg.RootPath, nil, secrets)
+	rpc, err := startPiRPC(resolved.Installation.Path, append(piArgs(dir, filepath.Join(dir, "sessions"), ""), "--no-tools"), piEnvironment(env), s.cfg.DCMSRoot, nil, secrets)
 	if err != nil {
 		return &PiConnectionDiagnostic{Status: "runtime_error", Message: "Pi could not start. API access was not tested.", Details: err.Error()}
 	}

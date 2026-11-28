@@ -47,7 +47,7 @@ export type MarkdownEditorBodyProps = {
     /** Overrides the browsed file's folder for pasted images and their links. */
     imageFolder?: string;
     imageDocumentName?: string;
-    /** Write pasted-image links from the store root. */
+    /** Use DCMS links for pasted image destinations. */
     imageLinksFromRoot?: boolean;
     style?: React.CSSProperties;
 };

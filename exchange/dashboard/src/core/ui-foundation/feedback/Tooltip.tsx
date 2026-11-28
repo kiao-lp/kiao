@@ -122,17 +122,17 @@ export const Tooltip = React.forwardRef<GetRef<typeof AntTooltip>, AppTooltipPro
         }
     }, [arm, cancel]);
 
-    // Controlled Ant Design omits leaves while closed/pending, so listen natively.
+    // Listen natively while closed/pending. Capture blur from controls inside a hover anchor.
     // Cancellation must be idempotent: an open tooltip also reports through onOpenChange.
     useEffect(() => {
         if (!stillness) return;
         const element = innerRef.current?.nativeElement;
         if (!element) return;
         element.addEventListener('mouseleave', cancel);
-        element.addEventListener('blur', cancel);
+        element.addEventListener('blur', cancel, true);
         return () => {
             element.removeEventListener('mouseleave', cancel);
-            element.removeEventListener('blur', cancel);
+            element.removeEventListener('blur', cancel, true);
         };
     });
 

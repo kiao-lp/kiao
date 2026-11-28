@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useCallback } from 'react';
+import { IconButton } from '@kiao-dashboard-core';
 import type { FeatMatrixProps, MoscowLevel } from '../lib/featmat-model';
 import { supportLevel, supportComment } from '../lib/featmat-model';
 import { SUPPORT_INFO, MOSCOW_INFO, MOSCOW_LEVELS, HELP_MARKDOWN } from '../lib/featmat-constants';
@@ -86,15 +87,14 @@ export const FeatMatrix: React.FC<FeatMatrixProps> = ({ features, options, requi
                         )}
                     </div>
                 )}
-                <button
-                    type="button"
+                <IconButton
+                    type="plain"
+                    label="How it works"
+                    icon="?"
                     className="fm-help"
-                    aria-label="How it works"
                     aria-expanded={showHelp}
                     onClick={() => setShowHelp(open => !open)}
-                >
-                    ?
-                </button>
+                />
                 <button className="fm-export-btn" onClick={handleExportSvg}>Export SVG</button>
             </div>
             {showHelp && (

@@ -9,11 +9,11 @@ import (
 	"testing"
 )
 
-// A store written by the previous layout keeps its registry and the Dashboard documents in the data
-// root. Startup collects them into the state directory under their new names.
+// The previous layout kept the registry and Dashboard documents under the DCMS root.
+// Startup collects them into the state directory under their new names.
 func TestAdoptLegacyStateMovesDocumentsAndRetainsLedger(t *testing.T) {
 	root := t.TempDir()
-	cfg := &coreconfig.Config{RootPath: root, StatePath: t.TempDir()}
+	cfg := &coreconfig.Config{DCMSRoot: root, StatePath: t.TempDir()}
 	mustWrite(t, filepath.Join(root, ".kiao", "migrations.json"), `{"schemaVersion":7,"applied":[]}`)
 	mustWrite(t, filepath.Join(root, ".kiao", conversations.ConversationsDirName, "abc", "meta.json"), `{"id":"abc"}`)
 	// The previous layout wrote the documents under their pre-rename names; adopting them lands
@@ -50,7 +50,7 @@ func TestAdoptLegacyStateMovesDocumentsAndRetainsLedger(t *testing.T) {
 // since changed. The destination always wins.
 func TestAdoptLegacyStateNeverOverwritesCurrentState(t *testing.T) {
 	root := t.TempDir()
-	cfg := &coreconfig.Config{RootPath: root, StatePath: t.TempDir()}
+	cfg := &coreconfig.Config{DCMSRoot: root, StatePath: t.TempDir()}
 	mustWrite(t, filepath.Join(root, "config", "quickcms.json"), `{"gitEnabled":true}`)
 	mustWrite(t, filepath.Join(cfg.StatePath, fileconfig.ConfigDocDashboard), `{"gitEnabled":false}`)
 
@@ -67,7 +67,7 @@ func TestAdoptLegacyStateNeverOverwritesCurrentState(t *testing.T) {
 // listing folders Claude may run in on a service where Claude runs in all of them.
 func TestAdoptLegacyStateRemovesTheRetiredTrustRegistry(t *testing.T) {
 	root := t.TempDir()
-	cfg := &coreconfig.Config{RootPath: root, StatePath: t.TempDir()}
+	cfg := &coreconfig.Config{DCMSRoot: root, StatePath: t.TempDir()}
 	mustWrite(t, filepath.Join(root, ".kiao", retiredTrustStoreFile), `{"version":1,"folders":["units"]}`)
 	mustWrite(t, filepath.Join(cfg.StatePath, retiredTrustStoreFile), `{"version":1,"folders":["docs"]}`)
 
@@ -82,7 +82,7 @@ func TestAdoptLegacyStateRemovesTheRetiredTrustRegistry(t *testing.T) {
 
 func TestAdoptLegacyStateRetainsOldLedgerForExplicitUpgrade(t *testing.T) {
 	root := t.TempDir()
-	cfg := &coreconfig.Config{RootPath: root, StatePath: t.TempDir()}
+	cfg := &coreconfig.Config{DCMSRoot: root, StatePath: t.TempDir()}
 	mustWrite(t, filepath.Join(root, ".kiao", "migrations.json"), `{"schemaVersion":7}`)
 
 	adoptLegacyState(cfg)
@@ -99,7 +99,7 @@ func TestAdoptLegacyStateRetainsOldLedgerForExplicitUpgrade(t *testing.T) {
 // this layout exists to remove.
 func TestAdoptLegacyStateIsANoOpWithoutALegacyStore(t *testing.T) {
 	root := t.TempDir()
-	cfg := &coreconfig.Config{RootPath: root, StatePath: t.TempDir()}
+	cfg := &coreconfig.Config{DCMSRoot: root, StatePath: t.TempDir()}
 	mustWrite(t, filepath.Join(root, "welcome.md"), "hello")
 
 	if moved := adoptLegacyState(cfg); moved != 0 {
@@ -110,7 +110,7 @@ func TestAdoptLegacyStateIsANoOpWithoutALegacyStore(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(entries) != 1 || entries[0].Name() != "welcome.md" {
-		t.Errorf("the data root changed: %v", entries)
+		t.Errorf("the DCMS root changed: %v", entries)
 	}
 }
 
@@ -118,7 +118,7 @@ func TestAdoptLegacyStateIsANoOpWithoutALegacyStore(t *testing.T) {
 // user's own content tree, and "unknown" is not the same as "disposable".
 func TestAdoptLegacyStateKeepsAnUnrecognisedLegacyDir(t *testing.T) {
 	root := t.TempDir()
-	cfg := &coreconfig.Config{RootPath: root, StatePath: t.TempDir()}
+	cfg := &coreconfig.Config{DCMSRoot: root, StatePath: t.TempDir()}
 	mustWrite(t, filepath.Join(root, ".kiao", "migrations.json"), `{"schemaVersion":7}`)
 	mustWrite(t, filepath.Join(root, ".kiao", "notes-of-mine.txt"), "keep me")
 

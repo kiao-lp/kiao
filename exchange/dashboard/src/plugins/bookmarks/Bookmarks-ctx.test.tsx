@@ -5,10 +5,10 @@ import { useWorkerClient } from '@kiao-dashboard-core';
 import { BookmarksProvider, useBookmarks } from './Bookmarks-ctx';
 import { BOOKMARKS_PATH, bookmarksFileText } from './bookmarksFile';
 
-// Only the shell is mocked; `storedLinkOf` stays real.
+// Only the shell is mocked; `encodedDcmsLinkOf` stays real.
 vi.mock('@kiao-dashboard-core', async importOriginal => ({
     useWorkerClient: vi.fn(),
-    storedLinkOf: (await importOriginal<typeof import('@kiao-dashboard-core')>()).storedLinkOf,
+    encodedDcmsLinkOf: (await importOriginal<typeof import('@kiao-dashboard-core')>()).encodedDcmsLinkOf,
 }));
 
 let files: Record<string, string>;

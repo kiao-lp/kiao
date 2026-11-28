@@ -29,7 +29,7 @@ func TestATaskIsValidWithAnyOneOfTheThree(t *testing.T) {
 	}
 }
 
-// The title stands in for a missing description, and never beside one: it is the card's name,
+// The title stands in for a missing description, and never beside one: it is the flow node's name,
 // and sending it made that one short line do two jobs.
 func TestTheTitleIsSentOnlyForAMissingDescription(t *testing.T) {
 	titled := Task{}.Prompt("Write the plan")

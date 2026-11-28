@@ -32,7 +32,7 @@ func migrationTestConfig(t *testing.T, base string, extra ...string) *fileconfig
 		t.Fatal(err)
 	}
 	mustWrite(t, assembly, string(data))
-	return &fileconfig.Config{Config: &coreconfig.Config{RootPath: t.TempDir(), StatePath: t.TempDir(), NodeBinary: node},
+	return &fileconfig.Config{Config: &coreconfig.Config{DCMSRoot: t.TempDir(), StatePath: t.TempDir(), NodeBinary: node},
 		MigrationsSources: assembly, MigrationsEnabled: true, MigrationsFailOnErr: true, MigrationsTimeout: 5 * time.Second}
 }
 
@@ -93,7 +93,7 @@ func TestMigrationIndependentStreamsAndAssemblyChanges(t *testing.T) {
 	cfg.MigrationsSources = filepath.Join(t.TempDir(), "assembly.json")
 	mustWrite(t, cfg.MigrationsSources, string(data))
 	runMigrationsOK(t, cfg)
-	if got := mustRead(t, filepath.Join(cfg.RootPath, "trace")); got != "base:1\nextension:1\nextension:9\nbase:2\nextension:10\n" {
+	if got := mustRead(t, filepath.Join(cfg.DCMSRoot, "trace")); got != "base:1\nextension:1\nextension:9\nbase:2\nextension:10\n" {
 		t.Fatalf("order or replay: %q", got)
 	}
 	ledger = readTestLedger(t, cfg)
@@ -124,16 +124,16 @@ if (!fs.existsSync(root+'/retry')) throw Error('retry requested');`+traceMigrati
 			if err := RunMigrations(cfg); (err != nil) != failOnError {
 				t.Fatalf("failure policy: %v", err)
 			}
-			if got := mustRead(t, filepath.Join(cfg.RootPath, "trace")); got != "base:1\n" {
+			if got := mustRead(t, filepath.Join(cfg.DCMSRoot, "trace")); got != "base:1\n" {
 				t.Fatalf("failure did not stop all streams: %q", got)
 			}
 			if readTestLedger(t, cfg).Sources["base"].SchemaVersion != 1 {
 				t.Fatal("failed script advanced the ledger")
 			}
-			mustWrite(t, filepath.Join(cfg.RootPath, "retry"), "ok")
+			mustWrite(t, filepath.Join(cfg.DCMSRoot, "retry"), "ok")
 			runMigrationsOK(t, cfg)
 			runMigrationsOK(t, cfg)
-			if got := mustRead(t, filepath.Join(cfg.RootPath, "trace")); got != "base:1\nbase:2\nbase:3\nextension:1\n" {
+			if got := mustRead(t, filepath.Join(cfg.DCMSRoot, "trace")); got != "base:1\nbase:2\nbase:3\nextension:1\n" {
 				t.Fatalf("retry/restart: %q", got)
 			}
 		})
@@ -155,7 +155,7 @@ func TestMigrationChecksumFailurePreventsPendingScripts(t *testing.T) {
 			if err := RunMigrations(cfg); (err != nil) != failOnError {
 				t.Fatalf("checksum policy: %v", err)
 			}
-			if got := mustRead(t, filepath.Join(cfg.RootPath, "trace")); got != "extension:1\n" {
+			if got := mustRead(t, filepath.Join(cfg.DCMSRoot, "trace")); got != "extension:1\n" {
 				t.Fatalf("pending base ran despite invalid history: %q", got)
 			}
 			if got := mustRead(t, filepath.Join(cfg.StatePath, MigrationLedgerFile)); got != before {
@@ -190,10 +190,10 @@ clearInterval(timer); fs.appendFileSync(root+'/trace','extension:1\n'); } }, 10)
 	cfg := migrationTestConfig(t, base, extra)
 	done := make(chan error, 1)
 	go func() { done <- RunMigrations(cfg) }()
-	defer mustWrite(t, filepath.Join(cfg.RootPath, "release"), "yes")
+	defer mustWrite(t, filepath.Join(cfg.DCMSRoot, "release"), "yes")
 	deadline := time.Now().Add(4 * time.Second)
 	for {
-		if _, err := os.Stat(filepath.Join(cfg.RootPath, "started")); err == nil {
+		if _, err := os.Stat(filepath.Join(cfg.DCMSRoot, "started")); err == nil {
 			break
 		}
 		if time.Now().After(deadline) {
@@ -204,12 +204,12 @@ clearInterval(timer); fs.appendFileSync(root+'/trace','extension:1\n'); } }, 10)
 	if err := RunMigrations(cfg); err == nil || !strings.Contains(err.Error(), "migration lock") {
 		t.Fatalf("concurrent startup was not locked out: %v", err)
 	}
-	mustWrite(t, filepath.Join(cfg.RootPath, "release"), "yes")
+	mustWrite(t, filepath.Join(cfg.DCMSRoot, "release"), "yes")
 	if err := <-done; err != nil {
 		t.Fatal(err)
 	}
 	runMigrationsOK(t, cfg)
-	if got := mustRead(t, filepath.Join(cfg.RootPath, "trace")); got != "base:1\nextension:1\n" {
+	if got := mustRead(t, filepath.Join(cfg.DCMSRoot, "trace")); got != "base:1\nextension:1\n" {
 		t.Fatalf("concurrent replay: %q", got)
 	}
 }
@@ -251,7 +251,7 @@ func TestMigrationRootBindingAndHistoryValidation(t *testing.T) {
 			runMigrationsOK(t, cfg)
 			switch kind {
 			case "root":
-				cfg.RootPath = t.TempDir()
+				cfg.DCMSRoot = t.TempDir()
 			case "baseline":
 				mustWrite(t, filepath.Join(base, "source.json"), `{"id":"base","baseline":1}`)
 			case "missing script":
@@ -277,7 +277,7 @@ func legacyMigrationLedger(t *testing.T, cfg *fileconfig.Config, version int) {
 	for i := 1; i <= version; i++ {
 		entries = append(entries, ledgerEntry{Version: i, Script: fmt.Sprintf("V%03d__old.js", i)})
 	}
-	data, _ := json.Marshal(map[string]any{"schemaVersion": version, "dataRoot": cfg.RootPath, "applied": entries})
+	data, _ := json.Marshal(map[string]any{"schemaVersion": version, "dataRoot": cfg.DCMSRoot, "applied": entries})
 	mustWrite(t, filepath.Join(cfg.StatePath, MigrationLedgerFile), string(data))
 }
 
@@ -310,7 +310,7 @@ func TestMigrationHistoryCutoverAndRestarts(t *testing.T) {
 			runMigrationsOK(t, cfg)
 			addTestMigration(t, base, 20, traceMigration)
 			runMigrationsOK(t, cfg)
-			if got := mustRead(t, filepath.Join(cfg.RootPath, "trace")); got != "base:19\nextension:1\nbase:20\n" {
+			if got := mustRead(t, filepath.Join(cfg.DCMSRoot, "trace")); got != "base:19\nextension:1\nbase:20\n" {
 				t.Fatalf("post-cutover replay or skip: %q", got)
 			}
 		})
@@ -360,7 +360,7 @@ func TestMigrationRejectsUnsupportedLegacyAndInvalidSources(t *testing.T) {
 func TestMigrationDoesNotTreatOldLayoutAsFresh(t *testing.T) {
 	base := newMigrationSource(t, "base", 18)
 	cfg := migrationTestConfig(t, base)
-	legacy := filepath.Join(cfg.RootPath, ".kiao", "migrations.json")
+	legacy := filepath.Join(cfg.DCMSRoot, ".kiao", "migrations.json")
 	mustWrite(t, legacy, `{"schemaVersion":7}`)
 	if err := RunMigrations(cfg); err == nil || !strings.Contains(err.Error(), "pre-cutover upgrade") {
 		t.Fatalf("old layout was treated as current content: %v", err)

@@ -30,7 +30,7 @@ test('task tabs retain their drafts beside the template menu and archive action'
             id: 'reviewer', title: 'Review the greeting', type: 'human', status: 'done',
             body: 'Review it.', output: 'Approved', spot: { x: 450, y: 80 }, ...stamp,
         }],
-        flowNodeClasses: [], workflows: [], workflowClasses: [], cursor: 0,
+        workflows: [], cursor: 0,
     };
     let usageReads = 0;
     let costUsdMicros = 1_230_000;
@@ -53,7 +53,7 @@ test('task tabs retain their drafts beside the template menu and archive action'
         } else if (path === '/changes') {
             await route.abort();
         } else {
-            await route.fulfill({ json: { agents: [], runners: [], schemaValues: [], flowNodeClasses: [], workflowClasses: [] } });
+            await route.fulfill({ json: { agents: [], runners: [], schemaValues: [] } });
         }
     });
 

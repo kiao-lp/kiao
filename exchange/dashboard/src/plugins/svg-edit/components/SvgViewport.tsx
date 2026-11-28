@@ -1,14 +1,13 @@
 import React, { MouseEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSelectionContext } from '@kiao-dashboard-core';
+import { type ContextMenuPoint, ZoomSurface, useSelectionContext } from '@kiao-dashboard-core';
 import { boxOfShape, useSvgStateContext } from '../state';
 import {
     bboxOfShape, Box, boxOfCorners, boxesIntersect, isResizable, shapeById, shapesOf,
     shapeWithBox, SvgCanvas, SvgShape,
 } from '../model';
 import { reactPropsOf, styleObjectOf, SvgShapeView } from './SvgShapeView';
-import { SvgContextMenu, SvgMenuAnchor } from './SvgContextMenu';
+import { SvgContextMenu } from './SvgContextMenu';
 import { useMoveSelection } from '../hooks/useMoveSelection';
-import { useWheelZoom } from '../hooks/useWheelZoom';
 import { useCreateShape } from '../hooks/useShapes';
 
 type HandleKind = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
@@ -83,12 +82,11 @@ export const SvgViewport: React.FC = () => {
 
     const divRef = useRef<HTMLDivElement | null>(null);
     const svgRef = useRef<SVGSVGElement | null>(null);
-    useWheelZoom(divRef, zoom, setZoom);
 
     const gesture = useRef<Gesture | null>(null);
     const [boxSelect, setBoxSelect] = useState<Box | null>(null);
     const [editingText, setEditingText] = useState<string | null>(null);
-    const [menuAnchor, setMenuAnchor] = useState<SvgMenuAnchor | null>(null);
+    const [menuAnchor, setMenuAnchor] = useState<ContextMenuPoint | null>(null);
 
     const canvas = document?.drawing.canvas;
     const pointOf = useCallback((clientX: number, clientY: number): [number, number] | null =>
@@ -191,6 +189,7 @@ export const SvgViewport: React.FC = () => {
     const onHandleDown = (event: React.PointerEvent, id: string, handle: HandleKind) => {
         event.stopPropagation();
         event.preventDefault();
+        setMenuAnchor(null);
         const found = boxesRef.current.find(entry => entry.id === id);
         if (!found) return;
         gesture.current = { kind: 'resize', id, handle, start: found.box };
@@ -207,6 +206,7 @@ export const SvgViewport: React.FC = () => {
         const id = target?.closest?.('[data-shape-id]')?.getAttribute('data-shape-id');
         if (!id) return;
         event.preventDefault();
+        event.stopPropagation();
         if (!selection.includes(id)) setSelection([id]);
         setMenuAnchor({ x: event.clientX, y: event.clientY });
     };
@@ -226,93 +226,87 @@ export const SvgViewport: React.FC = () => {
     const rootStyle = document.rootAttrs.style ? styleObjectOf(document.rootAttrs.style) : undefined;
 
     return (
-        <div
+        <ZoomSurface
             ref={divRef}
             className="svg-edit"
+            zoom={zoom}
+            onZoomChange={setZoom}
             onMouseDown={onCanvasDown}
             onDoubleClick={onCanvasDoubleClick}
             onContextMenu={onContextMenu}
-            style={{ minWidth: canvas.width * zoom + 48, minHeight: canvas.height * zoom + 48 }}
+            overlay={<>
+                {editingText && (
+                    <TextEditorOverlay
+                        shapeId={editingText}
+                        svgRef={svgRef}
+                        containerRef={divRef}
+                        onClose={() => setEditingText(null)}
+                    />
+                )}
+                {menuAnchor && (
+                    <SvgContextMenu anchor={menuAnchor} onClose={() => setMenuAnchor(null)} />
+                )}
+            </>}
         >
-            <div
-                className="svg-zoom-container"
-                style={{
-                    transform: `scale(${zoom})`,
-                    transformOrigin: 'top left',
-                    width: `${100 / zoom}%`,
-                }}
+            <svg
+                ref={svgRef}
+                className={rootClass ? `svg-canvas ${rootClass}` : 'svg-canvas'}
+                style={rootStyle}
+                width={canvas.width}
+                height={canvas.height}
+                {...restRootProps}
             >
-                <svg
-                    ref={svgRef}
-                    className={rootClass ? `svg-canvas ${rootClass}` : 'svg-canvas'}
-                    style={rootStyle}
-                    width={canvas.width}
-                    height={canvas.height}
-                    {...restRootProps}
-                >
-                    {document.drawing.nodes.map((node, index) =>
-                        node.kind === 'shape' ? (
-                            <SvgShapeView
-                                key={node.shape.id}
-                                shape={node.shape}
-                                onShapeDown={onShapeDown}
-                                onEditText={setEditingText}
-                            />
-                        ) : (
-                            <g key={`raw-${index}`} dangerouslySetInnerHTML={{ __html: node.xml }} />
-                        ),
-                    )}
-                    {selectedBoxes.map(({ id, box }) => (
-                        <rect
-                            key={`sel-${id}`}
-                            className="svg-selection"
-                            x={box.x}
-                            y={box.y}
-                            width={Math.max(1, box.width)}
-                            height={Math.max(1, box.height)}
-                            pointerEvents="none"
+                {document.drawing.nodes.map((node, index) =>
+                    node.kind === 'shape' ? (
+                        <SvgShapeView
+                            key={node.shape.id}
+                            shape={node.shape}
+                            onShapeDown={onShapeDown}
+                            onEditText={setEditingText}
                         />
-                    ))}
-                    {singleResizable && HANDLES.map(handle => {
-                        const [cx, cy] = handleAt(singleResizable.box, handle);
-                        return (
-                            <rect
-                                key={handle}
-                                className="svg-handle"
-                                data-shape-id={singleResizable.shape.id}
-                                x={cx - handleSize / 2}
-                                y={cy - handleSize / 2}
-                                width={handleSize}
-                                height={handleSize}
-                                style={{ cursor: HANDLE_CURSORS[handle] }}
-                                onPointerDown={event => onHandleDown(event, singleResizable.shape.id, handle)}
-                            />
-                        );
-                    })}
-                    {boxSelect && (
+                    ) : (
+                        <g key={`raw-${index}`} dangerouslySetInnerHTML={{ __html: node.xml }} />
+                    ),
+                )}
+                {selectedBoxes.map(({ id, box }) => (
+                    <rect
+                        key={`sel-${id}`}
+                        className="svg-selection"
+                        x={box.x}
+                        y={box.y}
+                        width={Math.max(1, box.width)}
+                        height={Math.max(1, box.height)}
+                        pointerEvents="none"
+                    />
+                ))}
+                {singleResizable && HANDLES.map(handle => {
+                    const [cx, cy] = handleAt(singleResizable.box, handle);
+                    return (
                         <rect
-                            className="svg-box-select"
-                            x={boxSelect.x}
-                            y={boxSelect.y}
-                            width={boxSelect.width}
-                            height={boxSelect.height}
-                            pointerEvents="none"
+                            key={handle}
+                            className="svg-handle"
+                            data-shape-id={singleResizable.shape.id}
+                            x={cx - handleSize / 2}
+                            y={cy - handleSize / 2}
+                            width={handleSize}
+                            height={handleSize}
+                            style={{ cursor: HANDLE_CURSORS[handle] }}
+                            onPointerDown={event => onHandleDown(event, singleResizable.shape.id, handle)}
                         />
-                    )}
-                </svg>
-            </div>
-            {editingText && (
-                <TextEditorOverlay
-                    shapeId={editingText}
-                    svgRef={svgRef}
-                    containerRef={divRef}
-                    onClose={() => setEditingText(null)}
-                />
-            )}
-            {menuAnchor && selection.length > 0 && (
-                <SvgContextMenu anchor={menuAnchor} onClose={() => setMenuAnchor(null)} />
-            )}
-        </div>
+                    );
+                })}
+                {boxSelect && (
+                    <rect
+                        className="svg-box-select"
+                        x={boxSelect.x}
+                        y={boxSelect.y}
+                        width={boxSelect.width}
+                        height={boxSelect.height}
+                        pointerEvents="none"
+                    />
+                )}
+            </svg>
+        </ZoomSurface>
     );
 };
 
@@ -326,7 +320,7 @@ interface TextEditorOverlayProps {
 
 /** The text a double-clicked `<text>` holds, in a box over the shape itself. */
 const TextEditorOverlay: React.FC<TextEditorOverlayProps> = ({ shapeId, svgRef, containerRef, onClose }) => {
-    const { document, patchShape, saveSvg } = useSvgStateContext();
+    const { document, patchShape, saveSvg, zoom } = useSvgStateContext();
     const shape = document ? shapeById(document.drawing.nodes, shapeId) : undefined;
     const [value, setValue] = useState(shape?.text ?? '');
     const [frame, setFrame] = useState<{ left: number; top: number; width: number } | null>(null);
@@ -342,7 +336,7 @@ const TextEditorOverlay: React.FC<TextEditorOverlayProps> = ({ shapeId, svgRef, 
             top: box.top - outer.top + container.scrollTop,
             width: Math.max(120, box.width + 24),
         });
-    }, [shapeId, svgRef, containerRef]);
+    }, [shapeId, svgRef, containerRef, zoom]);
 
     if (!shape || shape.tag !== 'text') return null;
 

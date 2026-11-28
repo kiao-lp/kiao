@@ -11,8 +11,8 @@ import (
 // Agents is the managed-agents half of the core: the named definitions of what plays a flow node.
 //
 // What it does **not** do is run a turn, or even know which of the four harnesses a host drives:
-// the registry of engines is worker's, and an agent naming a harness this host has never
-// heard of is refused there, at the click, where the message can name the card's own words. This
+// the registry of harnesses is worker's, and an agent naming a harness this host has never
+// heard of is refused there, at the click, where the message can name the flow node's own words. This
 // half keeps the definitions — which is what a runner needs to be able to lose its process without
 // losing.
 type Agents struct {
@@ -38,7 +38,7 @@ type NewAgentRequest struct {
 }
 
 // Create files an agent. The id is minted here: nothing draws an agent before it exists, so unlike
-// a card's it is never the client's to choose.
+// a flow node's it is never the client's to choose.
 func (a *Agents) Create(ctx context.Context, req NewAgentRequest, actor string) (*entities.Agent, error) {
 	name := strings.TrimSpace(req.Name)
 	if name == "" {
@@ -46,7 +46,7 @@ func (a *Agents) Create(ctx context.Context, req NewAgentRequest, actor string) 
 	}
 	harness, ok := entities.ReadHarness(req.Harness)
 	if !ok {
-		return nil, entities.Invalidf("no agent runs on %q: the harnesses are claude, codex, muse and pi", strings.TrimSpace(req.Harness))
+		return nil, entities.Invalidf("unsupported harness %q. Choose claude, codex, muse or pi.", strings.TrimSpace(req.Harness))
 	}
 	now := a.clock.Now()
 	agent := &entities.Agent{
@@ -112,7 +112,7 @@ func (a *Agents) Patch(ctx context.Context, id string, patch entities.AgentPatch
 	if patch.Harness != nil {
 		harness, ok := entities.ReadHarness(string(*patch.Harness))
 		if !ok {
-			return nil, entities.Invalidf("no agent runs on %q: the harnesses are claude, codex, muse and pi", strings.TrimSpace(string(*patch.Harness)))
+			return nil, entities.Invalidf("unsupported harness %q. Choose claude, codex, muse or pi.", strings.TrimSpace(string(*patch.Harness)))
 		}
 		patch.Harness = &harness
 	}
@@ -139,7 +139,7 @@ func (a *Agents) Patch(ctx context.Context, id string, patch entities.AgentPatch
 	return a.repo.PatchAgent(ctx, id, patch, expected, actor)
 }
 
-// Delete removes only agents without publications, preserving card references.
+// Delete removes only agents without publications, preserving flow node references.
 func (a *Agents) Delete(ctx context.Context, id string, actor string) error {
 	return a.repo.DeleteAgent(ctx, id, actor)
 }

@@ -12,7 +12,7 @@ import (
 )
 
 // codexHarnessAt is the Codex harness pointed at a binary of the test's choosing — the same seam
-// claudeAgentAt is, and for the same reason.
+// claudeHarnessAt is, and for the same reason.
 func codexHarnessAt(cfg *runnerconfig.Config, binary string) *CodexHarness {
 	harness := NewCodexHarness(cfg)
 	harness.Binary = binary
@@ -111,7 +111,7 @@ func TestCodexArgsRefuseAnythingButBypass(t *testing.T) {
 // replace them, which is a different thing entirely.
 func TestCodexArgsCarriesBriefing(t *testing.T) {
 	args, err := codexArgs(codexRun{
-		permissionMode: runnerconfig.PermissionModeBypass, allowBypass: true, thinking: true, storeRoot: "/srv/store",
+		permissionMode: runnerconfig.PermissionModeBypass, allowBypass: true, thinking: true, dcmsRoot: "/srv/store",
 	})
 	if err != nil {
 		t.Fatalf("codexArgs = %v", err)
@@ -126,7 +126,7 @@ func TestCodexArgsCarriesBriefing(t *testing.T) {
 			t.Errorf("developer_instructions = %q, want a quoted TOML string", override)
 		}
 		if !strings.Contains(override, "mermaid") || !strings.Contains(override, "/srv/store") {
-			t.Errorf("developer_instructions = %q, want the briefing for this store root", override)
+			t.Errorf("developer_instructions = %q, want the briefing for this DCMS root", override)
 		}
 		return
 	}
@@ -138,7 +138,7 @@ func TestCodexArgsCarriesBriefing(t *testing.T) {
 func TestCodexArgsAppendsStandingInstructions(t *testing.T) {
 	args, err := codexArgs(codexRun{
 		permissionMode: runnerconfig.PermissionModeBypass, allowBypass: true, thinking: true,
-		storeRoot: "/srv/store", instructions: "Be terse.",
+		dcmsRoot: "/srv/store", instructions: "Be terse.",
 	})
 	if err != nil {
 		t.Fatalf("codexArgs = %v", err)

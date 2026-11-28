@@ -73,6 +73,20 @@ describe('useReorderable — dragging', () => {
         expect(onMove).toHaveBeenCalledWith(3, 0);
     });
 
+    it('uses the release position when it differs from the last pointer move', () => {
+        const onMove = vi.fn();
+        render(<List items={['a', 'b', 'c']} onMove={onMove} />);
+        stackRows(['a', 'b', 'c']);
+
+        const handle = grip('a');
+        pointer('pointerdown', handle, 5);
+        pointer('pointermove', handle, 35);
+        expect(screen.getByTestId('row-c')).toHaveClass('kiao-reorder-drop-before');
+        pointer('pointerup', handle, 55);
+
+        expect(onMove).toHaveBeenCalledWith(0, 2);
+    });
+
     // A press that goes nowhere is a click on the grip, and a click on the grip does nothing.
     it('commits nothing when the row is dropped where it started', () => {
         const onMove = vi.fn();

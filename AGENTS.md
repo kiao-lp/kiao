@@ -11,7 +11,7 @@ document management feature of Dashboard + the files service in worker) and hybr
 workflow/agent UI + the hybridflow-runner in worker + hybridflow-store), with the reference
 libraries, the file-store migrations, the e2e suite and the tooling that builds the Docker
 image and the installed executable.
-Agent-specific additions live beside it — [CLAUDE.md](CLAUDE.md) for Claude Code.
+Guidance for the Claude Code harness lives in [CLAUDE.md](CLAUDE.md).
 
 Links in this tree's entry files are relative, so they resolve whether the tree is opened alone
 or as part of the monorepo.
@@ -28,7 +28,7 @@ containers — usage names for a feature spanning several of them — not contai
 - **hybridflow** — *agentic workflow management* — is the workflow and agent feature:
   the Hybridflow plugin in `exchange/dashboard` (boards, conversations and agents) together with the `hybridflow-runner` inside `operation/worker`
   (conversations, turns, the play loop) and the `operation/hybridflow-store` backend
-  (boards, cards, runners in PostgreSQL), plus `operation/agentic-resource-manager`
+  (boards, flow nodes, runners in PostgreSQL), plus `operation/agentic-resource-manager`
   (agent Git repositories, APM resolution and package delivery).
 - **kiao** is the one deliverable containing both and more — the `kiao` Docker image and
   the `kiao` executable. Say it instead of "the image and the executable".
@@ -40,15 +40,16 @@ This is the encompassing term for managed information in operational and technic
 distribution. Product presentations can spell out the uses: document collections, source code
 repositories or knowledge bases.
 
-**A link is a path with a leading slash.** Every reference a document holds — a sommaire's
-`members`, a unit's `contents[].path`, a flow node's `settings.folder`, the `unit::` and
-`template::` schemes, a markdown destination into the store — is written from the store root and
-opens with `/`. In markdown, a path written *without* the slash is a document-relative link, read
-against the document that holds it. Convert between the two forms with `storeLinkOf` /
-`storePathOf` (`reference/kiao-worker/src/utils.ts`), never by hand.
+For Hybridflow terms, including agents, harnesses and board elements, consult the
+[Hybridflow concept catalog](docs/architecture/data/hybridflow-concept-catalog.md).
+
+Write document references that resolve from the DCMS root as **DCMS links**. Use
+`dcmsLinkOf` and `storePathOf` from `kiao-worker/utils` to convert between DCMS links
+and file API paths. The [DCMS concept catalog](docs/architecture/data/dcms-concept-catalog.md)
+distinguishes those forms from document-relative Markdown links and Dashboard URLs.
 
 The containers keep their own names: a change to the SPA is `feat(dashboard): …`, a change
-to the Go file/agent backend is `feat(worker): …`, a change to the boards backend is
+to the Go file and turn backend is `feat(worker): …`, a change to the boards backend is
 `feat(hybridflow-store): …`. `dcms` is the scope for what spans the DCMS halves (Dashboard
 file views + the files service); `hybridflow` for what spans the hybridflow parts;
 `kiao` for what spans DCMS and hybridflow — the deliverable as a whole.
@@ -215,12 +216,12 @@ exchange/    — The Dashboard single-page app
 
 ### Operation services
 
-- **`worker`** — File storage API over a plain filesystem + git, plus the agent engine —
+- **`worker`** — File storage API over a plain filesystem + git and the Hybridflow runner.
   **Go**, no database. Runs the file-store migrations in the tree-root `migrations/` at
   startup. `internal/app` assembles three service families over focused `internal/core/*` packages: `internal/files`
   (the document store — the DCMS backend half), `internal/hybridflow-runner`
-  (conversations, turns, quota, permissions, skills, attachments, the play loop — the
-  hybridflow engine) and `internal/toolbox` (what is installed on the machine, and which
+  (conversations, harness dispatch, quota, permissions, skills, attachments and the play loop)
+  and `internal/toolbox` (what is installed on the machine, and which
   MCP servers a turn is handed — shared by both). See the code map in
   `operation/worker/README.md`.
 - **`agentic-resource-manager`** — Agent Git/APM repositories, publication and resource cache — **Go**,
@@ -230,7 +231,7 @@ exchange/    — The Dashboard single-page app
 
 ### Any folder can hold documents
 
-DCMS serves **any folder** — a directory is the whole contract. A **`.kiao-files`** declaration
+Any folder can serve as the **DCMS root**. A **`.kiao-files`** declaration
 excludes paths from automatic passes; it may sit in *any* directory and covers that
 directory and everything below. It bounds the three passes that walk a store on their own:
 file-store migrations (`[migration]`), link updates after a rename or a delete (`[refactor]`), and
@@ -253,7 +254,7 @@ remain discoverable.
 ### Skills
 
 An agent publication supplies the skills selected in its APM manifest. Edit them in their
-Git/APM source repositories. [Agent resource delivery](docs/solution-design/agentic-resources.md)
+Git/APM source repositories. [Agentic resource delivery](docs/solution-design/agentic-resources.md)
 
 Read these sources from the corresponding local checkouts when working on this repository.
 The [resource catalogue](agentic-resources.json) records their Git locations and pins.
@@ -306,5 +307,4 @@ for most commits.
 Local ports live in `config/local/.env-local` (range 482xx–483xx). Keep local ports below 49152 —
 the Windows ephemeral pool starts there, and WSL2 intermittently steals anything above it.
 
-There is no `config/dev/`: the throwaway stack the e2e harness builds replaced it, and it
-takes its ports (595xx) and its data from `e2e/` alone.
+The end-to-end tests use a throwaway stack that takes its ports and data from `e2e/`.

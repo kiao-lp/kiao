@@ -68,7 +68,7 @@ type TraceRun struct {
 	Owner          string `json:"owner,omitempty"`
 	Folder         string `json:"folder"`
 	WorkDir        string `json:"workDir"`
-	StoreRoot      string `json:"storeRoot,omitempty"`
+	DCMSRoot       string `json:"storeRoot,omitempty"`
 	Model          string `json:"model,omitempty"`
 	Effort         string `json:"effort,omitempty"`
 	PermissionMode string `json:"permissionMode,omitempty"`
@@ -80,8 +80,9 @@ type TraceRun struct {
 	ResumeAt    string `json:"resumeAt,omitempty"`
 	// Keep rendered config before credential substitution (path for Claude, TOML for Codex,
 	// settings.json fragment for Muse).
-	MCPServers []traceMCPServer `json:"mcpServers,omitempty"`
-	MCPConfig  string           `json:"mcpConfig,omitempty"`
+	MCPServers     []traceMCPServer          `json:"mcpServers,omitempty"`
+	MCPConfig      string                    `json:"mcpConfig,omitempty"`
+	MCPDiagnostics []equipment.MCPDiagnostic `json:"mcpDiagnostics,omitempty"`
 	// Record whether a credential was minted, never its value.
 	MCPToken     bool   `json:"mcpToken"`
 	PlayedBy     string `json:"playedBy,omitempty"`

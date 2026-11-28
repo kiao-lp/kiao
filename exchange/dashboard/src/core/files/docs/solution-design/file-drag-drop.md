@@ -24,8 +24,8 @@ Dragging is disabled on coarse pointers, where a press opens the row menu.
 
 | Target | Result |
 | --- | --- |
-| Flow-node folder field | Dropped folder, or parent of a dropped file; `/` for root |
-| Template `file` variable | Store-root path, with `.name` available to templates |
+| Flow-node folder field | DCMS link to the dropped folder or parent of a dropped file. `/` selects the DCMS root. |
+| Template `file` variable | Raw DCMS link, with `.name` available to templates |
 | Flow-node description, panel or expanded editor | Markdown link at the drop point |
 | Chat composer or expanded composer | Markdown link at the caret; browser `Files` drops remain attachments |
 | Mindmap rich text | Markdown link at the drop point |
@@ -33,8 +33,8 @@ Dragging is disabled on coarse pointers, where a press opens the row menu.
 [useFileDrop](../../dnd/useFileDrop.ts) highlights eligible path fields,
 passes the first entry and leaves unrelated drags to the browser.
 [markdownLinkDrop](../../dnd/markdownLinkDrop.ts) provides CodeMirror insertion.
-Links use the normal stored form: root-relative and percent-encoded. Template file values stay
-unescaped because they may become ordinary prose or agent input.
+Markdown destinations use percent-encoded DCMS links. Template file values use raw DCMS
+links because they may become ordinary prose or agent input.
 
 During `dragover`, data is unavailable; `holdsDraggedFiles` checks MIME types instead. A target
 must accept that event to receive the drop. See [internal links](../../../navigation/docs/solution-design/internal-links.md).

@@ -89,6 +89,25 @@ describe('useChatConversations — the active conversation', () => {
         await waitFor(() => expect(result.current.activeId).toBeNull());
         expect(persisted.chat?.activeConversationId).toBeNull();
     });
+
+    it('keeps archived conversations in the registry and clears the archived selection', async () => {
+        const previouslyArchived = { ...conversation('conv-b'), archived: true };
+        client.listHarnessConversations.mockResolvedValue([conversation('conv-a'), previouslyArchived]);
+        const newlyArchived = { ...conversation('conv-a'), archived: true };
+        client.patchHarnessConversation.mockResolvedValue(newlyArchived);
+
+        const { result } = renderHook(() => useChatConversations());
+        await waitFor(() => expect(result.current.loading).toBe(false));
+        expect(client.listHarnessConversations).toHaveBeenCalledWith(true);
+        expect(result.current.allConversations).toContainEqual(previouslyArchived);
+        expect(result.current.conversations.map(entry => entry.id)).toEqual(['conv-a']);
+
+        await act(async () => { await result.current.patch('conv-a', { archived: true }); });
+
+        expect(result.current.conversations).toEqual([]);
+        expect(result.current.activeId).toBeNull();
+        expect(result.current.allConversations).toEqual([previouslyArchived, newlyArchived]);
+    });
 });
 
 // must not undo the other.

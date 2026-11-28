@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -137,7 +138,7 @@ func wire(t *testing.T) (*services.Boards, *services.FlowNodes, *BoardStore, *Ch
 	runnerStore := NewRunnerStore(pool)
 	changeStore := NewChangeStore(pool)
 	ids := uuidIDs{store: boardStore}
-	// The agent the tests' cards name, filed with a fixed id straight into the store — each test
+	// The agent the tests' flow nodes name, filed with a fixed id straight into the store — each test
 	// gets a schema of its own, so no two of them share the row.
 	now := time.Now().UTC()
 	if err := agentStore.CreateAgent(context.Background(), &entities.Agent{
@@ -147,12 +148,12 @@ func wire(t *testing.T) (*services.Boards, *services.FlowNodes, *BoardStore, *Ch
 		t.Fatal(err)
 	}
 	return services.NewBoards(boardStore, realClock{}, ids),
-		services.NewFlowNodes(boardStore, agentStore, runnerStore, boardStore, boardStore, realClock{}, ids),
+		services.NewFlowNodes(boardStore, agentStore, runnerStore, boardStore, realClock{}, ids),
 		boardStore, changeStore
 }
 
-// testAgentID is the agent wire() files for the tests that play a card: aiSettings names it, and
-// the service refuses a card naming anything else.
+// testAgentID is the agent wire() files for the tests that play a flow node: aiSettings names it, and
+// the service refuses a flow node naming anything else.
 const testAgentID = "00000000-0000-4000-8000-000000000001"
 
 func aiSettings() entities.TaskSettings {
@@ -220,14 +221,14 @@ func TestBoardRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	if again.Title != "Write the plan" || again.Type != entities.FlowNodeAI {
-		t.Errorf("card = %+v", again)
+		t.Errorf("flow node = %+v", again)
 	}
 	if strings.Join(again.Tags, ",") != "bug,ui" {
 		t.Errorf("tags = %v, want [bug ui] in that order", again.Tags)
 	}
 	want := aiSettings()
 	if again.Task == nil {
-		t.Fatal("an AI card came back with no task")
+		t.Fatal("an AI flow node came back with no task")
 	}
 	if got := again.Settings(); got.Agent != want.Agent || got.Model != want.Model ||
 		got.Effort != want.Effort || got.Permission != want.Permission || got.Folder != want.Folder {
@@ -243,7 +244,7 @@ func TestBoardRoundTrip(t *testing.T) {
 
 // **A flow node is played by one run** — the promise the whole claim design exists for, checked
 // where it actually has to hold: twenty goroutines, one row, one winner.
-func TestOnlyOneRunTakesACardForReal(t *testing.T) {
+func TestOnlyOneRunTakesAFlowNodeForReal(t *testing.T) {
 	boards, flowNodes, _, _ := wire(t)
 	ctx := context.Background()
 	board, err := boards.Create(ctx, services.NewBoardRequest{Name: "Contested"}, "alex")
@@ -251,7 +252,7 @@ func TestOnlyOneRunTakesACardForReal(t *testing.T) {
 		t.Fatal(err)
 	}
 	made, err := flowNodes.Create(ctx, board.ID, []services.NewFlowNodeRequest{
-		{Title: "One card", Settings: aiSettings(), Body: "Go."},
+		{Title: "One flow node", Settings: aiSettings(), Body: "Go."},
 	}, "alex")
 	if err != nil {
 		t.Fatal(err)
@@ -281,16 +282,48 @@ func TestOnlyOneRunTakesACardForReal(t *testing.T) {
 	}
 	wg.Wait()
 	if won != 1 {
-		t.Errorf("%d runs took the card, want exactly 1", won)
+		t.Errorf("%d runs took the flow node, want exactly 1", won)
 	}
 	if len(unwanted) > 0 {
 		t.Errorf("unexpected failures: %v", unwanted)
 	}
 }
 
+func TestClaimInterruptedAIKeepsItsConversation(t *testing.T) {
+	boards, flowNodes, _, _ := wire(t)
+	ctx := context.Background()
+	board, err := boards.Create(ctx, services.NewBoardRequest{Name: "Resume"}, "alex")
+	if err != nil {
+		t.Fatal(err)
+	}
+	made, err := flowNodes.Create(ctx, board.ID,
+		[]services.NewFlowNodeRequest{{Title: "Continue", Settings: aiSettings()}}, "alex")
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := made[0].ID
+	if _, err := flowNodes.StartPlay(ctx, id, "run-1", "alex"); err != nil {
+		t.Fatal(err)
+	}
+	chat := "existing-conversation"
+	if _, err := flowNodes.Patch(ctx, id, entities.FlowNodePatch{ConversationID: &chat}, nil, "alex"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := flowNodes.EndPlay(ctx, id, "run-1", "alex", entities.PlayResult{Status: entities.StatusInterrupted}); err != nil {
+		t.Fatal(err)
+	}
+	resumed, err := flowNodes.StartPlay(ctx, id, "run-1", "alex")
+	if err != nil || resumed.Status != entities.StatusRunning || resumed.RunID != "run-1" || resumed.ConversationID() != chat {
+		t.Fatalf("resumed = %+v, %v", resumed, err)
+	}
+	if _, err := flowNodes.StartPlay(ctx, id, "run-2", "alex"); !errors.Is(err, entities.ErrFlowNodeHeld) {
+		t.Fatalf("competing claim = %v, want the flow node held by the resumed run", err)
+	}
+}
+
 // Two writers, two fields, both kept — and the revision check refusing only the writer that meant
 // the field somebody else had already changed.
-func TestTwoWritersOnOneCard(t *testing.T) {
+func TestTwoWritersOnOneFlowNode(t *testing.T) {
 	boards, flowNodes, store, _ := wire(t)
 	ctx := context.Background()
 	board, err := boards.Create(ctx, services.NewBoardRequest{Name: "Shared"}, "alex")
@@ -313,7 +346,7 @@ func TestTwoWritersOnOneCard(t *testing.T) {
 		t.Fatal(err)
 	}
 	if after.Title != title || after.Status != status {
-		t.Errorf("card = %q at %q, want both writes kept", after.Title, after.Status)
+		t.Errorf("flow node = %q at %q, want both writes kept", after.Title, after.Status)
 	}
 	// A second write from the stale revision is refused.
 	other := "Renamed again"
@@ -359,7 +392,7 @@ func TestEveryWriteAppendsAChangeNamingItsActor(t *testing.T) {
 		}
 	}
 	if len(feed) < 3 {
-		t.Errorf("the feed holds %v, want the board, the card and its play", scopes)
+		t.Errorf("the feed holds %v, want the board, the flow node and its play", scopes)
 	}
 	if !contains(actors, "alex") || !contains(actors, "run-1") {
 		t.Errorf("the feed names %v, want both the person and the run", actors)
@@ -529,7 +562,7 @@ func contains(all []string, one string) bool {
 
 var _ ports.ChangeLog = (*ChangeStore)(nil)
 
-// A pasted chain arrives as one batch, with the first card naming the second. It goes in whichever
+// A pasted chain arrives as one batch, with the first flow node naming the second. It goes in whichever
 // order the rows come in — which is what the deferred chain constraint is for.
 func TestAPastedChainGoesInAsOneBatch(t *testing.T) {
 	boards, flowNodes, store, _ := wire(t)
@@ -564,7 +597,7 @@ func TestAPastedChainGoesInAsOneBatch(t *testing.T) {
 }
 
 // The claim is idempotent in the run, checked in SQL: the condition that lets a run come back to
-// its own card is in the WHERE clause, and no fake can vouch for it.
+// its own flow node is in the WHERE clause, and no fake can vouch for it.
 func TestAClaimIsIdempotentInItsRun(t *testing.T) {
 	boards, flowNodes, store, _ := wire(t)
 	ctx := context.Background()
@@ -588,10 +621,10 @@ func TestAClaimIsIdempotentInItsRun(t *testing.T) {
 	}
 	again, err := store.ClaimFlowNode(ctx, made[0].ID, "run-1", entities.StatusRunning, "run-1")
 	if err != nil {
-		t.Fatalf("the run could not re-claim its own card: %v", err)
+		t.Fatalf("the run could not re-claim its own flow node: %v", err)
 	}
 	if !again.ClaimedAt.Equal(first.ClaimedAt) {
-		t.Errorf("claimed_at moved from %v to %v; the card should still say when the play took it",
+		t.Errorf("claimed_at moved from %v to %v; the flow node should still say when the play took it",
 			first.ClaimedAt, again.ClaimedAt)
 	}
 	if _, err := store.ClaimFlowNode(ctx, made[0].ID, "run-2", entities.StatusRunning, "run-2"); !errors.Is(err, entities.ErrFlowNodeHeld) {
@@ -599,10 +632,10 @@ func TestAClaimIsIdempotentInItsRun(t *testing.T) {
 	}
 }
 
-// A card's chat is a reference to a conversation worker owns, not a row here: binding a
-// card to a chat id nothing has registered must land, because that is every play — the runner
-// writes the conversation it just made onto the card it claimed, and no call registers it first.
-func TestACardBindsToAChatNothingRegistered(t *testing.T) {
+// A flow node's chat is a reference to a conversation worker owns, not a row here: binding a
+// flow node to a chat id nothing has registered must land, because that is every play — the runner
+// writes the conversation it just made onto the flow node it claimed, and no call registers it first.
+func TestAFlowNodeBindsToAChatNothingRegistered(t *testing.T) {
 	boards, flowNodes, _, _ := wire(t)
 	ctx := context.Background()
 	board, err := boards.Create(ctx, services.NewBoardRequest{Name: "Played"}, "alex")
@@ -620,20 +653,20 @@ func TestACardBindsToAChatNothingRegistered(t *testing.T) {
 	}
 	chat := "conv-1786543210123-ab12"
 	if _, err := flowNodes.Patch(ctx, made[0].ID, entities.FlowNodePatch{ConversationID: &chat}, nil, "runner"); err != nil {
-		t.Fatalf("binding the card to its unregistered chat: %v", err)
+		t.Fatalf("binding the flow node to its unregistered chat: %v", err)
 	}
 	bound, err := flowNodes.Find(ctx, made[0].ID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if bound.ConversationID() != chat {
-		t.Errorf("card chat = %q, want %q", bound.ConversationID(), chat)
+		t.Errorf("flow node chat = %q, want %q", bound.ConversationID(), chat)
 	}
 }
 
-// What a card says about its chat is two answers and two columns, and a card may hold either
+// What a flow node says about its chat is two answers and two columns, and a flow node may hold either
 // without the other: shortened and handed on, shortened and ended, handed on as it is.
-func TestWhatACardSaysAboutItsChatRoundTrips(t *testing.T) {
+func TestWhatAFlowNodeSaysAboutItsChatRoundTrips(t *testing.T) {
 	boards, flowNodes, _, _ := wire(t)
 	ctx := context.Background()
 	board, err := boards.Create(ctx, services.NewBoardRequest{Name: "Chained"}, "alex")
@@ -650,7 +683,7 @@ func TestWhatACardSaysAboutItsChatRoundTrips(t *testing.T) {
 	carried := entities.Transition{Mode: entities.TransitionContinue, Compact: true}
 	if _, err := flowNodes.Patch(ctx, made[0].ID,
 		entities.FlowNodePatch{Next: &made[1].ID, Transition: &carried}, nil, "alex"); err != nil {
-		t.Fatalf("writing what the card says about its chat: %v", err)
+		t.Fatalf("writing what the flow node says about its chat: %v", err)
 	}
 	read, err := flowNodes.Find(ctx, made[0].ID)
 	if err != nil {
@@ -675,7 +708,7 @@ func TestWhatACardSaysAboutItsChatRoundTrips(t *testing.T) {
 }
 
 // What a task is measured against round-trips through SQL — the columns the service writes are
-// the columns it reads — and goes with the task when the card stops being one.
+// the columns it reads — and goes with the task when the flow node stops being one.
 func TestWhatATaskIsMeasuredAgainstRoundTrips(t *testing.T) {
 	boards, flowNodes, _, _ := wire(t)
 	ctx := context.Background()
@@ -717,7 +750,7 @@ func TestWhatATaskIsMeasuredAgainstRoundTrips(t *testing.T) {
 	if after.Task.Complexity != nil {
 		t.Errorf("complexity = %v, want none after clearing", after.Task.Complexity)
 	}
-	// Retyped away from a task, both go with it; retyped back, the card starts unmeasured.
+	// Retyped away from a task, both go with it; retyped back, the flow node starts unmeasured.
 	shutdown := entities.FlowNodeShutdown
 	off, err := flowNodes.Patch(ctx, made[0].ID, entities.FlowNodePatch{Type: &shutdown}, nil, "alex")
 	if err != nil {
@@ -732,7 +765,7 @@ func TestWhatATaskIsMeasuredAgainstRoundTrips(t *testing.T) {
 		t.Fatal(err)
 	}
 	if back.Task == nil || len(back.Task.Criteria) != 0 || back.Task.Complexity != nil {
-		t.Errorf("a card typed back carries %+v, want an unmeasured task", back.Task)
+		t.Errorf("a flow node typed back carries %+v, want an unmeasured task", back.Task)
 	}
 }
 
@@ -952,137 +985,6 @@ func TestHeartbeatMovesOnlyLastSeen(t *testing.T) {
 	}
 }
 
-// A class round-trips through the database: the class with its tags and chain, its versions in
-// succession, and the flow node's link to its version resolved at the read.
-func TestFlowNodeClassRoundTrip(t *testing.T) {
-	boards, flowNodes, boardStore, _ := wire(t)
-	ctx := context.Background()
-	board, err := boards.Create(ctx, services.NewBoardRequest{Name: "Major"}, "alex")
-	if err != nil {
-		t.Fatal(err)
-	}
-	classes := services.NewFlowNodeClasses(boardStore, boardStore, agentRepository(t), NewRunnerStore(boardStore.pool), boardStore, realClock{}, uuidIDs{store: boardStore})
-	made, err := classes.Create(ctx, board.ID, services.NewClassRequest{
-		Title: "Review", Type: "ai", Tags: []string{"bug"}, Permission: "manualLive",
-		Body: "Read the diff.", Criteria: []entities.SuccessCriterion{{Text: "No nits"}},
-		Note: "When the diff is ready.", Instantiable: true,
-		Spot: &entities.Spot{X: 10, Y: 20}, Published: true,
-	}, "alex")
-	if err != nil {
-		t.Fatal(err)
-	}
-	second, err := classes.Create(ctx, board.ID, services.NewClassRequest{Title: "Follow up"}, "alex")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := classes.Chain(ctx, made.Class.ID, second.Class.ID, "alex"); err != nil {
-		t.Fatal(err)
-	}
-	found, err := classes.Find(ctx, made.Class.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if found.Class.Next != second.Class.ID || strings.Join(found.Class.Tags, ",") != "bug" {
-		t.Errorf("class = %+v, want the chain and the tags", found.Class)
-	}
-	if found.Class.Spot == nil || found.Class.Spot.X != 10 {
-		t.Errorf("spot = %+v, want (10, 20)", found.Class.Spot)
-	}
-	if len(found.Versions) != 1 || !found.Versions[0].Status.Published() || len(found.Versions[0].Criteria) != 1 {
-		t.Fatalf("versions = %+v, want one published with one criterion", found.Versions)
-	}
-	if found.Versions[0].Criteria[0].ID == "" {
-		t.Error("the criterion came back with no id")
-	}
-	if found.Class.Note != "When the diff is ready." {
-		t.Errorf("note = %q, want the class's own words", found.Class.Note)
-	}
-	if !found.Class.Instantiable {
-		t.Errorf("instantiable = false, want the tick kept")
-	}
-	tick := true
-	ticked, err := classes.Patch(ctx, second.Class.ID,
-		entities.FlowNodeClassPatch{Instantiable: &tick}, nil, "alex")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !ticked.Instantiable {
-		t.Errorf("instantiable = false, want the patch's tick kept")
-	}
-	edited := "Read it twice."
-	selection := entities.AgentSelection{Agent: testAgentID, Harness: "codex", Model: "gpt-6.2-sol"}
-	renoted, err := classes.Patch(ctx, made.Class.ID, entities.FlowNodeClassPatch{Note: &edited, Selection: &selection}, nil, "alex")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if renoted.Note != "Read it twice." {
-		t.Errorf("note = %q, want the edited words", renoted.Note)
-	}
-	if renoted.Selection != selection {
-		t.Errorf("class selection = %+v, want %+v", renoted.Selection, selection)
-	}
-
-	// A second version, then an instantiation from the latest published one.
-	draft, err := classes.CreateVersion(ctx, made.Class.ID, services.NewVersionRequest{Body: "draft words."}, "alex")
-	if err != nil {
-		t.Fatal(err)
-	}
-	published := entities.ClassVersionPublished
-	if _, err := classes.PatchVersion(ctx, second.Versions[0].ID,
-		entities.FlowNodeClassVersionPatch{Status: &published}, nil, "alex"); err != nil {
-		t.Fatal(err)
-	}
-	instances, err := classes.Instantiate(ctx, made.Class.ID, board.ID, nil, nil, nil, "alex")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(instances) != 2 || instances[0].Next != instances[1].ID {
-		t.Fatalf("instances = %+v, want the chain recreated", instances)
-	}
-	if instances[0].Task == nil || instances[0].Task.Body != "Read the diff." {
-		t.Errorf("head = %+v, want the published words, not the draft's", instances[0])
-	}
-	if instances[0].Task == nil || instances[0].Task.Settings.Selection() != selection {
-		t.Errorf("head = %+v, want the class's selected agent, harness and model", instances[0])
-	}
-	if instances[0].ClassRef == nil || instances[0].ClassRef.ClassTitle != "Review" || instances[0].ClassRef.VersionNumber != 1 {
-		t.Errorf("ref = %+v, want the class and version resolved", instances[0].ClassRef)
-	}
-
-	// And the card reads the same link back on its own read.
-	again, err := flowNodes.Find(ctx, instances[0].ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if again.ClassVersionID != made.Versions[0].ID {
-		t.Errorf("card version = %q, want %q", again.ClassVersionID, made.Versions[0].ID)
-	}
-	updated, err := flowNodes.Patch(ctx, again.ID, entities.FlowNodePatch{
-		Settings: &entities.TaskSettings{Agent: testAgentID, Folder: "/work"},
-	}, nil, "alex")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if updated.Task.Settings.Selection() != selection || updated.Task.Settings.Folder != "/work" {
-		t.Errorf("task settings after legacy edit: %+v", updated.Task.Settings)
-	}
-
-	// The draft somebody changed their mind about goes; the published one stays.
-	if err := classes.DeleteVersion(ctx, draft.ID, "alex"); err != nil {
-		t.Fatal(err)
-	}
-	left, err := classes.Versions(ctx, made.Class.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(left) != 1 || left[0].ID != made.Versions[0].ID {
-		t.Errorf("versions = %+v, want only the published one left", left)
-	}
-	if err := classes.DeleteVersion(ctx, made.Versions[0].ID, "alex"); !errors.Is(err, entities.ErrInvalid) {
-		t.Errorf("delete = %v, want a published version refused", err)
-	}
-}
-
 // A workflow round-trips through the database: the name, the members naming it, and the delete
 // ungrouping them — the schema's ON DELETE SET NULL — rather than taking them.
 func TestWorkflowRoundTrip(t *testing.T) {
@@ -1092,15 +994,15 @@ func TestWorkflowRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	workflows := services.NewWorkflows(boardStore, boardStore, boardStore, realClock{}, uuidIDs{store: boardStore})
-	cards, err := flowNodes.Create(ctx, board.ID, []services.NewFlowNodeRequest{
+	workflows := services.NewWorkflows(boardStore, boardStore, realClock{}, uuidIDs{store: boardStore})
+	nodes, err := flowNodes.Create(ctx, board.ID, []services.NewFlowNodeRequest{
 		{Title: "One"}, {Title: "Two"},
 	}, "alex")
 	if err != nil {
 		t.Fatal(err)
 	}
 	made, err := workflows.Create(ctx, board.ID, services.NewWorkflowRequest{
-		Name: "Sprint", FlowNodes: []string{cards[0].ID, cards[1].ID},
+		Name: "Sprint", FlowNodes: []string{nodes[0].ID, nodes[1].ID},
 	}, "alex")
 	if err != nil {
 		t.Fatal(err)
@@ -1112,13 +1014,13 @@ func TestWorkflowRoundTrip(t *testing.T) {
 	if found.Name != "Sprint" || found.BoardID != board.ID {
 		t.Errorf("workflow = %+v, want the name filed on the board", found)
 	}
-	for _, card := range cards {
-		again, err := flowNodes.Find(ctx, card.ID)
+	for _, flowNode := range nodes {
+		again, err := flowNodes.Find(ctx, flowNode.ID)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if again.WorkflowID != made.ID {
-			t.Errorf("card %q names workflow %q, want %q", card.Title, again.WorkflowID, made.ID)
+			t.Errorf("flow node %q names workflow %q, want %q", flowNode.Title, again.WorkflowID, made.ID)
 		}
 	}
 	renamed, err := workflows.Patch(ctx, made.ID,
@@ -1129,36 +1031,79 @@ func TestWorkflowRoundTrip(t *testing.T) {
 	if renamed.Name != "Release" || renamed.Revision != 2 {
 		t.Errorf("rename = %+v, want Release at revision 2", renamed)
 	}
+	folder, files := "/release", []string{"/sources/brief.md", "/sources/templates"}
+	if _, err := workflows.Patch(ctx, made.ID,
+		entities.WorkflowPatch{WorkflowFolder: &folder, Files: files}, &renamed.Revision, "alex"); err != nil {
+		t.Fatal(err)
+	}
+	groups, err := workflows.Board(ctx, board.ID)
+	if err != nil || len(groups) != 1 || groups[0].WorkflowFolder != folder || !slices.Equal(groups[0].Files, files) {
+		t.Fatalf("workflow files on board = %+v, %v", groups, err)
+	}
+	empty := ""
+	cleared, err := workflows.Patch(ctx, made.ID, entities.WorkflowPatch{WorkflowFolder: &empty, Files: []string{}},
+		&groups[0].Revision, "alex")
+	if err != nil || cleared.WorkflowFolder != "" || len(cleared.Files) != 0 {
+		t.Fatalf("cleared workflow = %+v, %v", cleared, err)
+	}
 	if err := workflows.Delete(ctx, []string{made.ID}, "alex"); err != nil {
 		t.Fatal(err)
 	}
-	for _, card := range cards {
-		again, err := flowNodes.Find(ctx, card.ID)
+	for _, flowNode := range nodes {
+		again, err := flowNodes.Find(ctx, flowNode.ID)
 		if err != nil {
-			t.Fatalf("card %q should still be there: %v", card.Title, err)
+			t.Fatalf("flow node %q should still be there: %v", flowNode.Title, err)
 		}
 		if again.WorkflowID != "" {
-			t.Errorf("card %q still names workflow %q", card.Title, again.WorkflowID)
+			t.Errorf("flow node %q still names workflow %q", flowNode.Title, again.WorkflowID)
 		}
-	}
-
-	// The menu lists every workflow class of every board through the one new read.
-	rectangle, err := workflows.CreateClass(ctx, board.ID,
-		services.NewWorkflowClassRequest{Name: "Shapes"}, "alex")
-	if err != nil {
-		t.Fatal(err)
-	}
-	all, err := boardStore.ListAllWorkflowClasses(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(all) != 1 || all[0].ID != rectangle.ID {
-		t.Errorf("all = %+v, want the one rectangle", all)
 	}
 }
 
-// A Gateway's branches are rows of their own — one per branch, in the order the card lists them —
-// read back with the card. Deleting a branch takes it out of every list naming it, the way the
+func TestWorkflowCreationRollsBackWithItsFlowNodes(t *testing.T) {
+	boards, flowNodes, store, changes := wire(t)
+	ctx := context.Background()
+	board, err := boards.Create(ctx, services.NewBoardRequest{Name: "Major"}, "alex")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const heldID = "00000000-0000-4000-8000-000000000101"
+	const newID = "00000000-0000-4000-8000-000000000102"
+	const workflowID = "00000000-0000-4000-8000-000000000103"
+	if _, err := flowNodes.Create(ctx, board.ID, []services.NewFlowNodeRequest{{ID: heldID, Title: "Original"}}, "alex"); err != nil {
+		t.Fatal(err)
+	}
+	cursor, err := changes.Latest(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	workflow := &entities.Workflow{
+		ID: workflowID, BoardID: board.ID, Name: "Copy", CreatedAt: now, UpdatedAt: now, Revision: 1,
+	}
+	member := &entities.FlowNode{
+		ID: newID, BoardID: board.ID, WorkflowID: workflowID, Title: "Copy", Type: entities.FlowNodeHuman,
+		Status: entities.StatusReady, CreatedAt: now, UpdatedAt: now, Revision: 1,
+	}
+	collision := *member
+	collision.ID = heldID
+	if err := store.CreateWorkflowWithFlowNodes(ctx, workflow, []*entities.FlowNode{member, &collision}, "alex"); !errors.Is(err, entities.ErrConflict) {
+		t.Fatalf("create with colliding flow node = %v, want conflict", err)
+	}
+	if _, err := store.FindWorkflow(ctx, workflowID); !errors.Is(err, entities.ErrNotFound) {
+		t.Errorf("rolled-back workflow read = %v, want not found", err)
+	}
+	nodes, err := store.ListFlowNodes(ctx, board.ID)
+	if err != nil || len(nodes) != 1 || nodes[0].ID != heldID || nodes[0].WorkflowID != "" {
+		t.Fatalf("remaining flow nodes = %+v, err = %v", nodes, err)
+	}
+	if events, _, err := changes.Since(ctx, cursor, board.ID, 10); err != nil || len(events) != 0 {
+		t.Errorf("changes after rollback = %+v, err = %v", events, err)
+	}
+}
+
+// A Gateway's branches are rows of their own — one per branch, in the order the flow node lists them —
+// read back with the flow node. Deleting a branch takes it out of every list naming it, the way the
 // single chain is broken by the schema rather than by a call site.
 func TestAGatewaysBranchesAreRowsOfTheirOwn(t *testing.T) {
 	boards, flowNodes, store, _ := wire(t)
@@ -1238,34 +1183,148 @@ func TestAPastedGatewayGoesInAsOneBatch(t *testing.T) {
 	}
 }
 
-// Exercise SQL paths for duration presets, instances and mode switches against a real schema.
+func TestBitbucketPRStatusRoundTrip(t *testing.T) {
+	boards, nodes, _, _ := wire(t)
+	ctx := context.Background()
+	board, err := boards.Create(ctx, services.NewBoardRequest{Name: "Pull requests"}, "alex")
+	if err != nil {
+		t.Fatal(err)
+	}
+	flowNodes, err := nodes.Create(ctx, board.ID, []services.NewFlowNodeRequest{{
+		Title: "Wait for merge", Type: "bitbucket-pr-status", PullRequestID: "team/repo#42",
+	}}, "alex")
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := flowNodes[0].ID
+	if _, err := nodes.StartPlay(ctx, id, "run", "alex"); !errors.Is(err, entities.ErrFlowNodeNotRunnable) {
+		t.Fatalf("playing an incomplete event returned %v", err)
+	}
+	invalid := "APPROVED"
+	if _, err := nodes.Patch(ctx, id, entities.FlowNodePatch{PullRequestStatus: &invalid}, nil, "alex"); !errors.Is(err, entities.ErrInvalid) {
+		t.Fatalf("setting an invalid status returned %v", err)
+	}
+	target := " merged "
+	if _, err := nodes.Patch(ctx, id, entities.FlowNodePatch{PullRequestStatus: &target}, nil, "alex"); err != nil {
+		t.Fatal(err)
+	}
+	node, err := nodes.StartPlay(ctx, id, "run", "alex")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if node.Type != entities.FlowNodeBitbucketPRStatus || node.PullRequestID != "team/repo#42" ||
+		node.PullRequestStatus != "MERGED" || node.Task != nil {
+		t.Fatalf("claimed Bitbucket event = %+v", node)
+	}
+	if _, err := nodes.EndPlay(ctx, id, "run", "alex", entities.PlayResult{Status: entities.StatusDone}); err != nil {
+		t.Fatal(err)
+	}
+	requestExpression, targetExpression := "team/repo#{{input.pullRequestId}}", "{{ input.targetStatus }}"
+	if _, err := nodes.Patch(ctx, id, entities.FlowNodePatch{PullRequestID: &requestExpression, PullRequestStatus: &targetExpression}, nil, "alex"); err != nil {
+		t.Fatal(err)
+	}
+	node, err = nodes.StartPlay(ctx, id, "run", "alex")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if node.PullRequestID != requestExpression || node.PullRequestStatus != targetExpression {
+		t.Fatalf("claimed pull request event lost its references: %+v", node)
+	}
+	if _, err := nodes.EndPlay(ctx, id, "run", "alex", entities.PlayResult{Status: entities.StatusDone}); err != nil {
+		t.Fatal(err)
+	}
+	human := entities.FlowNodeHuman
+	node, err = nodes.Patch(ctx, id, entities.FlowNodePatch{Type: &human}, nil, "alex")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if node.PullRequestID != "" || node.PullRequestStatus != "" {
+		t.Fatalf("retyped flow node still carries Bitbucket fields: %+v", node)
+	}
+}
+
+func TestBitbucketCommitStatusRoundTrip(t *testing.T) {
+	boards, nodes, _, _ := wire(t)
+	ctx := context.Background()
+	board, err := boards.Create(ctx, services.NewBoardRequest{Name: "Builds"}, "alex")
+	if err != nil {
+		t.Fatal(err)
+	}
+	flowNodes, err := nodes.Create(ctx, board.ID, []services.NewFlowNodeRequest{{
+		Title: "Wait for builds", Type: "bitbucket-commit-status", CommitStatus: " successful ",
+	}}, "alex")
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := flowNodes[0].ID
+	if _, err := nodes.StartPlay(ctx, id, "run", "alex"); !errors.Is(err, entities.ErrFlowNodeNotRunnable) {
+		t.Fatalf("playing an incomplete event returned %v", err)
+	}
+	invalid := "team/repo@main"
+	if _, err := nodes.Patch(ctx, id, entities.FlowNodePatch{CommitID: &invalid}, nil, "alex"); !errors.Is(err, entities.ErrInvalid) {
+		t.Fatalf("setting an invalid commit ID returned %v", err)
+	}
+	invalidStatus := "MERGED"
+	if _, err := nodes.Patch(ctx, id, entities.FlowNodePatch{CommitStatus: &invalidStatus}, nil, "alex"); !errors.Is(err, entities.ErrInvalid) {
+		t.Fatalf("setting an invalid commit status returned %v", err)
+	}
+	commitID := " team/repo@a1b2c3d "
+	if _, err := nodes.Patch(ctx, id, entities.FlowNodePatch{CommitID: &commitID}, nil, "alex"); err != nil {
+		t.Fatal(err)
+	}
+	node, err := nodes.StartPlay(ctx, id, "run", "alex")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if node.Type != entities.FlowNodeBitbucketCommitStatus || node.CommitID != "team/repo@a1b2c3d" ||
+		node.CommitStatus != "SUCCESSFUL" || node.Task != nil {
+		t.Fatalf("claimed Bitbucket commit event = %+v", node)
+	}
+	if _, err := nodes.EndPlay(ctx, id, "run", "alex", entities.PlayResult{Status: entities.StatusDone}); err != nil {
+		t.Fatal(err)
+	}
+	human := entities.FlowNodeHuman
+	node, err = nodes.Patch(ctx, id, entities.FlowNodePatch{Type: &human}, nil, "alex")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if node.CommitID != "" || node.CommitStatus != "" {
+		t.Fatalf("retyped flow node still carries Bitbucket commit fields: %+v", node)
+	}
+	const commitExpression, targetExpression = "{{currentWorkflow.commitId}}", "{{role.commitStatus}}"
+	flowNodes, err = nodes.Create(ctx, board.ID, []services.NewFlowNodeRequest{{
+		Title: "Wait for published builds", Type: "bitbucket-commit-status",
+		CommitID: commitExpression, CommitStatus: targetExpression,
+	}}, "alex")
+	if err != nil {
+		t.Fatal(err)
+	}
+	node, err = nodes.StartPlay(ctx, flowNodes[0].ID, "run", "alex")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if node.CommitID != commitExpression || node.CommitStatus != targetExpression {
+		t.Fatalf("claimed commit event lost its references: %+v", node)
+	}
+}
+
+// Exercise Scheduler duration and mode changes against a real schema.
 func TestSchedulerDurationRoundTrip(t *testing.T) {
-	boards, nodes, store, _ := wire(t)
+	boards, nodes, _, _ := wire(t)
 	ctx := context.Background()
 	board, err := boards.Create(ctx, services.NewBoardRequest{Name: "Timers"}, "alex")
 	if err != nil {
 		t.Fatal(err)
 	}
-	classes := services.NewFlowNodeClasses(store, store, agentRepository(t), NewRunnerStore(store.pool), store, realClock{}, uuidIDs{store: store})
-	preset, err := classes.Create(ctx, board.ID, services.NewClassRequest{
-		Title: "Pause", Type: "scheduler", Duration: "15m", Published: true,
+	nodesCreated, err := nodes.Create(ctx, board.ID, []services.NewFlowNodeRequest{
+		{Title: "Pause", Type: "scheduler", Duration: "15m"},
 	}, "alex")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if preset.Class.Duration != "15m" {
-		t.Fatalf("class duration = %q", preset.Class.Duration)
-	}
-	instances, err := classes.Instantiate(ctx, preset.Class.ID, board.ID, nil, nil, nil, "alex")
-	if err != nil {
-		t.Fatal(err)
-	}
-	node, err := nodes.Find(ctx, instances[0].ID)
-	if err != nil {
-		t.Fatal(err)
-	}
+	node := &nodesCreated[0]
 	if node.Duration != "15m" || node.ScheduledAt != "" {
-		t.Fatalf("instance = %+v", node)
+		t.Fatalf("scheduler = %+v", node)
 	}
 	at := "2026-10-16T22:00"
 	node, err = nodes.Patch(ctx, node.ID, entities.FlowNodePatch{ScheduledAt: &at}, nil, "alex")
@@ -1283,19 +1342,14 @@ func TestSchedulerDurationRoundTrip(t *testing.T) {
 	if node.Duration != duration || node.ScheduledAt != "" {
 		t.Fatalf("duration switch = %+v", node)
 	}
-	class, err := classes.Patch(ctx, preset.Class.ID, entities.FlowNodeClassPatch{ScheduledAt: &at}, nil, "alex")
-	if err != nil {
-		t.Fatal(err)
+	expression := "{{role.scheduledAt}}"
+	node, err = nodes.Patch(ctx, node.ID, entities.FlowNodePatch{ScheduledAt: &expression}, nil, "alex")
+	if err != nil || node.ScheduledAt != expression || node.Duration != "" {
+		t.Fatalf("scheduler datetime reference = %+v, %v", node, err)
 	}
-	if class.Duration != "" || class.ScheduledAt != at {
-		t.Fatalf("class datetime switch = %+v", class)
-	}
-	class, err = classes.Patch(ctx, class.ID, entities.FlowNodeClassPatch{Duration: &duration}, nil, "alex")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if class.Duration != duration || class.ScheduledAt != "" {
-		t.Fatalf("class duration switch = %+v", class)
+	node, err = nodes.Patch(ctx, node.ID, entities.FlowNodePatch{Duration: &expression}, nil, "alex")
+	if err != nil || node.Duration != expression || node.ScheduledAt != "" {
+		t.Fatalf("scheduler duration reference = %+v, %v", node, err)
 	}
 }
 

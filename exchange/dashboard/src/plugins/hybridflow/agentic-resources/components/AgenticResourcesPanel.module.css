@@ -1,0 +1,87 @@
+.panel {
+    min-width: 0;
+}
+
+.header {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 4px;
+    margin-bottom: 8px;
+}
+
+.list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+}
+
+.main {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1;
+    min-width: 0;
+}
+
+.titleRow {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+}
+
+.name {
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.meta {
+    color: var(--muted);
+    font-size: 0.8rem;
+}
+
+.description {
+    margin: 4px 0 0;
+    font-size: 0.85rem;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.actions {
+    display: flex;
+    gap: 2px;
+    flex: none;
+    opacity: 0;
+    transition: opacity 120ms;
+}
+
+.row:hover .actions,
+.row:focus-within .actions {
+    opacity: 1;
+}
+
+@media (hover: none) {
+    .actions {
+        opacity: 1;
+    }
+}
+
+.id {
+    color: var(--muted);
+    font-size: 0.7rem;
+    font-family: monospace;
+    overflow-wrap: anywhere;
+    user-select: all;
+}

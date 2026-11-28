@@ -4,20 +4,18 @@
  * A migration script is named `V<NNN>__<description>.js` and is run on startup by the
  * worker migration runner as:
  *
- *     node V<NNN>__<description>.js <data-root-abs-path>
+ *     node V<NNN>__<description>.js <absolute-dcms-root>
  *
- * with the working directory set to the data root and the env vars KIAO_DATA_ROOT and
+ * with the working directory set to the DCMS root and the env vars KIAO_DATA_ROOT and
  * KIAO_MIGRATION_VERSION populated. A non-zero exit code marks the migration as failed and (by
  * default) aborts service startup, so scripts should throw / process.exit(1) on error.
  *
- * The data root can also be passed explicitly when running a migration by hand, exactly like
- * the old manual workflow:  `cd <data-root> && node V001__….js`
+ * A manual run can also start from the DCMS root: `cd <dcms-root> && node V001__….js`
  *
  * Documents can live in any folder — see ../README.md. Paths excluded from automatic passes are
  * declared by the store itself, in `.kiao-files` files that may sit in any folder, so `scan`
- * honours them by default and a hand-rolled walk must consult `loadIgnore()` for itself. Nothing
- * names the declaration to a script any more: it has a fixed name at a known place, so the data
- * root is all a script needs to find the whole set.
+ * honours them by default and a hand-rolled walk must consult `loadIgnore()` for itself. The
+ * helpers find declarations from the DCMS root.
  */
 
 const fs = require('fs');
@@ -26,8 +24,9 @@ const path = require('path');
 /** Document file extensions understood by the store (see reference/kiao-worker types). */
 const DOCUMENT_EXTENSIONS = ['.mmap.json', '.temp.md'];
 
-/** The service's own operational state directory inside the data root. */
+/** The service's own operational state directory inside the DCMS root. */
 const STATE_DIR_NAME = '.kiao-config';
+const AGENT_PACKAGES_DIR_NAME = 'agentic-packages';
 
 /** A folder's exclusions from automatic document passes, in it and below. See ../README.md. */
 const KIAO_FILES_NAME = '.kiao-files';
@@ -63,8 +62,8 @@ const DEFAULT_EXCLUSIONS = [
     '.*',
 ];
 
-/** Resolves the data root: argv[2], then $KIAO_DATA_ROOT, then the current working directory. */
-function dataRoot() {
+/** Resolves the DCMS root: argv[2], then $KIAO_DATA_ROOT, then the current working directory. */
+function dcmsRoot() {
     return path.resolve(process.argv[2] || process.env.KIAO_DATA_ROOT || process.cwd());
 }
 
@@ -155,7 +154,7 @@ function parseIgnore(text, root, sourceFile = null, concern = CONCERN_MIGRATION)
     return {
         patterns: decl.patterns,
         sourceFile,
-        /** True when `target` — absolute, or relative to the data root — is protected. */
+        /** True when `target` — absolute, or relative to the DCMS root — is protected. */
         ignores(target) {
             return declExcludes(decl, path.resolve(decl.dir, target), concern);
         },
@@ -175,8 +174,15 @@ function parseIgnore(text, root, sourceFile = null, concern = CONCERN_MIGRATION)
  * not converted yet) and then to the built-in defaults — never to "nothing is protected", which a
  * store says by writing an empty file.
  */
-function loadIgnore(root = dataRoot(), concern = CONCERN_MIGRATION) {
+function loadIgnore(root = dcmsRoot(), concern = CONCERN_MIGRATION) {
     const base = path.resolve(root);
+    const statePaths = [];
+    if (process.env.KIAO_WORKER_STATE_PATH) {
+        const state = path.resolve(process.env.KIAO_WORKER_STATE_PATH);
+        for (const [store, directory] of [[base, state], [realPath(base), realPath(state)]]) {
+            statePaths.push(path.relative(store, directory) || AGENT_PACKAGES_DIR_NAME);
+        }
+    }
     const cache = new Map();
     const declFor = (dir) => {
         if (!cache.has(dir)) cache.set(dir, dir === base ? rootDeclaration(base) : readDeclaration(dir));
@@ -192,14 +198,15 @@ function loadIgnore(root = dataRoot(), concern = CONCERN_MIGRATION) {
             const decl = declFor(base);
             return decl ? decl.sourceFile : null;
         },
-        /** True when `target` — absolute, or relative to the data root — is protected. */
+        /** True when `target` — absolute, or relative to the DCMS root — is protected. */
         ignores(target) {
             const abs = path.resolve(base, target);
             const rel = path.relative(base, abs);
             if (rel === '' || rel === '..' || rel.startsWith('..' + path.sep)) return false;
-            // Excluded whatever any declaration says: in production the data root IS the git work
+            // Excluded whatever any declaration says: in production the DCMS root IS the git work
             // tree, and the state directory holds the service's own registries and transcripts.
             if (rel.split(path.sep).some((seg) => seg === '.git' || seg === STATE_DIR_NAME)) return true;
+            if (statePaths.some((state) => rel === state || rel.startsWith(state + path.sep))) return true;
             for (let dir = path.dirname(abs); ; dir = path.dirname(dir)) {
                 const decl = declFor(dir);
                 if (decl && declExcludes(decl, abs, concern)) return true;
@@ -209,7 +216,16 @@ function loadIgnore(root = dataRoot(), concern = CONCERN_MIGRATION) {
     };
 }
 
-/** The declaration governing the data root: its own, a legacy one, or the built-in defaults. */
+function realPath(directory) {
+    try {
+        return fs.realpathSync(directory);
+    } catch (err) {
+        if (err.code === 'ENOENT') return directory;
+        throw err;
+    }
+}
+
+/** The declaration governing the DCMS root: its own, a legacy one, or the built-in defaults. */
 function rootDeclaration(base) {
     const own = readDeclaration(base);
     if (own) return own;
@@ -266,7 +282,8 @@ module.exports = {
     CONCERN_MIGRATION,
     CONCERN_REFACTOR,
     DEFAULT_EXCLUSIONS,
-    dataRoot,
+    dcmsRoot,
+    dataRoot: dcmsRoot, // Used by applied migrations.
     loadIgnore,
     parseIgnore,
     parseDeclaration,

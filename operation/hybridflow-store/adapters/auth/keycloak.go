@@ -51,7 +51,7 @@ const Role = "files_user"
 // ActorHeader lets a caller bearing the **service token** say whose work this is.
 //
 // A run lasts hours and a user's token lasts minutes, so worker cannot carry the credential
-// of the person who clicked Play; it carries one of its own. Without this header every card a run
+// of the person who clicked Play; it carries one of its own. Without this header every flow node a run
 // moved would be attributed to the service, and a board would stop being able to say whose run
 // touched it — which is most of what the change log is for.
 //
@@ -68,7 +68,7 @@ const serviceTokenSource = "SERVICE_TOKEN"
 const ServiceUser = "worker"
 
 // Identity is a redacted view of the caller, for the audit line and for the change log. It travels
-// with the request in its context, and it is what every write records as its actor — so a card that
+// with the request in its context, and it is what every write records as its actor — so a flow node that
 // moved says who moved it.
 type Identity struct {
 	User   string

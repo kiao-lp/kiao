@@ -17,6 +17,19 @@ The **Boards** tab lists boards beside the document. Board routes keep Document 
 and document navigation retains the board, selection and controls in app-lifetime providers.
 The handle stays stable when the board title changes, preserving bookmarks and links.
 
+Both lists show expandable folders with indented board rows. Right-click a board to download,
+rename, move or delete it. Right-click a folder to create a board in it, rename it or delete it.
+Shift+F10 opens the menu on a focused row, and a long press opens it on touch screens. Folder
+expansion is saved in Dashboard's server-side view state by screen size, as in File tree.
+[Folder storage](/operation/hybridflow-store/docs/solution-design/schema.md)
+
+A click to edit an AI or Human task sets `/tasks/<task-id>?board=<board-id>` in the address bar.
+Opening that URL selects the board and reveals the **Flow node** editor. The `board` parameter accepts
+the ID or stable handle. Without it, Dashboard resolves the board from the task ID. Task navigation
+on the open board reuses its canvas and change subscription. Browser Back and Forward restore the
+task selection. If the Board and Flow node tabs share an area, Dashboard moves Flow node to a side area so
+both are visible.
+
 `DashboardPlugin.appRoutes` declares prefixes before file-path resolution. An optional `panel`
 identifies the tab to reveal; its route renderer selects panel content beside the document.
 Routes without a panel replace the document view. core knows the prefix, renderer and
@@ -41,7 +54,9 @@ successor becomes `todo`; a ready, runnable successor starts a named chain throu
 An unsuccessful save keeps the form and output available for retry. The runner reads saved
 predecessor output when rendering the successor's `{{input}}` placeholders.
 
-`useBoardSync` holds a watch request until the service reports changes, then three-way merges incoming state via `mergeBoardContent`. Stable IDs keep execution updates and local edits independent. The browser mints IDs for rendering and clipboard remapping. The service accepts well-formed IDs and rejects malformed ones; it never replaces them silently.
+`useBoardSync` holds a watch request until the service reports changes, then three-way merges
+incoming state via `mergeBoardContent`. Stable IDs keep execution updates and local edits
+independent. The browser mints IDs when creating or pasting individual flow nodes.
 
 ## Connection limits and interchange
 
@@ -49,16 +64,21 @@ predecessor output when rendering the successor's `{{input}}` placeholders.
 | --- | --- | --- |
 | Task or Scheduler | At most one | At most one |
 | Shutdown | At most one | None |
-| Gateway | Several | Several |
+| Parallel gateway | Several | Several |
+| Exclusive gateway | Several | Several |
+| Limiter | At most one | At most two, in branch order |
 | Note or Value | None | None |
 
-Dragging and selectors reject an occupied target unless it is a Gateway. Clones retain
-outgoing links only where targets allow another predecessor. Before Play, UI and runner
+Dragging, selectors and cloning can add an incoming link to either gateway type.
+Before Play, UI and runner
 validate the live connected component and name an invalid node; independent chains remain
 playable. The runner also validates restarts and resumes. Archived links reserve predecessor
 slots while remaining excluded from execution.
 
-Downloads use version 1: scalar successor IDs for tasks and Schedulers, lists for Gateways, no duplicated predecessor list. AI chat actions carry explicit continuation modes. Imports validate connection limits before creating a board.
+Downloads use version 1 with scalar successor IDs for tasks and Schedulers, branch lists for
+gateways and ordered `routes` for exclusive gateways. Limiter archives retain both counts and
+branch order. AI chat actions carry explicit continuation
+modes. Imports validate connection limits before creating a board.
 
 ## Store files and geometry
 
@@ -70,3 +90,16 @@ Workflow rectangles derive bounds from member positions (`workflowBounds.ts`), w
 and label space. Dragging a rectangle moves its members through the same spot operation as
 node dragging. Clicking its background opens the Workflow panel. Empty or entirely hidden
 membership draws nothing; removing the final member removes the empty workflow.
+
+Dashboard serializes the loaded workflow and its members when copying to the clipboard.
+Agents get the same format from hybridflow-store. Both paste through the store, which
+remaps references and commits the new group and members together. Dashboard refreshes the
+board after that write.
+
+A selected card draws four edge handles. Dragging one resizes the card through the same
+field-level write as any other edit: the width from a side, the height from the top or bottom.
+A left or top edge moves the spot so the opposite edge stays where it was; the card is not
+translated as a whole. `cardSizeOf` clamps a stored size to the kind's minimum, and Gateway
+and event minima keep their shapes and side controls inside the card. A stored height fixes
+the box; without one the card keeps its natural height, which is what lets narrowed text wrap
+and grow it. The measured height still wins for arrow endpoints, so arrows follow the drawn box.

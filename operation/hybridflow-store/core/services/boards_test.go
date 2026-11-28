@@ -94,8 +94,8 @@ func TestPatchBoardRefusesAStaleRevision(t *testing.T) {
 	}
 }
 
-// Deleting a board takes its cards with it: they belong to no other board.
-func TestDeletingABoardTakesItsCardsWithIt(t *testing.T) {
+// Deleting a board takes its flow nodes with it: they belong to no other board.
+func TestDeletingABoardTakesItsFlowNodesWithIt(t *testing.T) {
 	boards, flowNodes, _, _ := newCore()
 	ctx := context.Background()
 	board, err := boards.Create(ctx, services.NewBoardRequest{Name: "Major"}, "alex")
@@ -110,38 +110,6 @@ func TestDeletingABoardTakesItsCardsWithIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := flowNodes.Find(ctx, made[0].ID); !errors.Is(err, entities.ErrNotFound) {
-		t.Errorf("the card survived its board: %v", err)
-	}
-}
-
-// Deleting a board takes its classes with it: they are filed on no other board, and their
-// versions hang off them.
-func TestDeletingABoardTakesItsClassesWithIt(t *testing.T) {
-	boards, _, _, store := newCore()
-	classes := services.NewFlowNodeClasses(store, store, store, store, store, fixedClock{}, &countingIDs{})
-	ctx := context.Background()
-	board, err := boards.Create(ctx, services.NewBoardRequest{Name: "Major"}, "alex")
-	if err != nil {
-		t.Fatal(err)
-	}
-	made, err := classes.Create(ctx, board.ID, services.NewClassRequest{Title: "Review"}, "alex")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(made.Versions) != 1 {
-		t.Fatalf("versions = %d, want the filed first one", len(made.Versions))
-	}
-	versionID := made.Versions[0].ID
-	if err := boards.Delete(ctx, board.ID, "alex"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := classes.Find(ctx, made.Class.ID); !errors.Is(err, entities.ErrNotFound) {
-		t.Errorf("the class survived its board: %v", err)
-	}
-	if _, err := classes.FindVersion(ctx, versionID); !errors.Is(err, entities.ErrNotFound) {
-		t.Errorf("the version survived its board: %v", err)
-	}
-	if held, err := classes.Board(ctx, board.ID); err != nil || len(held) != 0 {
-		t.Errorf("Board() = %v, %v, want nothing left", held, err)
+		t.Errorf("the flow node survived its board: %v", err)
 	}
 }

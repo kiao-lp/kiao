@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { IconButton } from '../ui-foundation/toolbar/IconButton';
 import type { Extension } from '@codemirror/state';
 import { LanguageDescription } from '@codemirror/language';
 import { languages } from '@codemirror/language-data';
@@ -12,7 +13,7 @@ import './GitDiffView.css';
 
 /** HEAD and the editable working tree, with Git loading, drafts and explicit saving. */
 export const GitDiffBody: React.FC = () => {
-    const { diffTarget, closeDiff, requestRefresh, refreshToken, readDraft, storeDraft, clearDraft } = useGitDiff();
+    const { diffTarget, closeDiff, requestRefresh, refreshToken, readDraft, storeDraft, clearDraft, savingFiles, runSave } = useGitDiff();
     const workerClient = useWorkerClient();
     const nav = useNavigation();
 
@@ -24,6 +25,7 @@ export const GitDiffBody: React.FC = () => {
     // browser: the repo-relative path joined onto its root is the store path.
     const root = diffTarget?.root ?? '';
     const storePath = root ? `${root.replace(/\/+$/, '')}/${path}` : path;
+    const saving = savingFiles.has(storePath);
 
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -31,7 +33,9 @@ export const GitDiffBody: React.FC = () => {
     const [loadedModified, setLoadedModified] = useState('');
     const [modified, setModified] = useState('');
     const [dirty, setDirty] = useState(false);
-    const [saving, setSaving] = useState(false);
+    const latestRead = useRef(0);
+    const latestTarget = useRef(diffTarget);
+    latestTarget.current = diffTarget;
     const [langExt, setLangExt] = useState<Extension[]>([]);
 
     const comparison = useRef<TextComparisonHandle>(null);
@@ -39,6 +43,7 @@ export const GitDiffBody: React.FC = () => {
 
     const load = useCallback(async () => {
         if (!path) return;
+        const read = ++latestRead.current;
         setLoading(true);
         setError(null);
         try {
@@ -46,6 +51,7 @@ export const GitDiffBody: React.FC = () => {
                 workerClient.gitOriginal(path, folder).catch(() => ''),
                 workerClient.gitWorking(path, folder).catch(() => ''),
             ]);
+            if (read !== latestRead.current || diffTarget !== latestTarget.current) return;
             setLoadedOriginal(original);
             setLoadedModified(working);
             // What was typed before the panel was remounted — a document or a board navigated to
@@ -59,16 +65,15 @@ export const GitDiffBody: React.FC = () => {
                 setDirty(false);
             }
         } catch (e: any) {
-            setError(e?.message ?? 'Failed to load diff');
+            if (read === latestRead.current) setError(e?.message ?? 'Failed to load diff');
         } finally {
-            setLoading(false);
+            if (read === latestRead.current) setLoading(false);
         }
-    }, [workerClient, path, folder, readDraft]);
+    }, [workerClient, diffTarget, path, folder, readDraft]);
 
     useEffect(() => {
-        load();
-        // refreshToken: reload when an external git action (stage/revert/commit) changed the tree.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+        void load();
+        return () => { latestRead.current++; };
     }, [load, refreshToken]);
 
     // Resolve a CodeMirror language for syntax highlighting from the file name.
@@ -103,6 +108,7 @@ export const GitDiffBody: React.FC = () => {
     }, [step]);
 
     const onChange = useCallback((val: string) => {
+        if (saving) return;
         setModified(val);
         // Compared rather than assumed: typing back to what was loaded is clean again, and the
         // draft above the layout follows it — kept while there is something to restore, dropped
@@ -111,28 +117,29 @@ export const GitDiffBody: React.FC = () => {
         setDirty(changed);
         if (changed) storeDraft(loadedModified, val);
         else clearDraft();
-    }, [loadedModified, storeDraft, clearDraft]);
+    }, [saving, loadedModified, storeDraft, clearDraft]);
 
     const save = useCallback(async () => {
-        if (!dirty || saving) return;
-        setSaving(true);
-        try {
-            const r = await workerClient.gitSave(path, modified, folder);
-            if (!r.ok) {
-                message.error(r.output || 'Save failed');
-                return;
+        if (!diffTarget || !dirty || loading) return;
+        await runSave(storePath, async () => {
+            try {
+                const r = await workerClient.gitSave(path, modified, folder);
+                if (!r.ok) {
+                    message.error(r.output || 'Save failed');
+                    return;
+                }
+                if (diffTarget === latestTarget.current) {
+                    setLoadedModified(modified);
+                    setDirty(false);
+                }
+                clearDraft({ target: diffTarget, text: modified });
+                requestRefresh();
+                message.success('Saved');
+            } catch (e: any) {
+                message.error(`Save failed: ${e?.message ?? e}`);
             }
-            setLoadedModified(modified);
-            setDirty(false);
-            clearDraft();
-            requestRefresh();
-            message.success('Saved');
-        } catch (e: any) {
-            message.error(`Save failed: ${e?.message ?? e}`);
-        } finally {
-            setSaving(false);
-        }
-    }, [dirty, saving, workerClient, path, folder, modified, requestRefresh, clearDraft]);
+        });
+    }, [diffTarget, dirty, loading, runSave, storePath, workerClient, path, folder, modified, requestRefresh, clearDraft]);
 
     // The working-tree file, opened in place. Closing is abandoning like the floating cross:
     // navigating alone would leave the diff covering the file just opened.
@@ -147,36 +154,37 @@ export const GitDiffBody: React.FC = () => {
             <div className="git-diff-header">
                 <span className="git-diff-path" title={path}>{path}</span>
                 <div className="git-diff-nav">
-                    <Button
-                        size="small"
+                    <IconButton
+                        label="Previous change"
+                        type="default"
                         icon={<ArrowUpOutlined />}
                         onClick={() => step(-1)}
                         disabled={loading || !navigation.count}
-                        aria-label="Previous change"
                     />
                     <span className="git-diff-hunk-counter">
                         {navigation.count
                             ? `${navigation.index >= 0 ? navigation.index + 1 : '–'} / ${navigation.count}`
                             : 'no change'}
                     </span>
-                    <Button
-                        size="small"
+                    <IconButton
+                        label="Next change"
+                        type="default"
                         icon={<ArrowDownOutlined />}
                         onClick={() => step(1)}
                         disabled={loading || !navigation.count}
-                        aria-label="Next change"
                     />
                 </div>
 
                 <div className="git-diff-actions">
-                    <Button
-                        size="small"
+                    <IconButton
+                        label="Open file"
+                        type="default"
                         icon={<FolderOpenOutlined />}
                         onClick={openFile}
                         disabled={!path}
-                        aria-label="Open file"
                     />
-                    <Button size="small" icon={<ReloadOutlined />} onClick={load} disabled={loading || saving}>
+                    <Button size="small" icon={<ReloadOutlined />} onClick={load} disabled={loading || saving}
+                        loading={loading} aria-label="Reload" aria-busy={loading}>
                         Reload
                     </Button>
                     <Button
@@ -185,7 +193,8 @@ export const GitDiffBody: React.FC = () => {
                         icon={<SaveOutlined />}
                         onClick={save}
                         loading={saving}
-                        disabled={!dirty}
+                        disabled={!dirty || loading || saving}
+                        aria-label="Save" aria-busy={saving}
                     >
                         Save
                     </Button>
@@ -201,7 +210,7 @@ export const GitDiffBody: React.FC = () => {
                     ref={comparison}
                     original={loadedOriginal}
                     modified={modified}
-                    modifiedReadOnly={false}
+                    modifiedReadOnly={saving}
                     onModifiedChange={onChange}
                     extensions={langExt}
                     originalLabel="HEAD (original)"

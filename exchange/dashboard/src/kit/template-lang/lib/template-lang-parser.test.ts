@@ -35,7 +35,7 @@ describe('idToTitle', () => {
 });
 
 describe('parseTempMd', () => {
-    it('parses the spec example with code fences', () => {
+    it('reads fenced templates and ignores the legacy index', () => {
         const md = `# Prompt
 
 Hello world
@@ -64,7 +64,8 @@ Format the image as **png**.
 `;
         const result = parseTempMd(md);
         expect(result.name).toBe('Prompt');
-        expect(result.index).toBe('Hello world');
+        expect(result).not.toHaveProperty('index');
+        expect(serializeTempMd(result)).not.toContain('Hello world');
         expect(result.rootTemplate.id).toBe('root');
         expect(result.rootTemplate.textTemplate).toBe('Generate an image of a house in the forest. ${outputImageFormat}');
         expect(result.subTemplates).toHaveLength(1);
@@ -114,15 +115,12 @@ Hello world
 `;
         const result = parseTempMd(md);
         expect(result.name).toBe('Simple');
-        expect(result.index).toBe('');
         expect(result.rootTemplate.textTemplate).toBe('Hello world');
         expect(result.subTemplates).toHaveLength(0);
     });
 
-    it('parses template with empty index', () => {
-        const md = `# Test
-
-## Root
+    it.each(['', '# \n\n'])('reads unnamed templates with preamble %j', preamble => {
+        const md = preamble + `## Root
 
 ### textTemplate
 
@@ -130,8 +128,10 @@ Hello world
 content
 \`\`\`
 `;
-        const result = parseTempMd(md);
-        expect(result.index).toBe('');
+        expect(parseTempMd(md)).toEqual({
+            rootTemplate: { id: 'root', textTemplate: 'content' },
+            subTemplates: [],
+        });
     });
 
     it('parses sub-template without defaultText', () => {
@@ -250,7 +250,6 @@ describe('serializeTempMd', () => {
     it('serializes with code fences', () => {
         const template: TemplateCollectionV0 = {
             name: 'Prompt',
-            index: 'Hello world',
             rootTemplate: { id: 'root', textTemplate: 'Generate an image of a house in the forest. ${outputImageFormat}' },
             subTemplates: [
                 { id: 'outputImageFormat', textTemplate: 'Format the image as png.', defaultText: 'Use any image format that suits you.' }
@@ -258,8 +257,6 @@ describe('serializeTempMd', () => {
         };
         const result = serializeTempMd(template);
         expect(result).toBe(`# Prompt
-
-Hello world
 
 ## Root
 
@@ -288,7 +285,6 @@ Format the image as png.
     it('serializes template with no sub-templates', () => {
         const template: TemplateCollectionV0 = {
             name: 'Simple',
-            index: '',
             rootTemplate: { id: 'root', textTemplate: 'Hello' },
             subTemplates: []
         };
@@ -308,7 +304,6 @@ Hello
     it('omits defaultText section when undefined', () => {
         const template: TemplateCollectionV0 = {
             name: 'Test',
-            index: '',
             rootTemplate: { id: 'root', textTemplate: '${title}' },
             subTemplates: [{ id: 'title', textTemplate: 'My title' }]
         };
@@ -355,7 +350,6 @@ See references.
     it('round-trips content with markdown headings', () => {
         const template: TemplateCollectionV0 = {
             name: 'Markdown Heavy',
-            index: '',
             rootTemplate: { id: 'root', textTemplate: '## Title\nSome text\n### Subtitle\nMore text' },
             subTemplates: []
         };
@@ -366,10 +360,20 @@ See references.
 });
 
 describe('round-trip', () => {
+    it('round-trips an unnamed template with an unfinished section and Markdown fences', () => {
+        const template: TemplateCollectionV0 = {
+            rootTemplate: { id: 'root', textTemplate: '```sh\n# Comment\n```\n## Heading' },
+            subTemplates: [{ id: '', textTemplate: 'A section being drafted' }],
+        };
+        const serialized = serializeTempMd(template);
+        expect(serialized).toMatch(/^## Root\n/);
+        expect(serializeTempMd({ ...template, name: '  ' })).toBe(serialized);
+        expect(parseTempMd(serialized)).toEqual(template);
+    });
+
     it('parseTempMd(serializeTempMd(t)) preserves template', () => {
         const template: TemplateCollectionV0 = {
             name: 'Round Trip',
-            index: 'Some index text',
             rootTemplate: { id: 'root', textTemplate: '${title}${body}' },
             subTemplates: [
                 { id: 'title', textTemplate: 'The title' },
@@ -379,7 +383,6 @@ describe('round-trip', () => {
         const serialized = serializeTempMd(template);
         const parsed = parseTempMd(serialized);
         expect(parsed.name).toBe(template.name);
-        expect(parsed.index).toBe(template.index);
         expect(parsed.rootTemplate.id).toBe('root');
         expect(parsed.rootTemplate.textTemplate).toBe(template.rootTemplate.textTemplate);
         expect(parsed.subTemplates).toHaveLength(2);

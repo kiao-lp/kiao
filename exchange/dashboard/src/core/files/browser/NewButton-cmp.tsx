@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
-import { Button, Dropdown, MenuProps } from 'antd';
+import { IconButton } from '../../ui-foundation/toolbar/IconButton';
+import { Dropdown, MenuProps } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { useCreationCommands } from '../creation/CreationCommandRegistry-ctx';
 
@@ -17,9 +18,8 @@ export const NewButtonCmp: React.FC = () => {
 
     return (
         <Dropdown menu={{ items }} trigger={['click']} placement="bottomLeft">
-            <Button aria-label="New"
-                type="text"
-                size="small"
+            <IconButton
+                label="New"
                 icon={<PlusOutlined />}
                 className="cms-new-button"
                 data-testid="new-button-toolbar"

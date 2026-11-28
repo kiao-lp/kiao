@@ -1,8 +1,33 @@
 .cms-top-banner {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: center;
+    justify-items: start;
+    gap: 4px 8px;
     order: -1;
     padding: 4px 16px;
     border-bottom: 1px solid var(--border);
     height: auto;
     line-height: normal;
     background: var(--accent-bg);
+}
+
+.cms-top-banner-search {
+    width: 100%;
+    max-width: 320px;
+    justify-self: center;
+}
+
+.cms-top-banner-controls {
+    justify-self: stretch;
+}
+
+@media (max-width: 640px) {
+    .cms-top-banner {
+        grid-template-columns: 1fr minmax(0, 75%) 1fr;
+    }
+
+    .cms-top-banner-controls {
+        grid-column: 1 / -1;
+    }
 }

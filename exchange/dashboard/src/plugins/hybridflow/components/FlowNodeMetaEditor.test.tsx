@@ -2,8 +2,8 @@ import React from 'react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent } from 'src/test/render';
 
-// Two engines, so the editor can be asked the one thing only a second engine makes visible: that
-const TEST_AGENTS = await vi.hoisted(async () => {
+// Each harness offers a different set of models and reasoning levels.
+const TEST_HARNESSES = await vi.hoisted(async () => {
     const { harnessOptions } = await import('src/test/harnesses');
     return [
         harnessOptions({
@@ -63,8 +63,8 @@ const TEST_MANAGED = vi.hoisted(() => [
 
 vi.mock('../useHarnessOptions', () => ({
     useHarnessOptions: () => ({
-        harnesses: TEST_AGENTS,
-        optionsFor: (agent: string) => TEST_AGENTS.find(one => one.value === agent) ?? TEST_AGENTS[0],
+        harnesses: TEST_HARNESSES,
+        optionsFor: (harness: string) => TEST_HARNESSES.find(one => one.value === harness) ?? TEST_HARNESSES[0],
     }),
 }));
 
@@ -80,7 +80,7 @@ import type { FlowNodeType } from '../flowNodeType';
 const onChange = vi.fn();
 const onSchedule = vi.fn();
 
-/** The type is a field, but a card holding an agent is an AI card: that is how a board is read. */
+/** The type is a field, but a node holding an agent is an AI node: that is how a board is read. */
 const show = (settings: FlowNodeSettings, type?: FlowNodeType, at = '') => render(
     <FlowNodeMetaEditor
         type={type ?? (settings.agent || settings.model ? 'ai' : 'human')}
@@ -113,7 +113,7 @@ beforeEach(() => {
 describe('FlowNodeMetaEditor', () => {
     it('offers no type selector', () => {
         show({ agent: 'agent-1' });
-        expect(selectBox('Node type')).toBeNull();
+        expect(selectBox('Flow node type')).toBeNull();
     });
 
     it('asks a flow node that says nothing nothing about a turn', () => {
@@ -131,7 +131,7 @@ describe('FlowNodeMetaEditor', () => {
         expect(selectBox('Permission mode')).toBeTruthy();
     });
 
-    it('shows a flow node naming an engine and a model as AI', () => {
+    it('shows a flow node naming a harness and a model as AI', () => {
         show({ agent: 'claude', model: 'opus' });
         expect(selectBox('Agent')).toHaveTextContent('claude / opus');
     });
@@ -166,11 +166,10 @@ describe('FlowNodeMetaEditor', () => {
             .not.toContain('ant-input-status-warning');
     });
 
-    // how the one folder that cannot be typed, the store root, is asked for.
-    it('asks for a folder rather than offering one', () => {
+    it('shows how to enter the DCMS root as the working directory', () => {
         show({});
         expect(screen.getByLabelText('Working directory'))
-            .toHaveAttribute('placeholder', 'Folder (/ is the store root)');
+            .toHaveAttribute('placeholder', 'Folder (/ is the DCMS root)');
     });
 
     it('writes the agent that is picked', () => {
@@ -181,7 +180,7 @@ describe('FlowNodeMetaEditor', () => {
         });
     });
 
-    it('asks a Shutdown card nothing', () => {
+    it('asks a Shutdown node nothing', () => {
         show({}, 'shutdown');
         expect(selectBox('Agent')).toBeNull();
         expect(selectBox('Effort')).toBeNull();
@@ -232,6 +231,20 @@ describe('FlowNodeMetaEditor', () => {
         fireEvent.blur(duration);
         expect(onSchedule).not.toHaveBeenCalled();
         expect(duration.className).toContain('ant-input-status-warning');
+    });
+
+    it('saves references in duration and datetime modes', () => {
+        show({}, 'scheduler');
+        choose('Schedule mode', 'Fixed duration');
+        const duration = screen.getByLabelText('Duration');
+        fireEvent.change(duration, { target: { value: '{{input.seconds}}s' } });
+        fireEvent.blur(duration);
+        expect(onSchedule).toHaveBeenLastCalledWith('', '{{input.seconds}}s');
+        choose('Schedule mode', 'Date time from a value');
+        const datetime = screen.getByLabelText('Scheduled for');
+        fireEvent.change(datetime, { target: { value: '{{currentWorkflow.scheduledAt}}' } });
+        fireEvent.blur(datetime);
+        expect(onSchedule).toHaveBeenLastCalledWith('{{currentWorkflow.scheduledAt}}', '');
     });
 
     it('writes the effort that is picked', () => {
@@ -336,8 +349,8 @@ describe('FlowNodeMetaEditor', () => {
             expect(onChange).toHaveBeenCalledWith({ folder: '/exchange/dashboard' });
         });
 
-        // `''` is the one folder that cannot be written down, and an empty box is an unplayable flow node.
-        it('writes the store root as the / the box asks for', () => {
+        // An empty field leaves the working directory unset.
+        it('stores the DCMS root as "/" for a file dropped from that directory', () => {
             show({ agent: 'agent-1', effort: 'high' });
             fireEvent.drop(folderBox(), { dataTransfer: dragOf('notes.md', false) });
             expect(onChange).toHaveBeenCalledWith({ folder: '/' });
@@ -370,8 +383,8 @@ describe('FlowNodeMetaEditor', () => {
 
 
 
-describe('the agent a card is played on', () => {
-    it('is shown on an AI card, and on no other', () => {
+describe('the agent a node is played on', () => {
+    it('is shown on an AI node, and on no other', () => {
         show({ agent: 'agent-1' });
         expect(selectBox('Agent')).toHaveTextContent('Reviewer');
 
@@ -403,7 +416,7 @@ describe('the agent a card is played on', () => {
         expect(onChange).toHaveBeenCalledWith({ agent: 'agent-3', harness: 'claude', profileId: undefined, model: 'haiku' });
     });
 
-    it('shows a card written before managed agents as the engine and the model', () => {
+    it('shows a node written before managed agents as the harness and the model', () => {
         show({ agent: 'gemini', model: 'flash' });
         expect(selectBox('Agent')).toHaveTextContent('gemini / flash');
         expect(selectBox('Agent')).toHaveAttribute('aria-invalid', 'false');

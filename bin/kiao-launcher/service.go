@@ -76,8 +76,8 @@ func startChild(name string, cmd *exec.Cmd) (*childProcess, error) {
 }
 
 // Debug auth relies on the launcher's loopback-only proxy.
-// Migrations are opt-in because root may be a source repository, not a document store.
-func startWorker(bin, installDir, root string, port int, migrations bool, boards hybridflowAccess) (*childProcess, error) {
+// Migrations are opt-in because the DCMS root can serve arbitrary files.
+func startWorker(bin, installDir, dcmsRoot string, port int, migrations bool, boards hybridflowAccess) (*childProcess, error) {
 	migrationsSources := ""
 	if migrations {
 		migrationsSources = filepath.Join(installDir, "migrations", "sources.json")
@@ -117,7 +117,7 @@ func startWorker(bin, installDir, root string, port int, migrations bool, boards
 	// Preserve HOME and PATH for CLI credentials and tools. Override boards access even when
 	// empty: it must describe this instance and its dynamically selected port.
 	cmd.Env = append(os.Environ(),
-		"KIAO_WORKER_ROOT_PATH="+root,
+		"KIAO_WORKER_DCMS_ROOT="+dcmsRoot,
 		"SERVER_PORT="+fmt.Sprint(port),
 		"KIAO_WORKER_AUTH_MODE=debug",
 		"KIAO_WORKER_MIGRATIONS_PATH=",

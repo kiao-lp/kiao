@@ -13,9 +13,7 @@ const TIMEOUT = 20000;
  * easy to hit: right-click a file halfway down the page. A menu that fits in the viewport
  * must be shown whole wherever it is opened from.
  *
- * The two views build that menu differently — the details table drives one Ant Design
- * Dropdown from the pointer position, the grid gives every tile its own — so both are
- * covered here.
+ * The details table shares a menu across rows and each grid tile has its own trigger.
  */
 
 /** Short enough that the file context menu cannot fit below a pointer halfway down. */
@@ -90,4 +88,34 @@ test('a grid tile context menu stays inside the viewport', async ({ page }) => {
 
     const menu = await openMenuAt(page, tile!.x + 20, tile!.y + tile!.height / 2);
     await expectWhollyVisible(page, menu, 'on a grid tile');
+});
+
+test('SVG shapes use the shared menu and empty canvas keeps the browser menu', async ({ page }) => {
+    await page.setViewportSize(VIEWPORT);
+    await page.goto('smoke/drawing.svg');
+    const canvas = page.locator('.svg-canvas');
+    const shape = canvas.locator('rect[data-shape-id]').first();
+    await expect(shape).toBeVisible({ timeout: TIMEOUT });
+
+    await shape.click({ button: 'right' });
+    const menu = page.locator('.ant-dropdown:visible').filter({ hasText: 'Bring to front' });
+    await expect(menu.getByRole('menuitem', { name: /Duplicate/ })).toContainText('Ctrl+D');
+
+    await shape.dispatchEvent('contextmenu', { clientX: VIEWPORT.width - 2, clientY: VIEWPORT.height - 2 });
+    await expect.poll(async () => (await menu.boundingBox())?.y ?? 0).toBeGreaterThan(VIEWPORT.height / 2);
+    await expectWhollyVisible(page, menu, 'from an SVG shape near the edge');
+
+    await page.keyboard.press('Escape');
+    await expect(menu).toBeHidden();
+
+    await shape.click({ button: 'right' });
+    await expect(menu).toBeVisible();
+    await canvas.locator('.svg-handle').first().click();
+    await expect(menu).toBeHidden();
+
+    const nativeMenu = await canvas.evaluate(element => element.dispatchEvent(
+        new MouseEvent('contextmenu', { bubbles: true, cancelable: true }),
+    ));
+    expect(nativeMenu).toBe(true);
+    await expect(menu).toBeHidden();
 });

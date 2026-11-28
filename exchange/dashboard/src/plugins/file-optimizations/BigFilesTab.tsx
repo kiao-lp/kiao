@@ -1,9 +1,9 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { Alert, Button, Checkbox, Empty, Modal, Progress, Table, message } from 'antd';
+import { Alert, Button, Checkbox, Empty, Progress, Table, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { DeleteOutlined } from '@ant-design/icons';
 import type { FileDto } from 'kiao-worker';
-import { Tooltip, useNavigation } from '@kiao-dashboard-core';
+import { Tooltip, useConfirmation, useNavigation } from '@kiao-dashboard-core';
 import { folderLabel, folderOf, formatSize, nameOf } from './duplicatesModel';
 import styles from './FileOptimizations.module.css';
 
@@ -20,14 +20,17 @@ export interface BigFilesTabProps {
     largest: FileDto[];
     scanned: number;
     truncated: boolean;
+    blocked?: boolean;
     deleteFiles: (paths: string[]) => Promise<void>;
 }
 
 /** Biggest files first. Nothing is pre-selected; deletion covers only ticked files. */
-export const BigFilesTab: React.FC<BigFilesTabProps> = ({ largest, scanned, truncated, deleteFiles }) => {
+export const BigFilesTab: React.FC<BigFilesTabProps> = ({ largest, scanned, truncated, blocked = false, deleteFiles }) => {
+    const confirm = useConfirmation();
     const nav = useNavigation();
     const [picked, setPicked] = useState<ReadonlySet<string>>(() => new Set());
     const [busy, setBusy] = useState(false);
+    const disabled = busy || blocked;
     const biggest = largest[0]?.size ?? 0;
     const rows: BigFileRow[] = useMemo(
         () => largest.map((file, index) => ({ ...file, rank: index + 1 })),
@@ -58,11 +61,11 @@ export const BigFilesTab: React.FC<BigFilesTabProps> = ({ largest, scanned, trun
         }
     }, [deleteFiles]);
 
-    const confirm = useCallback((files: FileDto[]) => {
-        Modal.confirm({
+    const askDelete = useCallback((files: FileDto[]) => {
+        confirm({
             title: files.length === 1 ? 'Delete this file?' : `Delete these ${files.length} files?`,
             width: 560,
-            content: (
+            description: (
                 <div className={styles.confirm}>
                     <p>
                         <strong>{formatSize(bytesOf(files))}</strong> given back. These paths stop naming a file:
@@ -77,11 +80,10 @@ export const BigFilesTab: React.FC<BigFilesTabProps> = ({ largest, scanned, trun
                     <p className={styles.dim}>Unlike keeping one of a duplicate, no copy of these remains.</p>
                 </div>
             ),
-            okText: 'Delete all',
-            okButtonProps: { danger: true },
-            onOk: () => run(files),
+            confirmText: 'Delete all',
+            onConfirm: () => run(files),
         });
-    }, [run]);
+    }, [confirm, run]);
 
     const columns: ColumnsType<BigFileRow> = [
         {
@@ -90,7 +92,7 @@ export const BigFilesTab: React.FC<BigFilesTabProps> = ({ largest, scanned, trun
                 <Checkbox
                     checked={every}
                     indeterminate={selected.length > 0 && !every}
-                    disabled={busy}
+                    disabled={disabled}
                     onChange={e => setPicked(e.target.checked ? new Set(largest.map(f => f.path)) : new Set())}
                     aria-label="Select every file listed"
                 />
@@ -101,7 +103,7 @@ export const BigFilesTab: React.FC<BigFilesTabProps> = ({ largest, scanned, trun
             render: (_: unknown, file) => (
                 <Checkbox
                     checked={picked.has(file.path)}
-                    disabled={busy}
+                    disabled={disabled}
                     onChange={e => tick(file.path, e.target.checked)}
                     aria-label={`Select ${file.path}`}
                 />
@@ -179,9 +181,9 @@ export const BigFilesTab: React.FC<BigFilesTabProps> = ({ largest, scanned, trun
                     danger
                     size="small"
                     icon={<DeleteOutlined />}
-                    disabled={selected.length === 0 || busy}
+                    disabled={selected.length === 0 || disabled}
                     loading={busy}
-                    onClick={() => confirm(selected)}
+                    onClick={() => askDelete(selected)}
                 >
                     Delete all
                 </Button>

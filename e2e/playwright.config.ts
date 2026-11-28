@@ -35,7 +35,7 @@ const stackEnv = {
 };
 
 /**
- * Lend harness dependencies: Node resolution from a dropped spec cannot reach this node_modules.
+ * Node resolution from a dropped spec needs this Playwright project’s node_modules.
  * Return false if the plugin has no e2e directory; preserve real dependency directories.
  */
 function lendModules(dir: string) {

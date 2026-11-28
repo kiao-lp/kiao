@@ -78,7 +78,7 @@ describe('imageLinkPath', () => {
         expect(imageLinkPath('units/abc/pictures/shot.png', 'units/abc')).toBe('pictures/shot.png');
     });
 
-    it('writes an image saved elsewhere from the store root', () => {
+    it('writes an image saved elsewhere from the DCMS root', () => {
         expect(imageLinkPath('shared/shot.png', 'units/abc')).toBe('/shared/shot.png');
     });
 
@@ -92,7 +92,7 @@ describe('imageLinkPath', () => {
     });
 
     // No document to resolve against: root link even in the same folder.
-    it('writes from the store root for content held nowhere', () => {
+    it('writes from the DCMS root for content held nowhere', () => {
         expect(imageLinkPath('boards/major/shot.png', 'boards/major', true)).toBe('/boards/major/shot.png');
         expect(imageLinkPath('/boards/major/shot.png', 'boards/major', true)).toBe('/boards/major/shot.png');
     });

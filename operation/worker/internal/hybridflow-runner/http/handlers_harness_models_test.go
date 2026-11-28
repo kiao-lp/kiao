@@ -44,7 +44,7 @@ func TestHarnessModelPreferencesPersistAndSetConversationDefault(t *testing.T) {
 	if response.Code != http.StatusNoContent {
 		t.Fatalf("save model preferences: %d %s", response.Code, response.Body.String())
 	}
-	data, err := os.ReadFile(filepath.Join(cfg.RootPath, coreconfig.StateDirName, "harness-models", "claude.json"))
+	data, err := os.ReadFile(filepath.Join(cfg.DCMSRoot, coreconfig.StateDirName, "harness-models", "claude.json"))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -121,9 +121,9 @@ func TestReportTurnUsageFilesCodexCacheAndReasoning(t *testing.T) {
 
 func TestReportTurnUsageFilesNothingElse(t *testing.T) {
 	cases := map[string]func(*pkgTurns.Turn){
-		"no board": func(job *pkgTurns.Turn) { job.Board = "" },
-		"no card":  func(job *pkgTurns.Turn) { job.FlowNodeID = "" },
-		"no bill":  func(job *pkgTurns.Turn) { job.Usage = nil },
+		"no board":     func(job *pkgTurns.Turn) { job.Board = "" },
+		"no flow node": func(job *pkgTurns.Turn) { job.FlowNodeID = "" },
+		"no bill":      func(job *pkgTurns.Turn) { job.Usage = nil },
 	}
 	for name, change := range cases {
 		t.Run(name, func(t *testing.T) {

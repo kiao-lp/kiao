@@ -1,12 +1,13 @@
 /** Board placement and arrow geometry in canvas pixels. */
 
 import { spotAt, FlowNodeSpot } from './flowNodeSpot';
+import { FlowNodeSize } from './flowNodeSize';
 import { FlowNodeSuccess } from './flowNodeSuccess';
 import { FlowNode } from './boardContent';
-import { FlowNodeType } from './flowNodeType';
+import { FlowNodeType, isWaitingEvent, splits } from './flowNodeType';
 
-/** Shared geometry input for flow nodes and node classes. */
-export interface PlacedCard {
+/** Flow node fields used for canvas layout. */
+export interface LayoutFlowNode {
     id: string;
     spot: FlowNodeSpot | null;
     onSuccess: FlowNodeSuccess;
@@ -24,10 +25,13 @@ export const NOMINAL_CARD_HEIGHT = 108;
 export const NOMINAL_EVENT_HEIGHT = 116;
 export const NOMINAL_GATEWAY_HEIGHT = 134;
 
-export type SymbolKind = 'rect' | 'event' | 'gateway';
+export type SymbolKind = 'rect' | 'event' | 'gateway' | 'actor';
 
-export const symbolKindOf = (type: FlowNodeType): SymbolKind =>
-    type === 'gateway' ? 'gateway' : type === 'shutdown' || type === 'scheduler' ? 'event' : 'rect';
+export const symbolKindOf = (type: FlowNodeType): SymbolKind => {
+    if (type === 'role') return 'actor';
+    if (splits(type)) return 'gateway';
+    return type === 'start' || type === 'shutdown' || isWaitingEvent(type) ? 'event' : 'rect';
+};
 
 export const cardWidthOf = (type: FlowNodeType): number =>
     symbolKindOf(type) === 'rect' ? CARD_WIDTH : SYMBOL_WIDTH;
@@ -36,6 +40,35 @@ export const nominalHeightOf = (type: FlowNodeType): number => {
     const kind = symbolKindOf(type);
     return kind === 'gateway' ? NOMINAL_GATEWAY_HEIGHT
         : kind === 'event' ? NOMINAL_EVENT_HEIGHT : NOMINAL_CARD_HEIGHT;
+};
+
+/** Below these a card loses the room its shape, its title or the controls beside them need. */
+export const MIN_SIZE: Record<FlowNodeType, { w: number; h: number }> = {
+    ai: { w: 160, h: 64 },
+    human: { w: 160, h: 64 },
+    note: { w: 120, h: 48 },
+    value: { w: 140, h: 56 },
+    role: { w: 96, h: 92 },
+    start: { w: 96, h: 96 },
+    shutdown: { w: 96, h: 96 },
+    scheduler: { w: 110, h: 110 },
+    'bitbucket-pr-status': { w: 110, h: 110 },
+    'bitbucket-commit-status': { w: 110, h: 110 },
+    gateway: { w: 104, h: 112 },
+    'exclusive-gateway': { w: 104, h: 112 },
+    limiter: { w: 104, h: 112 },
+};
+
+export const minSizeOf = (type: FlowNodeType): { w: number; h: number } => MIN_SIZE[type];
+
+/** A card's rendered size: its stored size clamped to the type's minimum, or the type's default. */
+export const cardSizeOf = (
+    type: FlowNodeType, size: FlowNodeSize | null | undefined,
+): { w: number; h: number | null } => {
+    const min = minSizeOf(type);
+    const w = Math.max(size?.w ?? cardWidthOf(type), min.w);
+    const h = size?.h === undefined ? null : Math.max(size.h, min.h);
+    return { w: Math.round(w), h: h === null ? null : Math.round(h) };
 };
 
 /** Shape-row heights must match . symbolEventWrap / . */
@@ -70,45 +103,45 @@ export interface ArrowEnds {
 }
 
 /** Follow single-successor chains, heads first in board order. */
-export const chainRuns = <T extends PlacedCard>(cards: T[]): T[][] => {
-    const byId = new Map(cards.map(card => [card.id, card]));
-    const nextOf = (card: T): T | null =>
-        (card.onSuccess.flowNode ? byId.get(card.onSuccess.flowNode) ?? null : null);
+export const chainRuns = <T extends LayoutFlowNode>(nodes: T[]): T[][] => {
+    const byId = new Map(nodes.map(node => [node.id, node]));
+    const nextOf = (node: T): T | null =>
+        (node.onSuccess.flowNode ? byId.get(node.onSuccess.flowNode) ?? null : null);
 
-    const named = new Set(cards.map(card => nextOf(card)?.id).filter((id): id is string => !!id));
+    const named = new Set(nodes.map(node => nextOf(node)?.id).filter((id): id is string => !!id));
     const runs: T[][] = [];
     const seen = new Set<string>();
 
     const walk = (start: T) => {
         const run: T[] = [];
-        for (let card: T | null = start; card && !seen.has(card.id); card = nextOf(card)) {
-            seen.add(card.id);
-            run.push(card);
+        for (let node: T | null = start; node && !seen.has(node.id); node = nextOf(node)) {
+            seen.add(node.id);
+            run.push(node);
         }
         if (run.length) runs.push(run);
     };
 
-    cards.filter(card => !named.has(card.id)).forEach(walk);
-    cards.forEach(walk);
+    nodes.filter(node => !named.has(node.id)).forEach(walk);
+    nodes.forEach(walk);
     return runs;
 };
 
-/** Place only unplaced cards, one row per chain, below existing placements. */
-export const spotsToPlace = <T extends PlacedCard>(cards: T[]): Map<string, FlowNodeSpot> => {
-    const waiting = cards.filter(card => !card.spot);
+/** Place only unplaced nodes, one row per chain, below existing placements. */
+export const spotsToPlace = <T extends LayoutFlowNode>(nodes: T[]): Map<string, FlowNodeSpot> => {
+    const waiting = nodes.filter(node => !node.spot);
     const spots = new Map<string, FlowNodeSpot>();
     if (waiting.length === 0) return spots;
 
-    const under = cards.reduce((low, card) => (card.spot ? Math.max(low, card.spot.y + ROW_STEP) : low), 0);
+    const under = nodes.reduce((low, node) => (node.spot ? Math.max(low, node.spot.y + ROW_STEP) : low), 0);
     chainRuns(waiting).forEach((run, row) => {
-        run.forEach((card, step) => {
-            spots.set(card.id, { x: step * CHAIN_STEP, y: under + row * ROW_STEP });
+        run.forEach((node, step) => {
+            spots.set(node.id, { x: step * CHAIN_STEP, y: under + row * ROW_STEP });
         });
     });
     return spots;
 };
 
-/** Lay out chains among pasted cards alone, anchored at the requested paste point. */
+/** Lay out chains among pasted nodes alone, anchored at the requested paste point. */
 export const pasteSpots = (flowNodes: FlowNode[], at: FlowNodeSpot): Map<string, FlowNodeSpot> => {
     const spots = new Map<string, FlowNodeSpot>();
     chainRuns(flowNodes).forEach((run, row) => {

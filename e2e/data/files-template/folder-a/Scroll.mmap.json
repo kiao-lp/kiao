@@ -1,0 +1,48 @@
+{
+  "content": {
+    "elements": {
+      "notes": [
+        {
+          "id": "NOTE-Near",
+          "userBounds": [
+            40,
+            40,
+            null,
+            null
+          ],
+          "bounds": [
+            40,
+            40,
+            160,
+            60
+          ],
+          "content": "Near",
+          "zIndex": 3
+        },
+        {
+          "id": "NOTE-Far",
+          "userBounds": [
+            2400,
+            1500,
+            null,
+            null
+          ],
+          "bounds": [
+            2400,
+            1500,
+            160,
+            60
+          ],
+          "content": "Far",
+          "zIndex": 3
+        }
+      ],
+      "relations": []
+    }
+  },
+  "docType": "QuickMindmap",
+  "docId": "2b0ed6a0-6d0a-4f55-9a43-6a1b0c9e7f21",
+  "docTypeVersion": 1,
+  "createdAt": "2026-01-21T06:40:44.241Z",
+  "updatedAt": "2026-01-21T06:41:34.181Z"
+}

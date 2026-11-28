@@ -27,7 +27,7 @@ type HybridflowStore struct {
 
 // hybridflowCallTimeout bounds one call. Short, because every one of them is a single-row read or
 // write on a database on the same network: a call that takes longer than this is a service that is
-// down, and a run is better told so than left holding a card while it waits.
+// down, and a run is better told so than left holding a flow node while it waits.
 const hybridflowCallTimeout = 15 * time.Second
 
 func NewHybridflowStore(base, token string) *HybridflowStore {
@@ -40,24 +40,16 @@ func NewHybridflowStore(base, token string) *HybridflowStore {
 
 var _ BoardStore = (*HybridflowStore)(nil)
 
-// boardPayload is what the service answers a board with. Only the cards are read: the board's
-// own row carries a name, a handle and a revision the runner has no use for, and the change cursor
-// is for a client that watches rather than one that re-reads at every step.
-type BoardPayload struct {
-	FlowNodes []FlowNode `json:"flowNodes"`
-}
-
-func (p BoardPayload) board() *BoardContent {
-	return &BoardContent{FlowNodes: p.FlowNodes}
-}
-
 func (s *HybridflowStore) Board(handle string) (*BoardContent, error) {
 	return s.readBoard(handle, "")
 }
 
-func (s *HybridflowStore) Start(handle, flowNodeID, runID string) (*BoardContent, error) {
-	return s.change(handle, runID, http.MethodPost, s.FlowNodePath(handle, flowNodeID)+"/play",
-		map[string]any{"run": runID, "agentPackage": true})
+func (s *HybridflowStore) Start(handle, flowNodeID, runID string, afterPredecessor ...bool) (*BoardContent, error) {
+	payload := map[string]any{"run": runID, "agentPackage": true}
+	if len(afterPredecessor) > 0 && afterPredecessor[0] {
+		payload["afterPredecessor"] = true
+	}
+	return s.change(handle, runID, http.MethodPost, s.FlowNodePath(handle, flowNodeID)+"/play", payload)
 }
 
 func (s *HybridflowStore) Reopen(handle, flowNodeID, runID string) (*BoardContent, error) {
@@ -70,9 +62,34 @@ func (s *HybridflowStore) Hold(handle, flowNodeID, runID string) (*BoardContent,
 		map[string]string{"status": FlowNodeStatusWaitingRefresh})
 }
 
-func (s *HybridflowStore) Finish(handle, flowNodeID, runID, status string, outputs ...json.RawMessage) (*BoardContent, error) {
-	return s.change(handle, runID, http.MethodPost, s.FlowNodePath(handle, flowNodeID)+"/played",
-		map[string]any{"run": runID, "status": status, "output": firstOutput(outputs)})
+func (s *HybridflowStore) Finish(handle, flowNodeID, runID string, result PlayResult) (*BoardContent, error) {
+	payload := struct {
+		Run string `json:"run"`
+		PlayResult
+	}{Run: runID, PlayResult: result}
+	return s.change(handle, runID, http.MethodPost, s.FlowNodePath(handle, flowNodeID)+"/played", payload)
+}
+
+func (s *HybridflowStore) PassLimiter(ctx context.Context, handle, flowNodeID, runID string, revision int64, output json.RawMessage) (*FlowNode, string, error) {
+	payload := struct {
+		Revision int64           `json:"revision"`
+		Output   json.RawMessage `json:"output,omitempty"`
+	}{revision, output}
+	body, err := s.requestContext(ctx, http.MethodPost, s.FlowNodePath(handle, flowNodeID)+"/pass", runID, payload)
+	if err != nil {
+		return nil, "", err
+	}
+	var result struct {
+		FlowNode  FlowNode `json:"flowNode"`
+		Successor string   `json:"successor"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, "", fmt.Errorf("the limiter pass could not be read: %w", err)
+	}
+	if result.FlowNode.ID != flowNodeID || result.Successor == "" {
+		return nil, "", fmt.Errorf("the limiter pass is missing the flow node or its selected successor")
+	}
+	return &result.FlowNode, result.Successor, nil
 }
 
 func (s *HybridflowStore) Chat(handle, flowNodeID, chat string) (*BoardContent, error) {
@@ -80,8 +97,8 @@ func (s *HybridflowStore) Chat(handle, flowNodeID, chat string) (*BoardContent, 
 		map[string]string{"chat": chat})
 }
 
-// Ready offers the card a turn again. The claim is the settle's to free — this only says the
-// card is to be played — so no run travels as the actor: there is no run yet to name.
+// Ready offers the flow node a turn again. The claim is the settle's to free — this only says the
+// flow node is to be played — so no run travels as the actor: there is no run yet to name.
 func (s *HybridflowStore) Ready(handle, flowNodeID string) (*BoardContent, error) {
 	return s.change(handle, "", http.MethodPatch, s.FlowNodePath(handle, flowNodeID),
 		map[string]string{"status": FlowNodeStatusReady})
@@ -108,8 +125,8 @@ type UsagePayload struct {
 	CostUsdMicros    *int64 `json:"costUsdMicros,omitempty"`
 }
 
-// ReportUsage files what a turn cost on the card it ran for: one call, and no board read back
-// after it — the report changes no card, so there is no chain to work out. The run travels as
+// ReportUsage files what a turn cost on the flow node it ran for: one call, and no board read back
+// after it — the report changes no flow node, so there is no chain to work out. The run travels as
 // the actor, so the filing is said in the run's name where anything asks.
 func (s *HybridflowStore) ReportUsage(handle, flowNodeID string, report UsageReport) error {
 	payload := UsagePayload{
@@ -126,10 +143,10 @@ func (s *HybridflowStore) ReportUsage(handle, flowNodeID string, report UsageRep
 }
 
 // Drop is Finish with the refusal swallowed. The service refuses a release from a run that does not
-// hold the card, which is the guard this operation *is* — so a 409 here is the answer rather than a
+// hold the flow node, which is the guard this operation *is* — so a 409 here is the answer rather than a
 // failure, and the board is read back so the caller still gets the chain.
 func (s *HybridflowStore) Drop(handle, flowNodeID, runID string) (*BoardContent, error) {
-	board, err := s.Finish(handle, flowNodeID, runID, FlowNodeStatusInterrupted)
+	board, err := s.Finish(handle, flowNodeID, runID, PlayResult{Status: FlowNodeStatusInterrupted})
 	var refused *httpkit.HTTPError
 	if errors.As(err, &refused) && (refused.Status == http.StatusConflict || refused.Status == http.StatusNotFound) {
 		return s.readBoard(handle, runID)
@@ -152,7 +169,7 @@ func (s *HybridflowStore) SettleRun(runID string) (int, error) {
 }
 
 // managedAgent is one managed agent as the hybridflow-store answers it: the named definition of
-// what plays a flow node. Only the fields a play runs on are read — the engine, the model and the
+// what plays a flow node. Only the fields a play runs on are read — the harness, the model and the
 // standing instructions — and the rest of the answer is left unread.
 type ManagedAgent struct {
 	Archived     bool                 `json:"archived"`
@@ -232,8 +249,8 @@ func (v *ManagedAgentVersion) HasPackage() bool {
 }
 
 // Agent reads one managed agent, by id. A 404 is answered as ErrAgentUnknown rather than as an
-// HTTP error, because the caller treats "no such agent" as a fork — a card written before managed
-// agents names an engine rather than an id — and not as a failure.
+// HTTP error, because the caller treats "no such agent" as a fork — a flow node written before managed
+// agents names a harness rather than an id — and not as a failure.
 func (s *HybridflowStore) Agent(id string) (*ManagedAgent, error) {
 	body, err := s.request(http.MethodGet, "/agents/"+url.PathEscape(id), "", nil)
 	if err != nil {
@@ -251,7 +268,7 @@ func (s *HybridflowStore) Agent(id string) (*ManagedAgent, error) {
 }
 
 // managedRunner is one runner as the hybridflow-store answers it. Only the name is read: the
-// refusal a pinned card is met with names the runner it wanted, and an id nobody reads is no
+// refusal a pinned flow node is met with names the runner it wanted, and an id nobody reads is no
 // sentence.
 type ManagedRunner struct {
 	Name string `json:"name"`
@@ -292,29 +309,15 @@ func (s *HybridflowStore) FlowNodePath(handle, flowNodeID string) string {
 	return s.BoardPath(handle) + "/flow-nodes/" + url.PathEscape(flowNodeID)
 }
 
-// The paths the turn's boards proxy forwards to. One helper per shape so the escaping lives in
-// one place: the handlers name the shape, never the slashes.
-func (s *HybridflowStore) ClassPath(handle, classID string) string {
-	return s.BoardPath(handle) + "/flow-node-classes/" + url.PathEscape(classID)
-}
-
-func (s *HybridflowStore) ClassVersionPath(handle, classID, versionID string) string {
-	return s.ClassPath(handle, classID) + "/versions/" + url.PathEscape(versionID)
-}
-
 func (s *HybridflowStore) WorkflowPath(handle, workflowID string) string {
 	return s.BoardPath(handle) + "/workflows/" + url.PathEscape(workflowID)
-}
-
-func (s *HybridflowStore) WorkflowClassPath(handle, workflowClassID string) string {
-	return s.BoardPath(handle) + "/workflow-classes/" + url.PathEscape(workflowClassID)
 }
 
 // change makes the write and then reads the board back, which is what the run's chain is worked out
 // from. Two calls — a write and a read — and each of them a single row.
 //
-// The read is **after** the write and not part of it: a write answers with the card it changed, and
-// a chain is a fact about the whole board, including the cards somebody has moved since.
+// The read is **after** the write and not part of it: a write answers with the flow node it changed, and
+// a chain is a fact about the whole board, including the flow nodes somebody has moved since.
 func (s *HybridflowStore) change(handle, actor, method, path string, payload any) (*BoardContent, error) {
 	if _, err := s.request(method, path, actor, payload); err != nil {
 		return nil, err
@@ -327,14 +330,14 @@ func (s *HybridflowStore) readBoard(handle, actor string) (*BoardContent, error)
 	if err != nil {
 		return nil, err
 	}
-	var out BoardPayload
+	var out BoardContent
 	if err := json.Unmarshal(body, &out); err != nil {
 		return nil, fmt.Errorf("the board could not be read: %w", err)
 	}
-	return out.board(), nil
+	return &out, nil
 }
 
-// maxBoardBytes bounds an answer. A board's cards are the length of it and are measured in
+// maxBoardBytes bounds an answer. A board's flow nodes are the length of it and are measured in
 // kilobytes; eight megabytes is room for a very long one and a refusal for anything that is not a
 // board.
 const MaxBoardBytes = 8 << 20
@@ -372,7 +375,7 @@ func (s *HybridflowStore) requestContext(ctx context.Context, method, path, acto
 	resp, err := s.Client.Do(req)
 	if err != nil {
 		// A service that cannot be reached is reported as one, not as a missing board: a run told
-		// "no such flow node" would give up on a card that is perfectly well there.
+		// "no such flow node" would give up on a flow node that is perfectly well there.
 		return nil, &httpkit.HTTPError{
 			Status: http.StatusServiceUnavailable,
 			Msg:    "the hybridflow store could not be reached: " + err.Error(),
@@ -389,7 +392,7 @@ func (s *HybridflowStore) requestContext(ctx context.Context, method, path, acto
 	}
 	if resp.StatusCode >= 300 {
 		// The status is carried through rather than flattened. The runner acts on two of them: a 409
-		// is another run holding the card, which ends a chain politely, and a 404 is a card somebody
+		// is another run holding the flow node, which ends a chain politely, and a 404 is a flow node somebody
 		// deleted while the turn ran, which ends it too. Anything else is a failure worth saying.
 		return nil, &httpkit.HTTPError{Status: resp.StatusCode, Msg: hybridflowError(answer, resp.Status)}
 	}
@@ -409,13 +412,6 @@ func hybridflowError(body []byte, status string) string {
 		return out.Error
 	}
 	return "the hybridflow store answered " + status
-}
-
-func firstOutput(outputs []json.RawMessage) json.RawMessage {
-	if len(outputs) == 0 {
-		return nil
-	}
-	return outputs[0]
 }
 
 func (s *HybridflowStore) Schema(id string) (json.RawMessage, error) {

@@ -6,7 +6,7 @@ export const WORKFLOW_TAB_ID = 'hybridflow-ui-workflow';
 
 export const HYBRIDFLOW_TAB_ID = 'hybridflow-ui-chain-runs';
 
-export const AGENTS_TAB_ID = 'hybridflow-ui-agents';
+export const AGENTIC_RESOURCES_PANEL_ID = 'hybridflow-ui-agents';
 
 export const RUNNERS_TAB_ID = 'hybridflow-ui-runners';
 

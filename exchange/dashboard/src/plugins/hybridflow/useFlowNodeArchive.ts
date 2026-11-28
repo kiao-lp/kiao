@@ -1,52 +1,16 @@
-/** Archiving is a boolean flip: the card stays stored with archived set, hidden everywhere with. */
+/** Archive flow nodes while keeping their records on the board. */
 
 import { useCallback } from 'react';
-import { message, Modal } from 'antd';
-import { WorkerError } from 'kiao-worker';
-import { useWorkerClient } from '@kiao-dashboard-core';
-import { findFlowNode, FlowNodeAt, flowNodesOnChat, isLiveFlowNode } from './boardOps';
+import { useConfirmation } from '@kiao-dashboard-core';
+import { flowNodeTitles } from './flowNodeTitles';
+import { useConfirmOrphanedChatDeletion } from './useConfirmOrphanedChatDeletion';
+import { findFlowNode, FlowNodeAt } from './boardOps';
 import { useHybridflow } from './Hybridflow-ctx';
-
-/** How many titles the question spells out before it starts counting instead. */
-const NAMED_AT_MOST = 6;
-
-/** The cards being archived, named — the last thing said about them before they leave. */
-const naming = (cards: FlowNodeAt[]): string => {
-    const titles = cards.slice(0, NAMED_AT_MOST).map(at => `“${at.flowNode.title || 'Untitled'}”`);
-    const rest = cards.length - titles.length;
-    return rest > 0 ? `${titles.join(', ')} and ${rest} more` : titles.join(', ');
-};
-
-const errorText = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
 export const useFlowNodeArchive = (): ((flowNodeIds: string[]) => void) => {
     const { content, archiveFlowNodes } = useHybridflow();
-    const client = useWorkerClient();
-
-    const askChats = useCallback((chats: string[]) => {
-        const one = chats.length === 1;
-        Modal.confirm({
-            title: one ? 'Delete its chat too?' : `Delete their ${chats.length} chats too?`,
-            content: one
-                ? 'No live node left on the board is played in that conversation. Deleting it takes'
-                    + ' the transcript with it.'
-                : 'No live node left on the board is played in those conversations. Deleting them takes'
-                    + ' the transcripts with them.',
-            okText: 'Yes',
-            okButtonProps: { danger: true },
-            cancelText: 'No',
-            onOk: () => Promise.all(chats.map(chat =>
-                client.deleteHarnessConversation(chat).catch(error => {
-                    if (error instanceof WorkerError && error.response.status === 404) return;
-                    throw error;
-                }),
-            ))
-                .then(() => undefined)
-                .catch(error => message.error(
-                    `${one ? 'The chat' : 'The chats'} could not be deleted: ${errorText(error)}`,
-                )),
-        });
-    }, [client]);
+    const confirm = useConfirmation();
+    const askChats = useConfirmOrphanedChatDeletion('archive');
 
     return useCallback((flowNodeIds: string[]) => {
         if (!content) return;
@@ -55,32 +19,20 @@ export const useFlowNodeArchive = (): ((flowNodeIds: string[]) => void) => {
             .filter((at): at is FlowNodeAt => at !== null && !at.flowNode.archived);
         if (going.length === 0) return;
 
-        const leaving = new Set(going.map(at => at.flowNode.id));
-        const chats = [...new Set(going.map(at => at.flowNode.chat).filter(Boolean))];
-        const orphaned = chats.filter(chat => flowNodesOnChat(content, chat)
-            .filter(isLiveFlowNode)
-            .every(flowNode => leaving.has(flowNode.id)));
-        const archive = () => {
-            archiveFlowNodes(going.map(at => at.flowNode.id));
-            if (orphaned.length > 0) askChats(orphaned);
-        };
-        if (going.length === 1) {
-            const [one] = going;
-            Modal.confirm({
-                title: `Archive “${one.flowNode.title || 'Untitled'}”?`,
-                content: 'It leaves the board but stays stored, hidden everywhere with its links.',
-                okText: 'Archive',
-                cancelText: 'Cancel',
-                onOk: archive,
-            });
-            return;
-        }
-        Modal.confirm({
-            title: `Archive ${going.length} nodes?`,
-            content: `${naming(going)} leave the board but stay stored, hidden everywhere with their links.`,
-            okText: 'Archive',
-            cancelText: 'Cancel',
-            onOk: archive,
+        const alone = going.length === 1;
+        confirm({
+            title: alone
+                ? `Archive ${flowNodeTitles(going)}?`
+                : `Archive ${going.length} nodes?`,
+            description: alone
+                ? 'It leaves the board but stays stored, hidden everywhere with its links.'
+                : `${flowNodeTitles(going)} leave the board but stay stored, hidden everywhere with their links.`,
+            confirmText: 'Archive',
+            danger: false,
+            onConfirm: () => {
+                archiveFlowNodes(going.map(({ flowNode }) => flowNode.id));
+                askChats(content, going);
+            },
         });
-    }, [content, archiveFlowNodes, askChats]);
+    }, [content, confirm, archiveFlowNodes, askChats]);
 };

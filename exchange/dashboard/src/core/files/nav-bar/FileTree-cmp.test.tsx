@@ -355,7 +355,7 @@ describe('dragging a row out of the tree', () => {
         expect(readDraggedFiles(data)).toEqual([{ path: 'units', isDirectory: true }]);
     });
 
-    // Root row is not draggable; the store root is entered as `/`.
+    // Root row is not draggable; the DCMS root is entered as `/`.
     it('leaves the root row where it is', () => {
         h.rows = [row('', { isRoot: true, depth: 0 })];
         render(<FileTreeCmp />);

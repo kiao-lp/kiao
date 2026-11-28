@@ -1,5 +1,5 @@
 import React from 'react';
-import { Button } from 'antd';
+import { IconButton } from '../../ui-foundation/toolbar/IconButton';
 import { BorderLeftOutlined, BorderRightOutlined } from '@ant-design/icons';
 import { useToolBarsOptional } from '../toolbars/ToolBars-ctx';
 
@@ -21,14 +21,13 @@ export const BarToggle: React.FC<{ bar: 'left' | 'right' }> = ({ bar }) => {
         : on ? `Hide the ${bar} column` : `Show the ${bar} column`;
 
     return (
-        <Button
+        <IconButton
+            label={title}
             type={on && !empty ? 'primary' : 'text'}
-            size="small"
             icon={bar === 'left' ? <BorderLeftOutlined /> : <BorderRightOutlined />}
             disabled={empty}
             onClick={() => bars.toggleSide(bar)}
             className="cms-bar-toggle"
-            aria-label={title}
             aria-pressed={on && !empty}
             data-testid={`bar-toggle-${bar}`}
         />
@@ -43,13 +42,12 @@ export const SecondCentralAreaToggle: React.FC = () => {
     const title = on ? 'Hide the second central area' : 'Show the second central area';
 
     return (
-        <Button
+        <IconButton
+            label={title}
             type={on ? 'primary' : 'text'}
-            size="small"
             icon={<SecondCentralAreaIcon />}
             onClick={() => bars.setSecondCentralArea(!on)}
             className="cms-bar-toggle"
-            aria-label={title}
             aria-pressed={on}
             data-testid="bar-toggle-center-2"
         />

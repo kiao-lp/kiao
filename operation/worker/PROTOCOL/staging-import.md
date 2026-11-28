@@ -1,3 +1,9 @@
+---
+document:
+  status: DRAFT
+  role: PRIMARY_SOURCE
+---
+
 # Staging and the import gate
 
 ← [worker wire protocol](/operation/worker/PROTOCOL.md) · assumes the index and [file endpoints](/operation/worker/PROTOCOL/files.md).
@@ -18,7 +24,7 @@ differences, which are the only reasons this endpoint exists rather than a conve
 - **No listing shows the `.kiao-uploads` folder itself.** Files nobody has accepted yet must not
   read as content. A listing *of* a staging area works normally: that is what the client reviewing
   one asks for.
-- **It is kept out of git**, by a `.gitignore` of `*` seeded in it — in production the store root is
+- **It is kept out of git**, by a `.gitignore` of `*` seeded in it — in production the DCMS root is
   a work tree, and an upload waiting to be answered for would otherwise fill Source Control.
 - **It is swept.** Opening one removes the areas older than 24 hours, so an upload whose browser was
   closed does not sit in a folder nobody can see forever.

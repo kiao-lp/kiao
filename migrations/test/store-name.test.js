@@ -50,7 +50,7 @@ test('a decomposed title is named the same as a composed one', () => {
 
 test('a name carries nothing the link fixer would read as a token boundary… except the ones that travel', () => {
     // ':' is a boundary AND opens a markdown scheme, so it must be gone. Space, quote, parens and
-    // commas are boundaries too, but a stored reference is matched with them in place — the pattern
+    // commas are boundaries too, but a DCMS link is matched with them in place — the pattern
     // spells the old path out — so they stay, and a title keeps reading as a title.
     assert.ok(!toStoreName('a : b', 'x').includes(':'));
     assert.strictEqual(toStoreName("Ce n'est (pas) fini, non", 'x'), "Ce n'est (pas) fini, non");

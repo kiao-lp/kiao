@@ -1,7 +1,7 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, Button, Input, Popconfirm, Spin, message } from 'antd';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Alert, Button, Input, message } from 'antd';
 import { DeleteOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
-import { Tooltip, useWorkerClient } from '@kiao-dashboard-core';
+import { AsyncList, CommitInput, IconButton, InProgressFeedback, Tooltip, useWorkerClient, useConfirmation } from '@kiao-dashboard-core';
 import type { RunnerIdentity } from 'kiao-worker';
 import { NewRunnerDto, RunnerDto, RunnerPatchDto, useHybridflowClient } from '../service';
 import { useRunners } from '../Runners-ctx';
@@ -25,38 +25,51 @@ const SEEN_REFRESH_MS = 30_000;
 /** One runner: its name, when it was last heard from, and whether it is this machine. */
 const RunnerCard: React.FC<{
     runner: RunnerDto;
-
     me: RunnerIdentity | null;
+    claimingRunner: string | null;
     onPatch: (patch: RunnerPatchDto) => Promise<unknown>;
     onRemove: () => Promise<unknown>;
     onClaim: () => Promise<unknown>;
-}> = ({ runner, me, onPatch, onRemove, onClaim }) => {
+}> = ({ runner, me, claimingRunner, onPatch, onRemove, onClaim }) => {
+    const confirm = useConfirmation();
     const [name, setName] = useState(runner.name);
-    const [claiming, setClaiming] = useState(false);
+    const [operation, setOperation] = useState<'rename' | 'delete' | null>(null);
+    const writing = useRef(false);
+    const claiming = claimingRunner === runner.id;
+    const busy = operation !== null || claiming;
     useEffect(() => {
         setName(runner.name);
-    }, [runner]);
+    }, [runner.name]);
 
-    const commitName = () => {
-        const wanted = name.trim();
+    const write = async (kind: 'rename' | 'delete', run: () => Promise<unknown>) => {
+        if (writing.current || claiming) return;
+        writing.current = true;
+        setOperation(kind);
+        try {
+            await run();
+        } catch (cause) {
+            message.error(`The runner could not be ${kind === 'rename' ? 'changed' : 'deleted'}: ${cause instanceof Error ? cause.message : cause}`);
+            if (kind === 'rename') setName(runner.name);
+        } finally {
+            writing.current = false;
+            setOperation(null);
+        }
+    };
+
+    const commitName = (value: string) => {
+        if (writing.current || claiming) return;
+        const wanted = value.trim();
         if (!wanted || wanted === runner.name) {
             setName(runner.name);
             return;
         }
-        void onPatch({ name: wanted })
-            .catch(cause => {
-                message.error(`The runner could not be changed: ${cause instanceof Error ? cause.message : cause}`);
-                setName(runner.name);
-            });
+        void write('rename', () => onPatch({ name: wanted }));
     };
 
     const claim = () => {
-        if (claiming) return;
-        setClaiming(true);
         void onClaim()
             .catch(cause => message.error(
-                `This machine could not be named ${runner.name}: ${cause instanceof Error ? cause.message : cause}`))
-            .finally(() => setClaiming(false));
+                `This machine could not be named ${runner.name}: ${cause instanceof Error ? cause.message : cause}`));
     };
 
     const isMe = me !== null && me.runnerId !== '' && me.runnerId === runner.id;
@@ -65,38 +78,30 @@ const RunnerCard: React.FC<{
     return (
         <div className={styles.card} data-testid="runner-card">
             <div className={styles.cardRow}>
-                <Input
-                    size="small"
+                <CommitInput
                     className={styles.grow}
                     value={name}
                     aria-label={`Name of ${runner.name}`}
                     data-testid="runner-name"
-                    onChange={event => setName(event.target.value)}
-                    onBlur={commitName}
-                    onPressEnter={commitName}
+                    disabled={busy}
+                    onDraftChange={setName}
+                    onCommit={commitName}
                 />
-                <Popconfirm
-                    title="Delete this runner?"
-                    description="The tasks naming it keep naming it, and cannot be played until they name another."
-                    okText="Delete"
-                    okButtonProps={{ danger: true }}
-                    onConfirm={() => {
-                        void onRemove().catch(cause => message.error(
-                            `The runner could not be deleted: ${cause instanceof Error ? cause.message : cause}`));
-                    }}
-                >
-                    <Tooltip title={DELETE_HELP}>
-                        <Button
-                            size="small"
-                            type="text"
-                            danger
-                            icon={<DeleteOutlined />}
-                            aria-label={`Delete ${runner.name}`}
-                            data-testid="delete-runner"
-                        />
-                    </Tooltip>
-                </Popconfirm>
+                <IconButton
+                    label={`Delete ${runner.name}`}
+                    tooltip={DELETE_HELP}
+                    danger
+                    icon={<DeleteOutlined />}
+                    disabled={busy}
+                    data-testid="delete-runner"
+                    onClick={() => confirm({
+                        title: `Delete runner “${runner.name}”?`,
+                        description: 'The tasks naming it keep naming it, and cannot be played until they name another.',
+                        onConfirm: () => write('delete', onRemove),
+                    })}
+                />
             </div>
+            {operation === 'rename' && <InProgressFeedback label="Saving runner name…" />}
             <div className={styles.cardRow}>
                 <Tooltip title={`${SEEN_HELP} ${lastSeenExact(runner.lastSeen)}`}>
                     <span className={styles.seen} data-testid="runner-last-seen">
@@ -113,7 +118,7 @@ const RunnerCard: React.FC<{
                                 <Button
                                     size="small"
                                     type="text"
-                                    disabled={pinned || claiming}
+                                    disabled={pinned || claimingRunner !== null || operation !== null}
                                     loading={claiming}
                                     onClick={claim}
                                     data-testid="its-me"
@@ -137,16 +142,21 @@ const RunnerCreator: React.FC<{
 }> = ({ onCreate, onClose }) => {
     const [name, setName] = useState('');
     const [saving, setSaving] = useState(false);
+    const submitting = useRef(false);
 
     const create = () => {
         const wanted = name.trim();
-        if (!wanted || saving) return;
+        if (!wanted || submitting.current) return;
+        submitting.current = true;
         setSaving(true);
         void onCreate({ name: wanted })
             .then(onClose)
             .catch(cause => message.error(
                 `The runner could not be created: ${cause instanceof Error ? cause.message : cause}`))
-            .finally(() => setSaving(false));
+            .finally(() => {
+                submitting.current = false;
+                setSaving(false);
+            });
     };
 
     return (
@@ -158,14 +168,16 @@ const RunnerCreator: React.FC<{
                 placeholder="What the machine is"
                 aria-label="New runner name"
                 data-testid="new-runner-name"
+                disabled={saving}
                 onChange={event => setName(event.target.value)}
                 onPressEnter={create}
             />
             <div className={styles.cardRow}>
                 <span className={styles.spacer} />
-                <Button size="small" onClick={onClose}>Cancel</Button>
+                <Button size="small" disabled={saving} onClick={onClose}>Cancel</Button>
                 <Button size="small" type="primary" onClick={create}
                     disabled={!name.trim() || saving}
+                    loading={saving} aria-label="Create" aria-busy={saving}
                     data-testid="create-runner">
                     Create
                 </Button>
@@ -174,19 +186,24 @@ const RunnerCreator: React.FC<{
     );
 };
 
-/** The runners: the machines that play cards, kept in the hybridflow-store beside the boards. */
+/** The runners: the machines that play flow nodes, kept in the hybridflow-store beside the boards. */
 export const RunnersPanel: React.FC = () => {
     const client = useHybridflowClient();
     const files = useWorkerClient();
     const { runners, loading, error, reload, create, patch, remove } = useRunners();
     const [creating, setCreating] = useState(false);
     const [me, setMe] = useState<RunnerIdentity | null>(null);
+    const [claimingRunner, setClaimingRunner] = useState<string | null>(null);
+    const claiming = useRef(false);
+    const identityRead = useRef(0);
 
     const refreshMe = useCallback(async () => {
+        const read = ++identityRead.current;
         try {
-            setMe(await files.getRunnerIdentity());
+            const identity = await files.getRunnerIdentity();
+            if (read === identityRead.current) setMe(identity);
         } catch {
-            setMe(null);
+            if (read === identityRead.current) setMe(null);
         }
     }, [files]);
 
@@ -208,19 +225,26 @@ export const RunnersPanel: React.FC = () => {
     }, [client, refresh]);
 
     const claim = useCallback(async (id: string) => {
-        await files.saveConfigJson('runner.json', { runnerId: id });
-        await refreshMe();
+        if (claiming.current) return;
+        claiming.current = true;
+        setClaimingRunner(id);
+        try {
+            await files.saveConfigJson('runner.json', { runnerId: id });
+            await refreshMe();
+        } finally {
+            claiming.current = false;
+            setClaimingRunner(null);
+        }
     }, [files, refreshMe]);
 
     return (
         <div className={styles.panel} data-testid="runners-panel">
             <div className={styles.header}>
                 <span className={styles.spacer} />
-                <Button
-                    size="small"
-                    type="text"
+                <IconButton
+                    label="Refresh runners"
                     icon={<ReloadOutlined />}
-                    aria-label="Refresh runners"
+                    loading={loading} disabled={!client || loading} aria-busy={loading}
                     onClick={() => void refresh()}
                 />
                 <Button
@@ -236,42 +260,29 @@ export const RunnersPanel: React.FC = () => {
             </div>
             {!client ? (
                 <Alert type="info" showIcon
-                    message="No hybridflow store"
+                    title="No hybridflow store"
                     description={'This instance is not configured to reach one, so it has no runners to list. '
                         + 'The runners live in a database served by operation/hybridflow-store.'} />
-            ) : error ? (
-                <Alert type="error" showIcon
-                    message="The runners could not be read"
-                    description={error}
-                    action={<Button size="small" onClick={() => void refresh()}>Try again</Button>} />
-            ) : loading && runners.length === 0 ? (
-                <div className={styles.center}><Spin size="small" /></div>
             ) : (
-                <div className={styles.list}>
-                    {creating && (
-                        <RunnerCreator
-                            onCreate={runner => create(runner)}
-                            onClose={() => setCreating(false)}
-                        />
-                    )}
-                    {runners.map(runner => (
-                        <RunnerCard
-                            key={runner.id}
-                            runner={runner}
-                            me={me}
-                            onPatch={change => patch(runner.id, change)}
-                            onRemove={() => remove(runner.id)}
-                            onClaim={() => claim(runner.id)}
-                        />
-                    ))}
-                    {!creating && runners.length === 0 && (
-                        <p className={styles.hint}>
-                            No runners yet. A runner is a machine that plays cards — what a task
-                            picks when it is pinned to one, and "last seen" is when it was last
-                            heard from.
-                        </p>
-                    )}
-                </div>
+                <AsyncList loading={loading && !runners.length} error={error} errorTitle="The runners could not be read"
+                    onRetry={refresh} retrying={loading}
+                    empty={!creating && !runners.length && ('No runners yet. A runner is a machine that plays flow nodes — '
+                        + 'what a task picks when it is pinned to one, and "last seen" is when it was last heard from.')}>
+                    <div className={styles.list}>
+                        {creating && <RunnerCreator onCreate={create} onClose={() => setCreating(false)} />}
+                        {runners.map(runner => (
+                            <RunnerCard
+                                key={runner.id}
+                                runner={runner}
+                                me={me}
+                                claimingRunner={claimingRunner}
+                                onPatch={change => patch(runner.id, change)}
+                                onRemove={() => remove(runner.id)}
+                                onClaim={() => claim(runner.id)}
+                            />
+                        ))}
+                    </div>
+                </AsyncList>
             )}
         </div>
     );

@@ -10,11 +10,15 @@ import { chainConnectionIssue } from './flowConnections';
 
 export const retryClock = formatLocalDateTime;
 
+export const defaultChainRunName = (at = new Date()): string =>
+    `Started ${at.toLocaleDateString([], { day: 'numeric', month: 'short' })} `
+    + `${at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+
 export interface FlowNodeRun {
     id: string;
     name: string;
 
-    state: 'playing' | 'compacting' | 'scheduled' | 'waiting' | 'refreshing' | 'stopping';
+    state: 'playing' | 'compacting' | 'scheduled' | 'polling' | 'queued' | 'waiting' | 'refreshing' | 'stopping';
     /** Retry time in epoch milliseconds while waiting or refreshing; otherwise null. */
     retryAt: number | null;
 }
@@ -24,7 +28,9 @@ export interface FlowNodePlay {
 
     documentAt: number | null;
 
-    play: (flowNodeId: string, name: string) => void;
+    play: (flowNodeId: string, name: string, afterPredecessor?: boolean, predecessorId?: string) => void;
+
+    resumeOn: (flowNodeId: string, chat: string) => (() => void) | undefined;
 
     stop: (runId: string) => void;
 }
@@ -35,6 +41,8 @@ const stateOf = (run: HarnessChainRun): FlowNodeRun['state'] | null => {
         case 'playing':
         case 'compacting':
         case 'scheduled':
+        case 'polling':
+        case 'queued':
         case 'waiting':
         case 'refreshing':
         case 'stopping':
@@ -47,7 +55,7 @@ const stateOf = (run: HarnessChainRun): FlowNodeRun['state'] | null => {
 /** Worker owns the play lifecycle, independent of this view. */
 export const usePlayFlowNode = (): FlowNodePlay => {
     const { handle, content } = useHybridflow();
-    const { runs, play: playRun, stop } = useChatChainRuns();
+    const { runs, play: playRun, resume, stop } = useChatChainRuns();
     const { chatEnabled } = useDashboardConfig();
     const { showTab } = useToolBars();
 
@@ -57,7 +65,8 @@ export const usePlayFlowNode = (): FlowNodePlay => {
         const map = new Map<string, FlowNodeRun>();
         here.forEach(run => {
             const state = stateOf(run);
-            if (!state || map.has(run.flowNodeId)) return;
+            const current = map.get(run.flowNodeId);
+            if (!state || (current && (current.state !== 'queued' || state === 'queued'))) return;
             map.set(run.flowNodeId, {
                 id: run.id,
                 name: run.name,
@@ -70,12 +79,21 @@ export const usePlayFlowNode = (): FlowNodePlay => {
 
     const runOn = useCallback((flowNodeId: string) => byFlowNode.get(flowNodeId) ?? null, [byFlowNode]);
 
+    const resumeOn = useCallback((flowNodeId: string, chat: string) => {
+        const suspended = here.find(run => run.state === 'suspended' && run.flowNodeId === flowNodeId && run.chat === chat);
+        if (!suspended || !chat) return undefined;
+        return () => {
+            showTab(CONVERSATIONS_TAB_ID);
+            void resume(suspended.id);
+        };
+    }, [here, resume, showTab]);
+
     const documentAt = useMemo(() => here.reduce<number | null>(
         (latest, run) => (run.documentAt && (!latest || run.documentAt > latest) ? run.documentAt : latest),
         null,
     ), [here]);
 
-    const play = useCallback((flowNodeId: string, name: string) => {
+    const play = useCallback((flowNodeId: string, name: string, afterPredecessor?: boolean, predecessorId?: string) => {
         if (!chatEnabled || !handle || !content) return;
         const issue = chainConnectionIssue(content.flowNodes, flowNodeId);
         if (issue) {
@@ -83,8 +101,8 @@ export const usePlayFlowNode = (): FlowNodePlay => {
             return;
         }
         showTab(CONVERSATIONS_TAB_ID);
-        playRun(handle, flowNodeId, name);
+        playRun(handle, flowNodeId, name, afterPredecessor, predecessorId);
     }, [chatEnabled, handle, content, playRun, showTab]);
 
-    return useMemo(() => ({ runOn, documentAt, play, stop }), [runOn, documentAt, play, stop]);
+    return useMemo(() => ({ runOn, documentAt, play, resumeOn, stop }), [runOn, documentAt, play, resumeOn, stop]);
 };

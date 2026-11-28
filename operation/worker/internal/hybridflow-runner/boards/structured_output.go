@@ -45,35 +45,55 @@ func (c *OutputContract) Prompt(prompt string) string {
 		"or a JSON string beyond what the schema requires, and do not put comments in it.\n\nSyntax:\n```output\n<JSON matching the schema>\n```\n\nJSON Schema:\n" + string(c.raw)
 }
 
-var outputFenceLine = regexp.MustCompile("^ {0,3}(`{3,}|~{3,})(.*)$")
+var codeFenceLine = regexp.MustCompile("^ {0,3}(`{3,}|~{3,})(.*)$")
+
+type codeFence struct {
+	label      string
+	start, end int // Line numbers. A negative end marks an unclosed fence.
+}
+
+func codeFences(lines []string) []codeFence {
+	var blocks []codeFence
+	var fence string
+	var block codeFence
+	for index, line := range lines {
+		match := codeFenceLine.FindStringSubmatch(line)
+		if match == nil {
+			continue
+		}
+		if fence == "" {
+			fence = match[1]
+			block = codeFence{label: strings.TrimSpace(match[2]), start: index, end: -1}
+		} else if match[1][0] == fence[0] && len(match[1]) >= len(fence) && strings.TrimSpace(match[2]) == "" {
+			block.end = index
+			blocks = append(blocks, block)
+			fence = ""
+		}
+	}
+	if fence != "" {
+		blocks = append(blocks, block)
+	}
+	return blocks
+}
 
 func (c *OutputContract) Extract(message string) (json.RawMessage, error) {
 	if c == nil {
 		return nil, nil
 	}
-	var fence, language string
-	var body []string
-	var outputs []string
-	for _, line := range strings.Split(strings.ReplaceAll(message, "\r\n", "\n"), "\n") {
-		match := outputFenceLine.FindStringSubmatch(line)
-		if fence == "" {
-			if match != nil {
-				fence, language = match[1], strings.TrimSpace(match[2])
-				body = nil
-			}
-		} else if match != nil && match[1][0] == fence[0] && len(match[1]) >= len(fence) && strings.TrimSpace(match[2]) == "" {
-			if language == "output" {
-				outputs = append(outputs, strings.Join(body, "\n"))
-			}
-			fence = ""
-		} else if language == "output" {
-			body = append(body, line)
+	var raw []byte
+	lines := strings.Split(strings.ReplaceAll(message, "\r\n", "\n"), "\n")
+	for _, block := range codeFences(lines) {
+		if block.label != "output" {
+			continue
 		}
+		if raw != nil || block.end < 0 {
+			return nil, fmt.Errorf("the final message must contain exactly one complete output block")
+		}
+		raw = []byte(strings.TrimSpace(strings.Join(lines[block.start+1:block.end], "\n")))
 	}
-	if len(outputs) != 1 || (fence != "" && language == "output") {
+	if raw == nil {
 		return nil, fmt.Errorf("the final message must contain exactly one complete output block")
 	}
-	raw := []byte(strings.TrimSpace(outputs[0]))
 	if !json.Valid(raw) {
 		return nil, fmt.Errorf("the output block is not valid JSON")
 	}
@@ -89,11 +109,25 @@ func (c *OutputContract) Extract(message string) (json.RawMessage, error) {
 	return compact.Bytes(), nil
 }
 
-// A join exposes predecessor outputs in board order; a single predecessor passes its value through.
+// A parallel join exposes outputs in board order. A direct play of an exclusive
+// gateway uses the most recent completed predecessor.
 func (b *BoardContent) Input(id string) json.RawMessage {
 	preds := b.PredecessorsOf(id)
 	if len(preds) == 0 {
 		return nil
+	}
+	if b.FlowNode(id).Type == FlowNodeTypeExclusiveGateway {
+		var latest *FlowNode
+		for i := range preds {
+			node := &preds[i]
+			if node.Status == FlowNodeStatusDone && (latest == nil || node.Completion > latest.Completion) {
+				latest = node
+			}
+		}
+		if latest == nil {
+			return nil
+		}
+		return bytes.Clone(latest.Output)
 	}
 	values := make([]json.RawMessage, len(preds))
 	hasOutput := false
@@ -112,45 +146,74 @@ func (b *BoardContent) Input(id string) json.RawMessage {
 	return raw
 }
 
-var inputSlot = regexp.MustCompile(`\{\{\s*(input(?:\.[^{}\s]+)?)\s*\}\}`)
+var contextSlot = regexp.MustCompile(
+	`\{\{\s*(?:(input|` + workflowNamespace + `)(?:\.([^{}\s]+))?|role\.([A-Za-z0-9_-]+))\s*\}\}|` +
+		`\{\{\s*(workflowFolder)\s*\}\}(/?)`)
 
-func RenderInput(prompt string, input json.RawMessage) (string, error) {
-	if !inputSlot.MatchString(prompt) {
-		return prompt, nil
+func HasContextReference(text string) bool { return contextSlot.MatchString(text) }
+
+type NodeContext struct {
+	Input    json.RawMessage
+	Workflow *Workflow
+	Roles    map[string]string
+}
+
+func (b *BoardContent) NodeContext(flowNode *FlowNode) NodeContext {
+	values := NodeContext{Input: b.Input(flowNode.ID), Workflow: b.Workflow(flowNode.Workflow)}
+	for _, node := range b.FlowNodes {
+		if node.Type == flowNodeTypeRole && !node.Archived && node.RoleID != "" {
+			if values.Roles == nil {
+				values.Roles = make(map[string]string)
+			}
+			values.Roles[node.RoleID] = strings.Join(node.People, ", ")
+		}
 	}
-	if len(input) == 0 {
-		return "", fmt.Errorf("the prompt uses input but its predecessor has no successful output")
-	}
-	var root any
-	decoder := json.NewDecoder(bytes.NewReader(input))
-	decoder.UseNumber()
-	if err := decoder.Decode(&root); err != nil {
-		return "", fmt.Errorf("invalid predecessor output: %w", err)
-	}
+	return values
+}
+
+func (c NodeContext) Render(text string) (string, error) {
+	roots := make(map[string]any)
 	var problem error
-	result := inputSlot.ReplaceAllStringFunc(prompt, func(slot string) string {
-		path := inputSlot.FindStringSubmatch(slot)[1]
-		value := root
-		for _, key := range strings.Split(path, ".")[1:] {
-			switch held := value.(type) {
-			case map[string]any:
-				var exists bool
-				value, exists = held[key]
-				if !exists {
-					problem = fmt.Errorf("input has no field %q", path)
-					return slot
-				}
-			case []any:
-				index, err := strconv.Atoi(key)
-				if err != nil || index < 0 || index >= len(held) {
-					problem = fmt.Errorf("input has no field %q", path)
-					return slot
-				}
-				value = held[index]
-			default:
-				problem = fmt.Errorf("input has no field %q", path)
+	result := contextSlot.ReplaceAllStringFunc(text, func(slot string) string {
+		if problem != nil {
+			return slot
+		}
+		match := contextSlot.FindStringSubmatch(slot)
+		if match[4] != "" {
+			if c.Workflow == nil || c.Workflow.WorkflowFolder == "" {
+				problem = fmt.Errorf("the node has no workflow folder for workflowFolder")
 				return slot
 			}
+			if c.Workflow.WorkflowFolder == "/" {
+				return "/"
+			}
+			return c.Workflow.WorkflowFolder + match[5]
+		}
+		if id := match[3]; id != "" {
+			people, found := c.Roles[id]
+			if !found {
+				problem = fmt.Errorf("the board has no role with ID %q", id)
+				return slot
+			}
+			return people
+		}
+		namespace, path := match[1], match[2]
+		key := namespace
+		if namespace != "input" {
+			key = "currentWokflow"
+		}
+		root, loaded := roots[key]
+		if !loaded {
+			root, problem = contextValue(namespace, c.Input, c.Workflow)
+			if problem != nil {
+				return slot
+			}
+			roots[key] = root
+		}
+		value, found := findContextField(root, path)
+		if !found {
+			problem = fmt.Errorf("%s has no field %q", namespace, namespace+"."+path)
+			return slot
 		}
 		if text, ok := value.(string); ok {
 			return text
@@ -159,4 +222,58 @@ func RenderInput(prompt string, input json.RawMessage) (string, error) {
 		return string(raw)
 	})
 	return result, problem
+}
+
+func (c NodeContext) RenderField(field, text string) (string, error) {
+	value, err := c.Render(text)
+	if err != nil {
+		return "", fmt.Errorf("could not resolve %s: %w", field, err)
+	}
+	return strings.TrimSpace(value), nil
+}
+
+func contextValue(namespace string, input json.RawMessage, workflow *Workflow) (any, error) {
+	raw, source := input, "predecessor output"
+	if namespace == "input" {
+		if len(input) == 0 {
+			return nil, fmt.Errorf("the predecessor has no successful output for input")
+		}
+	} else {
+		if workflow == nil {
+			return nil, fmt.Errorf("the node has no workflow for %s", namespace)
+		}
+		raw, source = jsonOf(workflow.Context()), "workflow values"
+	}
+	var root any
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	if err := decoder.Decode(&root); err != nil {
+		return nil, fmt.Errorf("invalid %s: %w", source, err)
+	}
+	return root, nil
+}
+
+func findContextField(value any, path string) (any, bool) {
+	if path == "" {
+		return value, true
+	}
+	for _, key := range strings.Split(path, ".") {
+		switch held := value.(type) {
+		case map[string]any:
+			var found bool
+			value, found = held[key]
+			if !found {
+				return nil, false
+			}
+		case []any:
+			index, err := strconv.Atoi(key)
+			if err != nil || index < 0 || index >= len(held) {
+				return nil, false
+			}
+			value = held[index]
+		default:
+			return nil, false
+		}
+	}
+	return value, true
 }

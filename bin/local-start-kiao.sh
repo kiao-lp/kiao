@@ -60,22 +60,21 @@ export GOTOOLCHAIN=local
 
 export KIAO_WORKER_AUTH_MODE=debug
 export SERVER_PORT="$LOCAL_WORKER_PORT"
-# Root path: taken from the environment if set, otherwise the directory this runs from.
-# A wrapper assembling its own copy may offer a menu of its own and export the answer —
-# what is already set wins here.
-if [ -z "$KIAO_WORKER_ROOT_PATH" ]; then
+# A wrapper can select the DCMS root and export it before calling this script.
+KIAO_WORKER_DCMS_ROOT="${KIAO_WORKER_DCMS_ROOT:-${KIAO_WORKER_ROOT_PATH:-}}"
+if [ -z "$KIAO_WORKER_DCMS_ROOT" ]; then
   if [ -t 0 ]; then
-    read -r -p "Store root path [$(pwd)]: " answer
-    KIAO_WORKER_ROOT_PATH="${answer:-$(pwd)}"
+    read -r -p "DCMS root [$(pwd)]: " answer
+    KIAO_WORKER_DCMS_ROOT="${answer:-$(pwd)}"
   else
-    KIAO_WORKER_ROOT_PATH="$(pwd)"
+    KIAO_WORKER_DCMS_ROOT="$(pwd)"
   fi
 fi
-mkdir -p "$KIAO_WORKER_ROOT_PATH" || exit 1
-KIAO_WORKER_ROOT_PATH="$(cd "$KIAO_WORKER_ROOT_PATH" && pwd -P)" || exit 1
-export KIAO_WORKER_ROOT_PATH
-echo "Root path: $KIAO_WORKER_ROOT_PATH"
-# No state path is set: it defaults to <root>/.kiao-config, so each store above keeps its own
+mkdir -p "$KIAO_WORKER_DCMS_ROOT" || exit 1
+KIAO_WORKER_DCMS_ROOT="$(cd "$KIAO_WORKER_DCMS_ROOT" && pwd -P)" || exit 1
+export KIAO_WORKER_DCMS_ROOT
+echo "DCMS root: $KIAO_WORKER_DCMS_ROOT"
+# State defaults to <dcms-root>/.kiao-config, so each store keeps its own
 # ledger, trust registry and config documents. Picking a root another worker is already
 # serving is then refused at startup over the shared process lock — which is right, as the two
 # would be writing the same store.
@@ -96,8 +95,8 @@ if [ -z "${KIAO_WORKER_TOOLBOX_PATH+set}" ]; then
     fi
     export KIAO_WORKER_TOOLBOX_PATH
 fi
-# And that prefix's own bin ahead of PATH, which is what makes an agent CLI installed from the panel
-# an agent the tab offers: the service resolves an agent's CLI on its own PATH, and the panel
+# Put the toolbox bin directory first on PATH so worker discovers harness CLIs installed
+# from the panel. Worker resolves each harness CLI on its own PATH, and the panel
 # installs into the prefix and nowhere else. The launcher does the same for `kiao`, and the
 # container image in its Dockerfile.
 if [ -n "$KIAO_WORKER_TOOLBOX_PATH" ]; then
@@ -106,10 +105,10 @@ fi
 
 agentic_manager_pid=""
 if [ -z "${KIAO_AGENTIC_RESOURCE_MANAGER_URL:-}" ]; then
-  resource_root="$KIAO_WORKER_ROOT_PATH/agentic-resource-management"
+  resource_root="$KIAO_WORKER_DCMS_ROOT/agentic-resource-management"
   resource_preparation=(prepare "$resource_root")
   if [ -z "${KIAO_AGENTIC_RESOURCES_PATH:-}" ]; then
-    legacy_agents="${KIAO_WORKER_STATE_PATH:-$KIAO_WORKER_ROOT_PATH/.kiao-config}/agentic-resources"
+    legacy_agents="${KIAO_WORKER_STATE_PATH:-$KIAO_WORKER_DCMS_ROOT/.kiao-config}/agentic-resources"
     resource_preparation+=(--legacy-agents "$legacy_agents")
     export KIAO_AGENTIC_RESOURCES_PATH="$resource_root/agents"
     export KIAO_AGENTIC_RESOURCE_MANAGER_CACHE="${KIAO_AGENTIC_RESOURCE_MANAGER_CACHE:-$legacy_agents/.cache}"
@@ -144,13 +143,13 @@ hybridflow_store_pid=""
 export KIAO_WORKER_HYBRIDFLOW_URL="${KIAO_WORKER_HYBRIDFLOW_URL:-}"
 export KIAO_WORKER_HYBRIDFLOW_TOKEN="${KIAO_WORKER_HYBRIDFLOW_TOKEN:-}"
 # Who the work is recorded as. Only a caller bearing the service token may name one, which is why
-# this travels with it; a card moved from here then says who moved it instead of "worker".
+# this travels with it; a flow node moved from here then says who moved it instead of "worker".
 export KIAO_HYBRIDFLOW_ACTOR="${KIAO_HYBRIDFLOW_ACTOR:-${USER:-}}"
 
 if [ -n "$KIAO_WORKER_HYBRIDFLOW_URL" ] && [ -n "${KIAO_HYBRIDFLOW_STORE_DATABASE_URL:-}" ]; then
   echo "ERROR: KIAO_WORKER_HYBRIDFLOW_URL and KIAO_HYBRIDFLOW_STORE_DATABASE_URL are both set." >&2
   echo "       The first is a service to send the boards to, the second a database to serve them" >&2
-  echo "       from — two different places to write a card. Unset one." >&2
+  echo "       from — two different places to write a flow node. Unset one." >&2
   exit 1
 fi
 
@@ -193,7 +192,7 @@ if [ ! -d "node_modules" ]; then
 fi
 # Plugin projects dropped into the assembly from outside this tree arrive as VITE_PLUGIN_PATHS,
 # already set by the caller; the same variable is read by `npm run build`, by vitest and by
-# the e2e harness. Unset, this is the delivered lot and nothing else.
+# the end-to-end test setup. With the variable unset, load only the bundled plugins.
 VITE_NO_SECURITY=true VITE_BACKEND_URL=http://localhost:$LOCAL_WORKER_PORT \
   VITE_PLUGIN_PATHS="${VITE_PLUGIN_PATHS:-}" \
   npm start -- --port $LOCAL_DASHBOARD_PORT &

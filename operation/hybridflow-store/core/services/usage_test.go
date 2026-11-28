@@ -18,7 +18,7 @@ func newUsage(t *testing.T) (*services.Usage, *services.FlowNodes, *entities.Boa
 	ids := &countingIDs{}
 	boards := services.NewBoards(store, clock, ids)
 	agents := services.NewAgents(store, clock, ids)
-	flowNodes := services.NewFlowNodes(store, store, store, store, store, clock, ids)
+	flowNodes := services.NewFlowNodes(store, store, store, store, clock, ids)
 	ctx := context.Background()
 	// First, so the id is the one aiSettings names: boards are minted after it.
 	if _, err := agents.Create(ctx, services.NewAgentRequest{Name: "Reviewer", Harness: "claude", Model: "opus"}, "alex"); err != nil {
@@ -31,7 +31,7 @@ func newUsage(t *testing.T) (*services.Usage, *services.FlowNodes, *entities.Boa
 	return services.NewUsage(store, store, clock, ids), flowNodes, made
 }
 
-func aiCard(t *testing.T, flowNodes *services.FlowNodes, boardID string) entities.FlowNode {
+func aiNode(t *testing.T, flowNodes *services.FlowNodes, boardID string) entities.FlowNode {
 	t.Helper()
 	made, err := flowNodes.Create(context.Background(), boardID, []services.NewFlowNodeRequest{
 		{Title: "Play it", Settings: aiSettings(), Body: "Go on."},
@@ -48,9 +48,9 @@ func micros(n int64) *int64 { return &n }
 // rows, and one that did not still gets its bill filed.
 func TestRecordMintsTheIDAndStampsNow(t *testing.T) {
 	usage, flowNodes, b := newUsage(t)
-	card := aiCard(t, flowNodes, b.ID)
+	node := aiNode(t, flowNodes, b.ID)
 	filed, err := usage.Record(context.Background(), services.RecordUsageRequest{
-		FlowNodeID: card.ID, RunID: "run-1", Model: "muse-spark",
+		FlowNodeID: node.ID, RunID: "run-1", Model: "muse-spark",
 		InputTokens: 100, OutputTokens: 50,
 	})
 	if err != nil {
@@ -62,7 +62,7 @@ func TestRecordMintsTheIDAndStampsNow(t *testing.T) {
 	if filed.ReportedAt.IsZero() {
 		t.Error("the report has no stamp")
 	}
-	if filed.FlowNodeID != card.ID || filed.RunID != "run-1" || filed.Model != "muse-spark" {
+	if filed.FlowNodeID != node.ID || filed.RunID != "run-1" || filed.Model != "muse-spark" {
 		t.Errorf("report = %+v", filed)
 	}
 	if filed.CostUsdMicros != nil {
@@ -74,10 +74,10 @@ func TestRecordMintsTheIDAndStampsNow(t *testing.T) {
 // the price in its own figures.
 func TestRecordKeepsWhatTheReporterSaid(t *testing.T) {
 	usage, flowNodes, b := newUsage(t)
-	card := aiCard(t, flowNodes, b.ID)
+	node := aiNode(t, flowNodes, b.ID)
 	at := time.Date(2026, 9, 12, 7, 30, 0, 0, time.UTC)
 	filed, err := usage.Record(context.Background(), services.RecordUsageRequest{
-		ID: "123e4567-e89b-42d3-a456-426614174000", FlowNodeID: card.ID, ReportedAt: &at,
+		ID: "123e4567-e89b-42d3-a456-426614174000", FlowNodeID: node.ID, ReportedAt: &at,
 		RunID: "run-1", Model: "muse-spark",
 		InputTokens: 100, OutputTokens: 50, CacheReadTokens: 10, CacheWriteTokens: 5,
 		ReasoningTokens: 7, CostUsdMicros: micros(23400),
@@ -99,13 +99,13 @@ func TestRecordKeepsWhatTheReporterSaid(t *testing.T) {
 	}
 }
 
-func TestRecordRefusesWhatIsNotAnAICard(t *testing.T) {
+func TestRecordRefusesWhatIsNotAnAIFlowNode(t *testing.T) {
 	usage, flowNodes, b := newUsage(t)
 	ctx := context.Background()
 	if _, err := usage.Record(ctx, services.RecordUsageRequest{
-		FlowNodeID: "no-such-card",
+		FlowNodeID: "no-such-node",
 	}); !errors.Is(err, entities.ErrNotFound) {
-		t.Errorf("record on a missing card = %v, want not found", err)
+		t.Errorf("record on a missing flow node = %v, want not found", err)
 	}
 	made, err := flowNodes.Create(ctx, b.ID, []services.NewFlowNodeRequest{{Title: "Do it"}}, "alex")
 	if err != nil {
@@ -114,26 +114,26 @@ func TestRecordRefusesWhatIsNotAnAICard(t *testing.T) {
 	if _, err := usage.Record(ctx, services.RecordUsageRequest{
 		FlowNodeID: made[0].ID,
 	}); !errors.Is(err, entities.ErrInvalid) {
-		t.Errorf("record on a human card = %v, want invalid", err)
+		t.Errorf("record on a human flow node = %v, want invalid", err)
 	}
 }
 
 func TestRecordRefusesAMalformedIDAndNegativeFigures(t *testing.T) {
 	usage, flowNodes, b := newUsage(t)
-	card := aiCard(t, flowNodes, b.ID)
+	node := aiNode(t, flowNodes, b.ID)
 	ctx := context.Background()
 	if _, err := usage.Record(ctx, services.RecordUsageRequest{
-		ID: "not-an-id", FlowNodeID: card.ID,
+		ID: "not-an-id", FlowNodeID: node.ID,
 	}); !errors.Is(err, entities.ErrInvalid) {
 		t.Errorf("record with a malformed id = %v, want invalid", err)
 	}
 	if _, err := usage.Record(ctx, services.RecordUsageRequest{
-		FlowNodeID: card.ID, OutputTokens: -1,
+		FlowNodeID: node.ID, OutputTokens: -1,
 	}); !errors.Is(err, entities.ErrInvalid) {
 		t.Errorf("record with negative tokens = %v, want invalid", err)
 	}
 	if _, err := usage.Record(ctx, services.RecordUsageRequest{
-		FlowNodeID: card.ID, CostUsdMicros: micros(-1),
+		FlowNodeID: node.ID, CostUsdMicros: micros(-1),
 	}); !errors.Is(err, entities.ErrInvalid) {
 		t.Errorf("record with a negative cost = %v, want invalid", err)
 	}
@@ -143,10 +143,10 @@ func TestRecordRefusesAMalformedIDAndNegativeFigures(t *testing.T) {
 // counting twice.
 func TestRecordingTwiceCountsOnce(t *testing.T) {
 	usage, flowNodes, b := newUsage(t)
-	card := aiCard(t, flowNodes, b.ID)
+	node := aiNode(t, flowNodes, b.ID)
 	ctx := context.Background()
 	req := services.RecordUsageRequest{
-		ID: "123e4567-e89b-42d3-a456-426614174000", FlowNodeID: card.ID,
+		ID: "123e4567-e89b-42d3-a456-426614174000", FlowNodeID: node.ID,
 		InputTokens: 100, OutputTokens: 50,
 	}
 	if _, err := usage.Record(ctx, req); err != nil {
@@ -155,7 +155,7 @@ func TestRecordingTwiceCountsOnce(t *testing.T) {
 	if _, err := usage.Record(ctx, req); err != nil {
 		t.Fatal(err)
 	}
-	totals, err := usage.Totals(ctx, card.ID)
+	totals, err := usage.Totals(ctx, node.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,20 +166,20 @@ func TestRecordingTwiceCountsOnce(t *testing.T) {
 
 func TestTotalsSumTheReports(t *testing.T) {
 	usage, flowNodes, b := newUsage(t)
-	card := aiCard(t, flowNodes, b.ID)
+	node := aiNode(t, flowNodes, b.ID)
 	ctx := context.Background()
 	if _, err := usage.Record(ctx, services.RecordUsageRequest{
-		FlowNodeID: card.ID, InputTokens: 100, OutputTokens: 50, CostUsdMicros: micros(1000),
+		FlowNodeID: node.ID, InputTokens: 100, OutputTokens: 50, CostUsdMicros: micros(1000),
 	}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := usage.Record(ctx, services.RecordUsageRequest{
-		FlowNodeID: card.ID, InputTokens: 200, OutputTokens: 30,
+		FlowNodeID: node.ID, InputTokens: 200, OutputTokens: 30,
 		CacheReadTokens: 40, ReasoningTokens: 9, CostUsdMicros: micros(2000),
 	}); err != nil {
 		t.Fatal(err)
 	}
-	totals, err := usage.Totals(ctx, card.ID)
+	totals, err := usage.Totals(ctx, node.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,14 +195,14 @@ func TestTotalsSumTheReports(t *testing.T) {
 // No priced report is no priced cost: unknown, never zero.
 func TestTotalsWithNoPricedReportCarryNoCost(t *testing.T) {
 	usage, flowNodes, b := newUsage(t)
-	card := aiCard(t, flowNodes, b.ID)
+	node := aiNode(t, flowNodes, b.ID)
 	ctx := context.Background()
 	if _, err := usage.Record(ctx, services.RecordUsageRequest{
-		FlowNodeID: card.ID, InputTokens: 100,
+		FlowNodeID: node.ID, InputTokens: 100,
 	}); err != nil {
 		t.Fatal(err)
 	}
-	totals, err := usage.Totals(ctx, card.ID)
+	totals, err := usage.Totals(ctx, node.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,19 +211,19 @@ func TestTotalsWithNoPricedReportCarryNoCost(t *testing.T) {
 	}
 }
 
-func TestTotalsOnAMissingCardIsNotFound(t *testing.T) {
+func TestTotalsOnAMissingFlowNodeIsNotFound(t *testing.T) {
 	usage, _, _ := newUsage(t)
-	if _, err := usage.Totals(context.Background(), "no-such-card"); !errors.Is(err, entities.ErrNotFound) {
+	if _, err := usage.Totals(context.Background(), "no-such-node"); !errors.Is(err, entities.ErrNotFound) {
 		t.Errorf("totals = %v, want not found", err)
 	}
 }
 
-// A card with no reports spent zeros — which is what an AI card that never ran totals, and not
+// A flow node with no reports spent zeros — which is what an AI flow node that never ran totals, and not
 // an error.
-func TestTotalsOnACardWithNoReportsIsZeros(t *testing.T) {
+func TestTotalsOnAFlowNodeWithNoReportsIsZeros(t *testing.T) {
 	usage, flowNodes, b := newUsage(t)
-	card := aiCard(t, flowNodes, b.ID)
-	totals, err := usage.Totals(context.Background(), card.ID)
+	node := aiNode(t, flowNodes, b.ID)
+	totals, err := usage.Totals(context.Background(), node.ID)
 	if err != nil {
 		t.Fatal(err)
 	}

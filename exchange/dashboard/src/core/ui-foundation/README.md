@@ -18,8 +18,8 @@ magnification and tooltip decisions.
 | `clipboard/` | Copy text, HTML and SVG/PNG controls and SVG clipboard support |
 | `code-editor/` | [Text, code and JSON editors](code-editor/README.md), [text comparison](code-editor/comparison.md) and editor scrolling |
 | `feedback/` | Viewport-aware tooltips, retryable error boundaries and progress feedback |
-| `forms/` | Form fields, key/value editing and confirmation dialogs |
-| `interactions/` | Selection, pointing, pointer tracking, long press, hover and menu placement |
+| `forms/` | Form fields, key/value editing, [name dialogs](forms/NameDialog.tsx) and confirmation dialogs |
+| `interactions/` | Context menus, selection, pointing, pointer tracking, long press and hover |
 | `language/` | Language flags, language selection and default language names |
 | `layout/` | Weighted split panes, resize handles, vertical labels and row-list styles |
 | `media/` | Asynchronous images, image previews and SVG rendering |
@@ -44,6 +44,15 @@ The theme uses the `kiao-style` theme vocabulary and CSS tokens. Controls also u
 Ant Design and, where relevant, CodeMirror or browser speech recognition. Language selection
 accepts its own language codes and names; clipboard controls accept their own labels and CSS
 classes. `data-zoom-controls` marks a control bar that magnification must leave visible.
+
+## Context menus
+
+[ContextMenu](interactions/ContextMenu.tsx) provides the themed action list, viewport placement
+and dismissal for files, toolbar tabs, board lists, cards, workflow rectangles, drawing surfaces
+and Markdown passages. Wrap a trigger element for a regular context menu, or pass client coordinates
+when a single menu serves several targets or the click needs to be checked first. The caller supplies
+the actions and handles selection, conditional opening and any touch or keyboard shortcuts specific
+to its usage. Click-opened command menus and floating editors use their own controls.
 
 ## State ownership
 

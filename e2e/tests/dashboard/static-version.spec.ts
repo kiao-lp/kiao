@@ -86,7 +86,7 @@ test('generates a static version, replacing every diagram with a picture', async
     // The generated markdown renders in the CMS with its pictures resolved from the store, against
     // the folder of the document — which is what the relative links written here mean. The src is
     // what is asserted rather than the count: an <img> is in the DOM whether or not its src answers,
-    // so four of them were counted even while all four were fetched from the store root and 404ed.
+    // so four of them were counted even while all four were fetched from the DCMS root and 404ed.
     await page.goto(OUTPUT);
     await expect(page.locator('.cms-top-banner')).toBeVisible({ timeout: TIMEOUT });
     const pictures = page.locator('.configured-markdown-container img');

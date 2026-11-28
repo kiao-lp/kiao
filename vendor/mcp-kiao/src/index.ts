@@ -7,7 +7,10 @@ import { registerFileTools } from './tools-files.js';
 // Only auto-start when run as the entrypoint, so the module can also be imported in tests.
 const isEntry = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isEntry) {
-    startServer('kiao-files', ({ server, files }) => registerFileTools(server, files)).catch((err) => {
+    startServer('kiao-files',
+        ({ server, files }) => registerFileTools(server, files),
+        ({ files }) => files.checkStore(),
+    ).catch((err) => {
         process.stderr.write(`[kiao-files] fatal: ${err instanceof Error ? err.stack ?? err.message : String(err)}\n`);
         process.exit(1);
     });

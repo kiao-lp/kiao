@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
-import { Button, Input, Popconfirm, Spin } from 'antd';
+import React from 'react';
+import { Button } from 'antd';
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
-import { extractName, Tooltip } from '@kiao-dashboard-core';
+import { AsyncList, CommitInput, IconButton, extractName, Tooltip, useConfirmation } from '@kiao-dashboard-core';
 import { useMovieEditOptional, type MovieEditValue } from './MovieEdit-ctx';
 import { SaveSegmentsButton, SaveSegmentsStatus } from './SaveSegments';
 import { formatTime, type Segment } from './segments';
@@ -18,18 +18,7 @@ const SegmentRow: React.FC<{
     onGoToStart: () => void;
     onGoToEnd: () => void;
 }> = ({ segment, selected, onSelect, onRename, onRemove, onGoToStart, onGoToEnd }) => {
-    const [name, setName] = useState(segment.name);
-    useEffect(() => { setName(segment.name); }, [segment.name]);
-
-
-    const commit = () => {
-        const wanted = name.trim();
-        if (!wanted || wanted === segment.name) {
-            setName(segment.name);
-            return;
-        }
-        onRename(wanted);
-    };
+    const confirm = useConfirmation();
 
     return (
         <div
@@ -41,33 +30,28 @@ const SegmentRow: React.FC<{
             }}
         >
             <div className={styles.rowHead}>
-                <Input
-                    size="small"
+                <CommitInput
                     className={styles.rowName}
-                    value={name}
+                    value={segment.name}
                     aria-label={`Name of ${segment.name}`}
                     data-testid="segment-name"
-                    onChange={event => setName(event.target.value)}
                     onFocus={onSelect}
-                    onBlur={commit}
-                    onPressEnter={commit}
+                    onCommit={value => {
+                        const name = value.trim();
+                        if (name && name !== segment.name) onRename(name);
+                    }}
                 />
-                <Popconfirm
-                    title="Delete this segment?"
-                    description="Its name and its two ends go with it."
-                    okText="Delete"
-                    okButtonProps={{ danger: true }}
-                    onConfirm={onRemove}
-                >
-                    <Button
-                        size="small"
-                        type="text"
-                        danger
-                        icon={<DeleteOutlined />}
-                        aria-label={`Delete ${segment.name}`}
-                        data-testid="delete-segment"
-                    />
-                </Popconfirm>
+                <IconButton
+                    label={`Delete ${segment.name}`}
+                    danger
+                    icon={<DeleteOutlined />}
+                    data-testid="delete-segment"
+                    onClick={() => confirm({
+                        title: `Delete segment “${segment.name}”?`,
+                        description: 'Its name and its two ends go with it.',
+                        onConfirm: onRemove,
+                    })}
+                />
             </div>
             <div className={styles.rowTimes}>
                 <Tooltip title="Go to its first image">
@@ -106,7 +90,7 @@ export const SegmentsPanel: React.FC = () => {
     if (!movie) {
         return <div className={styles.hint}>Open a video or a recording to mark segments of it.</div>;
     }
-    return <SegmentsOf movie={movie} />;
+    return <SegmentsOf key={movie.path} movie={movie} />;
 };
 
 /** The panel over an open video or recording, below the one early return its hooks cannot follow. */
@@ -132,19 +116,15 @@ const SegmentsOf: React.FC<{ movie: MovieEditValue }> = ({ movie }) => {
                 <SaveSegmentsButton saving={saving} />
             </div>
             <SaveSegmentsStatus saving={saving} />
-            {loading ? (
-                <div className={styles.center}><Spin size="small" /></div>
-            ) : invalid ? (
-                <div className={styles.hint} data-testid="segments-invalid">
+            <AsyncList loading={loading}
+                error={!loading && invalid && <span data-testid="segments-invalid">
                     <code>{sidecar}</code> does not read as segments, so it is left as it is. It opens as
                     JSON, to be mended by hand.
-                </div>
-            ) : segments.length === 0 ? (
-                <div className={styles.hint}>
+                </span>}
+                empty={!segments.length && <>
                     No segments yet. Add one where the video stands — they are kept in <code>{sidecar}</code>,
                     beside it.
-                </div>
-            ) : (
+                </>}>
                 <div className={`${styles.list} kiao-zebra-rows`}>
                     {segments.map(segment => (
                         <SegmentRow
@@ -159,7 +139,7 @@ const SegmentsOf: React.FC<{ movie: MovieEditValue }> = ({ movie }) => {
                         />
                     ))}
                 </div>
-            )}
+            </AsyncList>
         </div>
     );
 };

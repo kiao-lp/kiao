@@ -10,24 +10,37 @@ import (
 	"time"
 )
 
-// Gateway waits for all incoming branches, then starts all outgoing branches.
 type FlowNodeType string
 
+type PlayResult struct {
+	Status   FlowNodeStatus
+	Output   string
+	Workflow *WorkflowUpdate
+}
+
 const (
-	FlowNodeAI        FlowNodeType = "ai"
-	FlowNodeHuman     FlowNodeType = "human"
-	FlowNodeShutdown  FlowNodeType = "shutdown"
-	FlowNodeScheduler FlowNodeType = "scheduler"
-	FlowNodeGateway   FlowNodeType = "gateway"
-	FlowNodeNote      FlowNodeType = "note"
-	FlowNodeValue     FlowNodeType = "value"
+	FlowNodeAI                    FlowNodeType = "ai"
+	FlowNodeHuman                 FlowNodeType = "human"
+	FlowNodeStart                 FlowNodeType = "start"
+	FlowNodeShutdown              FlowNodeType = "shutdown"
+	FlowNodeScheduler             FlowNodeType = "scheduler"
+	FlowNodeBitbucketPRStatus     FlowNodeType = "bitbucket-pr-status"
+	FlowNodeBitbucketCommitStatus FlowNodeType = "bitbucket-commit-status"
+	FlowNodeGateway               FlowNodeType = "gateway"
+	FlowNodeExclusiveGateway      FlowNodeType = "exclusive-gateway"
+	FlowNodeLimiter               FlowNodeType = "limiter"
+	FlowNodeNote                  FlowNodeType = "note"
+	FlowNodeValue                 FlowNodeType = "value"
+	FlowNodeRole                  FlowNodeType = "role"
 )
 
 const FlowNodeTypeDefault = FlowNodeHuman
 
 var flowNodeTypes = map[FlowNodeType]bool{
-	FlowNodeAI: true, FlowNodeHuman: true, FlowNodeShutdown: true, FlowNodeScheduler: true,
-	FlowNodeGateway: true, FlowNodeNote: true, FlowNodeValue: true,
+	FlowNodeAI: true, FlowNodeHuman: true, FlowNodeStart: true, FlowNodeShutdown: true, FlowNodeScheduler: true,
+	FlowNodeBitbucketPRStatus: true, FlowNodeBitbucketCommitStatus: true,
+	FlowNodeGateway: true, FlowNodeExclusiveGateway: true, FlowNodeNote: true, FlowNodeValue: true,
+	FlowNodeLimiter: true, FlowNodeRole: true,
 }
 
 // ReadFlowNodeType infers unknown/absent types from legacy settings:
@@ -47,22 +60,35 @@ func (t FlowNodeType) IsTask() bool { return t == FlowNodeAI || t == FlowNodeHum
 
 func (t FlowNodeType) ForHarness() bool { return t == FlowNodeAI }
 
-func (t FlowNodeType) IsDisplay() bool { return t == FlowNodeNote || t == FlowNodeValue }
-
-// RunsItself identifies cards executed by the run without an agent turn.
-func (t FlowNodeType) RunsItself() bool {
-	return t == FlowNodeShutdown || t == FlowNodeScheduler || t == FlowNodeGateway
+func (t FlowNodeType) IsDisplay() bool {
+	return t == FlowNodeNote || t == FlowNodeValue || t == FlowNodeRole
 }
 
-// Chains excludes Shutdown and display cards. Gateways use Nexts instead of Next.
+func (t FlowNodeType) AcceptsPredecessor() bool { return t != FlowNodeStart && !t.IsDisplay() }
+
+func (t FlowNodeType) Splits() bool {
+	return t == FlowNodeGateway || t == FlowNodeExclusiveGateway || t == FlowNodeLimiter
+}
+
+func (t FlowNodeType) Joins() bool { return t == FlowNodeGateway || t == FlowNodeExclusiveGateway }
+
+func (t FlowNodeType) IsBitbucketEvent() bool {
+	return t == FlowNodeBitbucketPRStatus || t == FlowNodeBitbucketCommitStatus
+}
+
+// RunsItself identifies flow nodes executed by the run without an agent turn.
+func (t FlowNodeType) RunsItself() bool {
+	return t == FlowNodeStart || t == FlowNodeShutdown || t == FlowNodeScheduler || t.IsBitbucketEvent() || t.Splits()
+}
+
+// Chains excludes Shutdown and display flow nodes. Gateways use Nexts instead of Next.
 func (t FlowNodeType) Chains() bool { return t != FlowNodeShutdown && !t.IsDisplay() }
 
-// HasTransition identifies cards that own a conversation.
+// HasTransition identifies flow nodes that own a conversation.
 func (t FlowNodeType) HasTransition() bool { return t == FlowNodeAI }
 
-// FlowNodeStatus includes waiting-refresh for a run held until agent usage limits lift.
+// FlowNodeStatus includes waiting-refresh for a run held until the harness account's usage limit lifts.
 // Blocked is user-controlled: no run sets or clears it, and it is not Held.
-// StartPlay and ClaimFlowNode accept only ready cards.
 type FlowNodeStatus string
 
 const (
@@ -92,11 +118,21 @@ func ReadFlowNodeStatus(said string) FlowNodeStatus {
 	return FlowNodeStatusDefault
 }
 
-// Held prevents another run from taking the card, including while usage limits refresh.
+// Held prevents another run from taking the flow node, including while usage limits refresh.
 func (s FlowNodeStatus) Held() bool { return s == StatusRunning || s == StatusWaitingRefresh }
 
+// Playable reports whether a free execution flow node can start a new run.
+func (s FlowNodeStatus) Playable() bool { return s == StatusReady || s == StatusDone }
+
+func (s FlowNodeStatus) CanClaim(kind FlowNodeType, alreadyHeld bool) bool {
+	if alreadyHeld {
+		return s == StatusReady || s.Held()
+	}
+	return s.Playable() || (kind == FlowNodeAI && s == StatusInterrupted)
+}
+
 func NextFor(next string, t FlowNodeType) string {
-	if !t.Chains() || t == FlowNodeGateway {
+	if !t.Chains() || t.Splits() {
 		return ""
 	}
 	return next
@@ -105,7 +141,7 @@ func NextFor(next string, t FlowNodeType) string {
 // NextsFor keeps ordered, unique, nonempty Gateway successors.
 // The service validates that they belong to the board.
 func NextsFor(nexts []string, t FlowNodeType) []string {
-	if t != FlowNodeGateway {
+	if !t.Splits() {
 		return nil
 	}
 	var out []string
@@ -122,63 +158,82 @@ func NextsFor(nexts []string, t FlowNodeType) []string {
 // Spot is a canvas position; a nil *Spot means unplaced.
 type Spot struct{ X, Y int }
 
+// Size is a card's resized dimensions. H zero keeps the card's natural height.
+type Size struct{ W, H int }
+
 // Schedules are local wall-clock datetimes in the operator's zone, not instants,
 // to preserve the intended time across daylight-saving changes.
 var scheduleShape = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$`)
 
 func ReadSchedule(said string) string {
 	said = strings.TrimSpace(said)
+	if nodeContextReference.MatchString(said) {
+		return said
+	}
 	if !scheduleShape.MatchString(said) {
 		return ""
 	}
 	return said[:16]
 }
 
-// FlowNode is updated field by field so independent edits need not rewrite the board.
+// FlowNode is independently versioned and updated field by field.
 type FlowNode struct {
 	ID      string
 	BoardID string
-	// Title is empty on note cards.
+	// Title is empty on note flow nodes.
 	Title string
 	Type  FlowNodeType
-	// Note holds markdown on note cards.
+	// Note holds markdown on note flow nodes.
 	Note string
-	// Value holds canonical JSON text on value cards.
+	// Value holds canonical JSON text on value flow nodes.
 	Value string
-	// ValueType is "", ValueTypeJSONSchema, or the id of a value card typed as JSON Schema.
+	// ValueType is "", ValueTypeJSONSchema, or the id of a value flow node typed as JSON Schema.
 	ValueType string
+	// RoleID is the board-local reference key, independent of the flow node ID and title.
+	RoleID      string
+	RoleKind    RoleKind
+	People      []string
+	Description string
 	// OutputType names a JSON Schema value from any board; Output is the last successful export.
 	OutputType string
 	Output     string
-	// Tags are ordered labels, not instance-specific IDs, so pasted cards retain their meaning.
+	// Tags are ordered labels, not instance-specific IDs, so pasted flow nodes retain their meaning.
 	Tags []string
-	// Task is present only for AI and Human cards.
+	// Task is present only for AI and Human flow nodes.
 	Task *Task
-	// ScheduledAt is normalized by ReadSchedule; empty for non-Scheduler cards.
+	// ScheduledAt is normalized by ReadSchedule; empty for non-Scheduler flow nodes.
 	ScheduledAt string
 	Duration    string
-	Spot        *Spot
-	Status      FlowNodeStatus
-	// Archived hides the card everywhere without deleting it. It is a boolean
-	// flip, never a file, and chains to or from an archived card are hidden too.
+
+	PullRequestID     string
+	PullRequestStatus string
+	CommitID          string
+	CommitStatus      string
+	MaxPasses         int
+	RemainingPasses   int
+
+	Spot   *Spot
+	Size   *Size
+	Status FlowNodeStatus
+	// Archived retains the record while excluding the flow node from the canvas and playback.
 	Archived bool
-	// Next is the successor after success; empty for Shutdown and Gateway cards.
+	// Next is the successor after success; empty for Shutdown and Gateway flow nodes.
 	Next string
-	// Nexts are ordered branches a Gateway starts in parallel; empty for other kinds.
+	// Nexts are the linked branches of a gateway.
 	Nexts []string
-	// RunID is empty when free. Conditional claims ensure only one run holds the card.
+	// Routes are evaluated in order by an exclusive gateway.
+	Routes []Route
+	// RunID is empty when free. Conditional claims ensure only one run holds the flow node.
 	RunID     string
 	ClaimedAt time.Time
-	// ClassVersionID identifies the source version; clearing it detaches without changing content.
-	ClassVersionID string
-	// ClassRef is resolved on read; nil if no version is named or the version was deleted.
-	ClassRef *ClassRef
-	// WorkflowID groups the card in at most one workflow; empty means ungrouped.
+	// Completion orders successful results across flow nodes for parallel gateway replays.
+	Completion int64
+	// WorkflowID groups the flow node in at most one workflow; empty means ungrouped.
 	WorkflowID string
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
-	// Revision increments on every card write, including Task changes.
-	// Optimistic conflicts are per card; Task has no separate revision.
+	// Revision increments on every flow node write, including Task changes.
+	// Optimistic conflicts are per flow node; Task has no separate revision.
 	Revision int64
 }
 
@@ -207,7 +262,8 @@ func (t *FlowNode) ConversationID() string {
 var (
 	ErrFlowNodeNotRunnable = errors.New("flow node cannot be played")
 	ErrFlowNodeHeld        = errors.New("flow node is already being played")
-	// ErrFlowNodeEmptyPrompt also ends a chain on a card that has already run.
+	ErrGatewayWaiting      = Conflictf("the gateway is waiting for its incoming branches")
+	// ErrFlowNodeEmptyPrompt also ends a chain on a flow node that has already run.
 	ErrFlowNodeEmptyPrompt = errors.New("flow node has nothing to send")
 )
 
@@ -218,17 +274,16 @@ func (t *FlowNode) Prompt() string {
 	return t.Task.Prompt(t.Title)
 }
 
-// Runnable checks type requirements, not status: play additionally requires ready.
-// AI needs four settings and a prompt; Scheduler needs a duration or datetime; Human cannot run.
-// An archived card is never runnable: it is hidden everywhere, and its chains are hidden too.
+// Runnable checks type requirements. Play also checks the flow node's status.
+// An archived flow node is never runnable: it is hidden everywhere, and its chains are hidden too.
 func (t *FlowNode) Runnable() error {
 	if t.Archived {
-		return fmt.Errorf("%w: an archived card is hidden and cannot be played", ErrFlowNodeNotRunnable)
+		return fmt.Errorf("%w: an archived flow node is hidden and cannot be played", ErrFlowNodeNotRunnable)
 	}
 	switch t.Type {
 	case FlowNodeAI:
 		if !t.Settings().Complete() {
-			return fmt.Errorf("%w: an AI card names an agent, an effort, a permission mode and a folder", ErrFlowNodeNotRunnable)
+			return fmt.Errorf("%w: an AI flow node names an agent, an effort, a permission mode and a folder", ErrFlowNodeNotRunnable)
 		}
 		if t.Prompt() == "" {
 			return ErrFlowNodeEmptyPrompt
@@ -237,13 +292,19 @@ func (t *FlowNode) Runnable() error {
 		if ReadSchedule(t.ScheduledAt) == "" && ReadDuration(t.Duration) == "" {
 			return fmt.Errorf("%w: a Scheduler names a duration or the datetime it waits for", ErrFlowNodeNotRunnable)
 		}
-	case FlowNodeShutdown:
-	case FlowNodeGateway:
-		// Gateway branches are defined on the board.
-	case FlowNodeNote, FlowNodeValue:
-		return fmt.Errorf("%w: a display card is never played", ErrFlowNodeNotRunnable)
+	case FlowNodeBitbucketPRStatus:
+		if t.PullRequestID == "" || t.PullRequestStatus == "" {
+			return fmt.Errorf("%w: a Bitbucket PR Status flow node needs a pull request ID and a target status", ErrFlowNodeNotRunnable)
+		}
+	case FlowNodeBitbucketCommitStatus:
+		if t.CommitID == "" || t.CommitStatus == "" {
+			return fmt.Errorf("%w: a Bitbucket Commit Status flow node needs a commit ID and a target status", ErrFlowNodeNotRunnable)
+		}
+	case FlowNodeStart, FlowNodeShutdown, FlowNodeGateway, FlowNodeExclusiveGateway, FlowNodeLimiter:
+	case FlowNodeNote, FlowNodeValue, FlowNodeRole:
+		return fmt.Errorf("%w: a display flow node is never played", ErrFlowNodeNotRunnable)
 	default:
-		return fmt.Errorf("%w: a Human card is nobody's to play", ErrFlowNodeNotRunnable)
+		return fmt.Errorf("%w: a Human flow node is nobody's to play", ErrFlowNodeNotRunnable)
 	}
 	return nil
 }

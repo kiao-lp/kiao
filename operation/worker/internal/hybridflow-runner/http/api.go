@@ -34,7 +34,6 @@ type Service struct {
 	// Sign-in uses the default harness only; nil leaves its routes unmounted.
 	login harnessapi.HarnessLogin
 
-	// Nil when no bundled MCP server can call back into the service.
 	turnTokens *access.TurnTokenRegistry
 
 	// Separate from the runner's spooled client: proxy requests need live store answers.
@@ -78,7 +77,6 @@ func Start(cfg *runnerconfig.Config, registry harnessapi.MCPRegistry) (*Service,
 	// Generated configs are disposable; old files may name a stale node binary or port.
 	claudecli.SweepMCPConfigs(cfg)
 
-	// Re-read after validation; a failure is still fatal to avoid spawning without tools.
 	bundled, err := runnerconfig.BundledMCPServers(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("MCP configuration failure: %w", err)
@@ -144,16 +142,13 @@ func Start(cfg *runnerconfig.Config, registry harnessapi.MCPRegistry) (*Service,
 		conversations:  conversations,
 		attachments:    attachments,
 		chainRunner:    chainRunner,
+		turnTokens:     hub.TurnTokens,
 		liveness:       hub.IsRunning,
 		boardsUpstream: boardsUpstream,
 		agents:         agents,
 		stopHeartbeat:  pkgBoards.StartRunnerHeartbeat(cfg, boardsUpstream),
 	}
 	svc.bindHarnesses(hub.Harnesses)
-	// Only bundled MCP servers receive callback credentials; third-party servers receive none.
-	if len(bundled) > 0 {
-		svc.turnTokens = hub.TurnTokens
-	}
 	return svc, nil
 }
 
@@ -214,8 +209,7 @@ func (s *Service) SyncRunnerIdentity() {
 	s.stopHeartbeat = pkgBoards.StartRunnerHeartbeat(s.cfg, s.boardsUpstream)
 }
 
-// TurnTokens supplies callback credentials to the authenticator, or nil without
-// bundled servers. Only the program may wire this alternative to JWT authentication.
+// TurnTokens supplies callback credentials to the authenticator.
 func (s *Service) TurnTokens() *access.TurnTokenRegistry { return s.turnTokens }
 
 // Shutdown stops the heartbeat, CLI processes and board sender. Unsent board

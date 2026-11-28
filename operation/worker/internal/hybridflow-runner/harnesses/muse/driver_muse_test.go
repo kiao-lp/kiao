@@ -683,7 +683,7 @@ func TestMuseStageConfigWritesTheTurnItsOwn(t *testing.T) {
 	staging, env, err := stageMuseConfig(MuseRun{
 		McpConfig: `{"kiao-files":{"transport":"stdio","env":{"T":"${KIAO_MCP_TURN_TOKEN}"}}}`,
 		McpToken:  "turn-token",
-		StoreRoot: store,
+		DCMSRoot:  store,
 	})
 	if err != nil {
 		t.Fatalf("stageConfig = %v", err)
@@ -856,7 +856,7 @@ func TestMuseDriverRunsAWholeTurn(t *testing.T) {
 	dir := t.TempDir()
 	driver, logPath := museStubDriver(t, "turn")
 	if err := driver.Spawn(harnessapi.HarnessRun{
-		Prompt: "say hello", WorkDir: dir, StoreRoot: dir,
+		Prompt: "say hello", WorkDir: dir, DCMSRoot: dir,
 		PermissionMode: runnerconfig.PermissionModeManual, Thinking: true, AllowBypass: true,
 	}); err != nil {
 		t.Fatalf("Spawn = %v", err)
@@ -917,7 +917,7 @@ func TestMuseDriverPrependsStandingInstructions(t *testing.T) {
 	dir := t.TempDir()
 	driver, logPath := museStubDriver(t, "turn")
 	if err := driver.Spawn(harnessapi.HarnessRun{
-		Prompt: "say hello", WorkDir: dir, StoreRoot: dir, Instructions: "Be terse.",
+		Prompt: "say hello", WorkDir: dir, DCMSRoot: dir, Instructions: "Be terse.",
 		PermissionMode: runnerconfig.PermissionModeManual, Thinking: true, AllowBypass: true,
 	}); err != nil {
 		t.Fatalf("Spawn = %v", err)
@@ -944,7 +944,7 @@ func TestMuseDriverResumesAndSelectsModelModeAndEffort(t *testing.T) {
 	dir := t.TempDir()
 	driver, logPath := museStubDriver(t, "turn")
 	if err := driver.Spawn(harnessapi.HarnessRun{
-		Prompt: "again", WorkDir: dir, StoreRoot: dir, SessionID: "ses-9",
+		Prompt: "again", WorkDir: dir, DCMSRoot: dir, SessionID: "ses-9",
 		Model: "meta/muse-spark-1.2", Effort: "ultra",
 		PermissionMode: runnerconfig.PermissionModeBypass, Thinking: true, AllowBypass: true,
 	}); err != nil {
@@ -978,7 +978,7 @@ func TestMuseDriverForksSessions(t *testing.T) {
 	dir := t.TempDir()
 	driver, logPath := museStubDriver(t, "fork")
 	if err := driver.Spawn(harnessapi.HarnessRun{
-		Prompt: "on the branch", WorkDir: dir, StoreRoot: dir,
+		Prompt: "on the branch", WorkDir: dir, DCMSRoot: dir,
 		SessionID: "ses-9", ForkSession: true, ResumeAt: "turn-7",
 		PermissionMode: runnerconfig.PermissionModeManual, Thinking: true, AllowBypass: true,
 	}); err != nil {
@@ -1004,7 +1004,7 @@ func TestMuseDriverNamesTheMuseBugWhenForkHasNoBirthTime(t *testing.T) {
 	dir := t.TempDir()
 	driver, _ := museStubDriver(t, "fork-no-birth-time")
 	if err := driver.Spawn(harnessapi.HarnessRun{
-		Prompt: "on the branch", WorkDir: dir, StoreRoot: dir,
+		Prompt: "on the branch", WorkDir: dir, DCMSRoot: dir,
 		SessionID: "ses-9", ForkSession: true,
 		PermissionMode: runnerconfig.PermissionModeManual, Thinking: true, AllowBypass: true,
 	}); err != nil {
@@ -1028,7 +1028,7 @@ func TestMuseDriverTreatsARefusedResumeAsALostSession(t *testing.T) {
 	dir := t.TempDir()
 	driver, _ := museStubDriver(t, "resume-fail")
 	if err := driver.Spawn(harnessapi.HarnessRun{
-		Prompt: "again", WorkDir: dir, StoreRoot: dir, SessionID: "ses-gone",
+		Prompt: "again", WorkDir: dir, DCMSRoot: dir, SessionID: "ses-gone",
 		PermissionMode: runnerconfig.PermissionModeManual, Thinking: true, AllowBypass: true,
 	}); err != nil {
 		t.Fatalf("Spawn = %v", err)
@@ -1061,7 +1061,7 @@ func TestMuseDriverAsksAndIsAnswered(t *testing.T) {
 			dir := t.TempDir()
 			driver, logPath := museStubDriver(t, "ask")
 			if err := driver.Spawn(harnessapi.HarnessRun{
-				Prompt: "list things", WorkDir: dir, StoreRoot: dir,
+				Prompt: "list things", WorkDir: dir, DCMSRoot: dir,
 				PermissionMode: runnerconfig.PermissionModeManual, Thinking: true, AllowBypass: true,
 			}); err != nil {
 				t.Fatalf("Spawn = %v", err)
@@ -1133,7 +1133,7 @@ func TestMuseDriverWithdrawsForeignSettlements(t *testing.T) {
 	dir := t.TempDir()
 	driver, _ := museStubDriver(t, "ask-external")
 	if err := driver.Spawn(harnessapi.HarnessRun{
-		Prompt: "list things", WorkDir: dir, StoreRoot: dir,
+		Prompt: "list things", WorkDir: dir, DCMSRoot: dir,
 		PermissionMode: runnerconfig.PermissionModeManual, Thinking: true, AllowBypass: true,
 	}); err != nil {
 		t.Fatalf("Spawn = %v", err)
@@ -1214,7 +1214,7 @@ func TestMuseDriverAsksQuestionsAndIsAnswered(t *testing.T) {
 			dir := t.TempDir()
 			driver, logPath := museStubDriver(t, "question")
 			if err := driver.Spawn(harnessapi.HarnessRun{
-				Prompt: "ask me", WorkDir: dir, StoreRoot: dir,
+				Prompt: "ask me", WorkDir: dir, DCMSRoot: dir,
 				PermissionMode: runnerconfig.PermissionModeBypass, Thinking: true, AllowBypass: true,
 			}); err != nil {
 				t.Fatalf("Spawn = %v", err)
@@ -1265,7 +1265,7 @@ func TestMuseDriverSteersARunningTurn(t *testing.T) {
 	dir := t.TempDir()
 	driver, logPath := museStubDriver(t, "steer")
 	if err := driver.Spawn(harnessapi.HarnessRun{
-		Prompt: "take your time", WorkDir: dir, StoreRoot: dir,
+		Prompt: "take your time", WorkDir: dir, DCMSRoot: dir,
 		PermissionMode: runnerconfig.PermissionModeManual, Thinking: true, AllowBypass: true,
 	}); err != nil {
 		t.Fatalf("Spawn = %v", err)
@@ -1319,7 +1319,7 @@ func TestMuseDriverFailsATurnWithTheHostSentence(t *testing.T) {
 	dir := t.TempDir()
 	driver, _ := museStubDriver(t, "fail")
 	if err := driver.Spawn(harnessapi.HarnessRun{
-		Prompt: "fail me", WorkDir: dir, StoreRoot: dir,
+		Prompt: "fail me", WorkDir: dir, DCMSRoot: dir,
 		PermissionMode: runnerconfig.PermissionModeManual, Thinking: true, AllowBypass: true,
 	}); err != nil {
 		t.Fatalf("Spawn = %v", err)
@@ -1346,7 +1346,7 @@ func TestMuseDriverSettlesAnUnqueuedTurn(t *testing.T) {
 	dir := t.TempDir()
 	driver, _ := museStubDriver(t, "unqueued")
 	if err := driver.Spawn(harnessapi.HarnessRun{
-		Prompt: "run me", WorkDir: dir, StoreRoot: dir,
+		Prompt: "run me", WorkDir: dir, DCMSRoot: dir,
 		PermissionMode: runnerconfig.PermissionModeManual, Thinking: true, AllowBypass: true,
 	}); err != nil {
 		t.Fatalf("Spawn = %v", err)
@@ -1378,7 +1378,7 @@ func TestMuseDriverEndsATurnGoneQuiet(t *testing.T) {
 	}
 	defer traceFile.Close()
 	if err := driver.Spawn(harnessapi.HarnessRun{
-		Prompt: "run me", WorkDir: dir, StoreRoot: dir,
+		Prompt: "run me", WorkDir: dir, DCMSRoot: dir,
 		PermissionMode: runnerconfig.PermissionModeManual, Thinking: true, AllowBypass: true,
 		Trace: &turntrace.TurnTrace{File: traceFile},
 	}); err != nil {
@@ -1419,7 +1419,7 @@ func TestMuseDriverResumesABlockedTurn(t *testing.T) {
 	driver.IdleTimeout = 100 * time.Millisecond
 	driver.NoticeTimeout = time.Hour
 	if err := driver.Spawn(harnessapi.HarnessRun{
-		Prompt: "run me", WorkDir: dir, StoreRoot: dir,
+		Prompt: "run me", WorkDir: dir, DCMSRoot: dir,
 		PermissionMode: runnerconfig.PermissionModeManual, Thinking: true, AllowBypass: true,
 	}); err != nil {
 		t.Fatalf("Spawn = %v", err)
@@ -1473,7 +1473,7 @@ func TestMuseUsageRetainsTheBlockedNativeTurn(t *testing.T) {
 	driver, _ := museStubDriver(t, "usage-then-resume")
 	driver.IdleTimeout, driver.NoticeTimeout = 100*time.Millisecond, time.Hour
 	if err := driver.Spawn(harnessapi.HarnessRun{
-		Prompt: "run me", WorkDir: dir, StoreRoot: dir,
+		Prompt: "run me", WorkDir: dir, DCMSRoot: dir,
 		PermissionMode: runnerconfig.PermissionModeManual, Thinking: true, AllowBypass: true,
 	}); err != nil {
 		t.Fatal(err)
@@ -1503,7 +1503,7 @@ func TestMuseDriverResyncsAQuietTurn(t *testing.T) {
 	driver.NoticeTimeout = time.Hour
 	driver.ResyncTimeout = 5 * time.Second
 	if err := driver.Spawn(harnessapi.HarnessRun{
-		Prompt: "run me", WorkDir: dir, StoreRoot: dir,
+		Prompt: "run me", WorkDir: dir, DCMSRoot: dir,
 		PermissionMode: runnerconfig.PermissionModeManual, Thinking: true, AllowBypass: true,
 	}); err != nil {
 		t.Fatalf("Spawn = %v", err)
@@ -1547,7 +1547,7 @@ func TestMuseDriverResyncsABlindPark(t *testing.T) {
 	driver.NoticeTimeout = time.Hour
 	driver.ResyncTimeout = 5 * time.Second
 	if err := driver.Spawn(harnessapi.HarnessRun{
-		Prompt: "run me", WorkDir: dir, StoreRoot: dir,
+		Prompt: "run me", WorkDir: dir, DCMSRoot: dir,
 		PermissionMode: runnerconfig.PermissionModeManual, Thinking: true, AllowBypass: true,
 	}); err != nil {
 		t.Fatalf("Spawn = %v", err)
@@ -1580,7 +1580,7 @@ func TestMuseDriverResyncIgnoresUnknownStatus(t *testing.T) {
 	driver.NoticeTimeout = time.Hour
 	driver.ResyncTimeout = 5 * time.Second
 	if err := driver.Spawn(harnessapi.HarnessRun{
-		Prompt: "run me", WorkDir: dir, StoreRoot: dir,
+		Prompt: "run me", WorkDir: dir, DCMSRoot: dir,
 		PermissionMode: runnerconfig.PermissionModeManual, Thinking: true, AllowBypass: true,
 	}); err != nil {
 		t.Fatalf("Spawn = %v", err)
@@ -1610,7 +1610,7 @@ func TestMuseDriverResyncWaitsOnKnownAsks(t *testing.T) {
 	driver.NoticeTimeout = time.Hour
 	driver.ResyncTimeout = 5 * time.Second
 	if err := driver.Spawn(harnessapi.HarnessRun{
-		Prompt: "run me", WorkDir: dir, StoreRoot: dir,
+		Prompt: "run me", WorkDir: dir, DCMSRoot: dir,
 		PermissionMode: runnerconfig.PermissionModeManual, Thinking: true, AllowBypass: true,
 	}); err != nil {
 		t.Fatalf("Spawn = %v", err)
@@ -1659,7 +1659,7 @@ func TestMuseDriverNamesADeadView(t *testing.T) {
 	driver, _ := museStubDriver(t, "view-down")
 	driver.NoticeTimeout = time.Hour
 	if err := driver.Spawn(harnessapi.HarnessRun{
-		Prompt: "run me", WorkDir: dir, StoreRoot: dir,
+		Prompt: "run me", WorkDir: dir, DCMSRoot: dir,
 		PermissionMode: runnerconfig.PermissionModeManual, Thinking: true, AllowBypass: true,
 	}); err != nil {
 		t.Fatalf("Spawn = %v", err)
@@ -1689,7 +1689,7 @@ func TestMuseDriverNoticeNamesRelaunches(t *testing.T) {
 	driver.IdleTimeout = 175 * time.Millisecond
 	trace, _ := museTrace(t)
 	if err := driver.Spawn(harnessapi.HarnessRun{
-		Prompt: "run me", WorkDir: dir, StoreRoot: dir,
+		Prompt: "run me", WorkDir: dir, DCMSRoot: dir,
 		PermissionMode: runnerconfig.PermissionModeManual, Thinking: true, AllowBypass: true,
 		Trace: trace,
 	}); err != nil {
@@ -1726,7 +1726,7 @@ func TestMuseDriverNotesItsSessionAndTurn(t *testing.T) {
 	driver, _ := museStubDriver(t, "blocks")
 	trace, tracePath := museTrace(t)
 	if err := driver.Spawn(harnessapi.HarnessRun{
-		Prompt: "run me", WorkDir: dir, StoreRoot: dir,
+		Prompt: "run me", WorkDir: dir, DCMSRoot: dir,
 		PermissionMode: runnerconfig.PermissionModeManual, Thinking: true, AllowBypass: true,
 		Trace: trace,
 	}); err != nil {
@@ -1746,7 +1746,7 @@ func TestMuseDriverNotesItsNotificationCensus(t *testing.T) {
 	driver, _ := museStubDriver(t, "blocks")
 	trace, tracePath := museTrace(t)
 	if err := driver.Spawn(harnessapi.HarnessRun{
-		Prompt: "run me", WorkDir: dir, StoreRoot: dir,
+		Prompt: "run me", WorkDir: dir, DCMSRoot: dir,
 		PermissionMode: runnerconfig.PermissionModeManual, Thinking: true, AllowBypass: true,
 		Trace: trace,
 	}); err != nil {
@@ -1767,7 +1767,7 @@ func TestMuseDriverNotesAStoppedTurn(t *testing.T) {
 	driver, _ := museStubDriver(t, "cancel")
 	trace, tracePath := museTrace(t)
 	if err := driver.Spawn(harnessapi.HarnessRun{
-		Prompt: "never mind", WorkDir: dir, StoreRoot: dir,
+		Prompt: "never mind", WorkDir: dir, DCMSRoot: dir,
 		PermissionMode: runnerconfig.PermissionModeManual, Thinking: true, AllowBypass: true,
 		Trace: trace,
 	}); err != nil {
@@ -1819,7 +1819,7 @@ func TestMuseDriverHarvestTimeoutStillEndsTheTurn(t *testing.T) {
 	// end to ask the host what it observed.
 	driver.Usage = NewMuseUsageService()
 	if err := driver.Spawn(harnessapi.HarnessRun{
-		Prompt: "say hello", WorkDir: dir, StoreRoot: dir,
+		Prompt: "say hello", WorkDir: dir, DCMSRoot: dir,
 		PermissionMode: runnerconfig.PermissionModeManual, Thinking: true, AllowBypass: true,
 	}); err != nil {
 		t.Fatalf("Spawn = %v", err)
@@ -1845,7 +1845,7 @@ func TestMuseDriverDrainsABackgroundWorkflow(t *testing.T) {
 	driver.Usage = NewMuseUsageService()
 	trace, tracePath := museTrace(t)
 	if err := driver.Spawn(harnessapi.HarnessRun{
-		Prompt: "run the inventory", WorkDir: dir, StoreRoot: dir,
+		Prompt: "run the inventory", WorkDir: dir, DCMSRoot: dir,
 		PermissionMode: runnerconfig.PermissionModeManual, Thinking: true, AllowBypass: true,
 		Trace: trace,
 	}); err != nil {
@@ -1937,7 +1937,7 @@ func TestMuseDriverDrainTimesOutAndNamesAbandonedWork(t *testing.T) {
 	driver.Usage = NewMuseUsageService()
 	trace, tracePath := museTrace(t)
 	if err := driver.Spawn(harnessapi.HarnessRun{
-		Prompt: "run the inventory", WorkDir: dir, StoreRoot: dir,
+		Prompt: "run the inventory", WorkDir: dir, DCMSRoot: dir,
 		PermissionMode: runnerconfig.PermissionModeManual, Thinking: true, AllowBypass: true,
 		Trace: trace,
 	}); err != nil {
@@ -1991,7 +1991,7 @@ func TestMuseDriverDrainSkipsWorkTheSessionShowsFinished(t *testing.T) {
 	driver.Usage = NewMuseUsageService()
 	trace, tracePath := museTrace(t)
 	if err := driver.Spawn(harnessapi.HarnessRun{
-		Prompt: "run the inventory", WorkDir: dir, StoreRoot: dir,
+		Prompt: "run the inventory", WorkDir: dir, DCMSRoot: dir,
 		PermissionMode: runnerconfig.PermissionModeManual, Thinking: true, AllowBypass: true,
 		Trace: trace,
 	}); err != nil {
@@ -2134,7 +2134,7 @@ func TestMuseDriverParkedTurnSurvivesQuiet(t *testing.T) {
 	driver, _ := museStubDriver(t, "ask")
 	driver.IdleTimeout = 50 * time.Millisecond
 	if err := driver.Spawn(harnessapi.HarnessRun{
-		Prompt: "list the files", WorkDir: dir, StoreRoot: dir,
+		Prompt: "list the files", WorkDir: dir, DCMSRoot: dir,
 		PermissionMode: runnerconfig.PermissionModeManual, Thinking: true, AllowBypass: true,
 	}); err != nil {
 		t.Fatalf("Spawn = %v", err)
@@ -2176,7 +2176,7 @@ func TestMuseDriverStopsATurn(t *testing.T) {
 	dir := t.TempDir()
 	driver, _ := museStubDriver(t, "cancel")
 	if err := driver.Spawn(harnessapi.HarnessRun{
-		Prompt: "never mind", WorkDir: dir, StoreRoot: dir,
+		Prompt: "never mind", WorkDir: dir, DCMSRoot: dir,
 		PermissionMode: runnerconfig.PermissionModeManual, Thinking: true, AllowBypass: true,
 	}); err != nil {
 		t.Fatalf("Spawn = %v", err)
@@ -2213,7 +2213,7 @@ func TestMuseDriverCompactsSessions(t *testing.T) {
 	dir := t.TempDir()
 	driver, logPath := museStubDriver(t, "compact")
 	if err := driver.Spawn(harnessapi.HarnessRun{
-		Prompt: "/compact", WorkDir: dir, StoreRoot: dir, SessionID: "ses-1",
+		Prompt: "/compact", WorkDir: dir, DCMSRoot: dir, SessionID: "ses-1",
 		PermissionMode: runnerconfig.PermissionModeManual, Thinking: true, AllowBypass: true,
 	}); err != nil {
 		t.Fatalf("Spawn = %v", err)
@@ -2250,7 +2250,7 @@ func TestMuseDriverCompactWithNoSessionSpawnsNothing(t *testing.T) {
 		Cfg:         &runnerconfig.Config{},
 	}
 	if err := driver.Spawn(harnessapi.HarnessRun{
-		Prompt: "  /compact  ", WorkDir: dir, StoreRoot: dir,
+		Prompt: "  /compact  ", WorkDir: dir, DCMSRoot: dir,
 		PermissionMode: runnerconfig.PermissionModeManual, Thinking: true, AllowBypass: true,
 	}); err != nil {
 		t.Fatalf("Spawn = %v", err)
@@ -2268,7 +2268,7 @@ func TestMuseDriverRunsAStagedTurn(t *testing.T) {
 	driver, logPath := museStubDriver(t, "turn")
 	fragment := BuildMuseMCPConfig(mcpServersFixture())
 	if err := driver.Spawn(harnessapi.HarnessRun{
-		Prompt: "with tools", WorkDir: dir, StoreRoot: dir,
+		Prompt: "with tools", WorkDir: dir, DCMSRoot: dir,
 		PermissionMode: runnerconfig.PermissionModeManual, Thinking: true, AllowBypass: true,
 		MCPConfig: fragment, MCPToken: "turn-token",
 	}); err != nil {
@@ -2397,7 +2397,7 @@ func TestMuseDriverSpawnFailureIsTheSentenceTheUserSees(t *testing.T) {
 		Cfg:         &runnerconfig.Config{},
 	}
 	err := driver.Spawn(harnessapi.HarnessRun{
-		Prompt: "hello", WorkDir: dir, StoreRoot: dir,
+		Prompt: "hello", WorkDir: dir, DCMSRoot: dir,
 		PermissionMode: runnerconfig.PermissionModeManual, Thinking: true, AllowBypass: true,
 	})
 	if err == nil || !strings.Contains(err.Error(), "Muse") {
@@ -2414,7 +2414,7 @@ func TestMuseDriverHarvestsTheQuotaAsTheTurnEnds(t *testing.T) {
 	usage := NewMuseUsageService()
 	driver.Usage = usage
 	if err := driver.Spawn(harnessapi.HarnessRun{
-		Prompt: "say hello", WorkDir: dir, StoreRoot: dir,
+		Prompt: "say hello", WorkDir: dir, DCMSRoot: dir,
 		PermissionMode: runnerconfig.PermissionModeManual, Thinking: true, AllowBypass: true,
 	}); err != nil {
 		t.Fatalf("Spawn = %v", err)
@@ -2449,7 +2449,7 @@ func TestMuseDriverHarvestFailureLeavesTheTurnAlone(t *testing.T) {
 	usage.Note(older, 1789482441110)
 	driver.Usage = usage
 	if err := driver.Spawn(harnessapi.HarnessRun{
-		Prompt: "say hello", WorkDir: dir, StoreRoot: dir,
+		Prompt: "say hello", WorkDir: dir, DCMSRoot: dir,
 		PermissionMode: runnerconfig.PermissionModeManual, Thinking: true, AllowBypass: true,
 	}); err != nil {
 		t.Fatalf("Spawn = %v", err)
@@ -2549,7 +2549,7 @@ func TestMuseDriverNudgeNamesASilence(t *testing.T) {
 	driver.IdleTimeout = time.Hour
 	trace, tracePath := museTrace(t)
 	if err := driver.Spawn(harnessapi.HarnessRun{
-		Prompt: "run me", WorkDir: dir, StoreRoot: dir,
+		Prompt: "run me", WorkDir: dir, DCMSRoot: dir,
 		PermissionMode: runnerconfig.PermissionModeManual, Thinking: true, AllowBypass: true,
 		Trace: trace,
 	}); err != nil {
@@ -2586,7 +2586,7 @@ func TestMuseDriverParkedTurnNudgesNothing(t *testing.T) {
 	driver.IdleTimeout = time.Hour
 	trace, tracePath := museTrace(t)
 	if err := driver.Spawn(harnessapi.HarnessRun{
-		Prompt: "list the files", WorkDir: dir, StoreRoot: dir,
+		Prompt: "list the files", WorkDir: dir, DCMSRoot: dir,
 		PermissionMode: runnerconfig.PermissionModeManual, Thinking: true, AllowBypass: true,
 		Trace: trace,
 	}); err != nil {
@@ -2677,7 +2677,7 @@ func TestMuseDriverEndNotePointsAtTheHostLog(t *testing.T) {
 	driver, _ := museStubDriver(t, "blocks")
 	trace, tracePath := museTrace(t)
 	if err := driver.Spawn(harnessapi.HarnessRun{
-		Prompt: "run me", WorkDir: dir, StoreRoot: dir,
+		Prompt: "run me", WorkDir: dir, DCMSRoot: dir,
 		PermissionMode: runnerconfig.PermissionModeManual, Thinking: true, AllowBypass: true,
 		Trace: trace,
 	}); err != nil {

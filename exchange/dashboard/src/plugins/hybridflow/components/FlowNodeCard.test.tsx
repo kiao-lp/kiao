@@ -58,13 +58,14 @@ const show = (
     next: FlowNodeNextProps | null = null,
     chain: FlowNodeChainProps | null = chainProps,
     chat: (() => void) | null = null,
+    context?: Pick<React.ComponentProps<typeof FlowNodeCard>, 'board' | 'workflow' | 'roles'>,
 ) => render(
     <FlowNodeCard
         flowNode={flowNode}
+        {...context}
         next={next}
         chain={chain}
         onOpenChat={chat}
-        onUnlinkClass={null}
         selected={false}
         play={play}
         menu={menu}
@@ -83,6 +84,31 @@ const chips = () => screen.queryAllByTestId('flow-node-card-chip').map(chip => c
 
 beforeEach(() => {
     vi.clearAllMocks();
+});
+
+describe('FlowNodeCard — the title', () => {
+    it.each(['human', 'gateway', 'value'] as const)('resolves available references in a %s title', type => {
+        const title = 'Review {{currentWorkflow.revision}} with {{role.reviewers}} ({{currentWokflow.approved}}, {{currentWorkflow.missing}})';
+        const workflow = { id: 'release', name: 'Release', values: { revision: 'abc123', approved: false } };
+        const roles = new Map([['reviewers', 'Sam Lee']]);
+        show({ ...newFlowNode(title), type, workflow: workflow.id }, null, null, null, null, { workflow, roles });
+
+        expect(screen.getByText('Review abc123 with Sam Lee (false, {{currentWorkflow.missing}})')).toBeVisible();
+    });
+
+    it.each([
+        ['done', '0'],
+        ['ready', '{{input.items.0}}'],
+    ] as const)('reads input from a %s predecessor', (status, expected) => {
+        const flowNode = newFlowNode('Review {{input.items.0}}');
+        const source = newFlowNode('Prepare');
+        const predecessor = {
+            ...source, status, output: { items: [0] }, onSuccess: { ...source.onSuccess, flowNode: flowNode.id },
+        };
+        show(flowNode, null, null, null, null, { board: { flowNodes: [predecessor, flowNode] } });
+
+        expect(screen.getByText(`Review ${expected}`)).toBeVisible();
+    });
 });
 
 describe('FlowNodeCard', () => {
@@ -167,7 +193,7 @@ describe('FlowNodeCard', () => {
         expect(screen.queryByTestId('flow-node-card-invalid')).toBeNull();
     });
 
-    it('wears the model of a card written before managed agents', () => {
+    it('wears the model of an AI node saved before managed agents', () => {
         show(flowNodeOf('body', {
             agent: 'claude', model: 'opus', effort: 'medium', permission: 'bypassPermissions',
             folder: 'exchange',
@@ -524,7 +550,7 @@ describe('FlowNodeCard — what comes after the flow node', () => {
         expect(knob.querySelector('svg')).not.toBeNull();
     });
 
-    describe('the three cards the board plays to itself', () => {
+    describe('event settings', () => {
         it('says a Shutdown is one, in a word', () => {
             show({ ...flowNodeOf(), type: 'shutdown' }, null);
             expect(chips()).toEqual(['shutdown']);
@@ -542,28 +568,6 @@ describe('FlowNodeCard — what comes after the flow node', () => {
             show({ ...flowNodeOf(), type: 'scheduler' }, null);
             expect(screen.getByTestId('flow-node-card-invalid')).toBeTruthy();
             expect(chips()).toEqual([]);
-        });
-
-        // The count of branches is the one thing about a Gateway worth finding without opening the card — and none is never missing,.
-        it('reads a Gateway’s branches out on the card', () => {
-            show({
-                ...flowNodeOf(), type: 'gateway',
-                onSuccess: { flowNode: '', flowNodes: ['b', 'a'], mode: 'end', compact: false },
-            }, null);
-            expect(chips()).toEqual(['2 branches']);
-            expect(screen.queryByTestId('flow-node-card-invalid')).toBeNull();
-        });
-
-        it('says a Gateway with none still joins', () => {
-            show({ ...flowNodeOf(), type: 'gateway' }, null);
-            expect(chips()).toEqual(['no branches']);
-            expect(screen.queryByTestId('flow-node-card-invalid')).toBeNull();
-        });
-
-        it('says a Scheduler is holding while the run waits it out', () => {
-            show({ ...flowNodeOf(), type: 'scheduler', at: '2026-09-03T22:00' },
-                { state: 'scheduled' });
-            expect(screen.getByTestId('flow-node-card-state')).toHaveTextContent('Waiting for the schedule…');
         });
     });
 
@@ -627,7 +631,6 @@ describe('FlowNodeCard — moving to another board', () => {
             next={null}
             chain={chainProps}
             onOpenChat={null}
-            onUnlinkClass={null}
             selected={false}
             play={idle}
             menu={{ ...menu, ...move }}
@@ -651,7 +654,7 @@ describe('FlowNodeCard — moving to another board', () => {
         expect(onMove).toHaveBeenCalledWith('other');
     });
 
-    it('says how many cards the move takes, and where there is nowhere to move to', async () => {
+    it('says how many flow nodes the move takes, and where there is nowhere to move to', async () => {
         showWithMove({ moveTargets: [], moving: 3 });
 
         fireEvent.contextMenu(screen.getByTestId('flow-node-card'));
@@ -677,7 +680,6 @@ describe('FlowNodeCard — dragging from anywhere', () => {
             next={null}
             chain={{ knobProps: { ...dragSpies, onPointerDown: knobDown }, source: false, target: false }}
             onOpenChat={onOpenChat}
-            onUnlinkClass={null}
             selected={false}
             play={idle}
             menu={menu}
@@ -731,16 +733,56 @@ describe('FlowNodeCard — dragging from anywhere', () => {
 });
 
 describe('FlowNodeCard — BPMN symbols', () => {
-    it('draws a Gateway as a diamond with its branches’ count under it', () => {
+    it.each([
+        ['gateway', '   '],
+        ['exclusive-gateway', ''],
+        ['limiter', ''],
+        ['shutdown', '   '],
+        ['scheduler', ''],
+        ['bitbucket-pr-status', ''],
+        ['bitbucket-commit-status', '   '],
+    ] as const)('omits the title and status on an unnamed %s', (type, title) => {
+        show({ ...flowNodeOf(), type, title }, idle);
+        expect(screen.getByTestId('flow-node-card')).not.toHaveTextContent('Untitled');
+        expect(screen.queryByTestId('flow-node-card-state')).toBeNull();
+    });
+
+    it.each([
+        { type: 'bitbucket-pr-status', pullRequestId: 'team/repo#42', pullRequestStatus: 'MERGED' },
+        { type: 'bitbucket-commit-status', commitId: 'team/repo@a1b2c3d', commitStatus: 'SUCCESSFUL' },
+    ] as const)('shows only the title text on a configured $type', fields => {
+        show({ ...flowNodeOf(), ...fields }, idle);
+        expect(screen.getByTestId('flow-node-card')).toHaveTextContent(/^Mine$/);
+        expect(screen.queryByTestId('flow-node-card-invalid')).toBeNull();
+    });
+
+    it.each(['bitbucket-pr-status', 'bitbucket-commit-status'] as const)('marks an incomplete %s', type => {
+        show({ ...flowNodeOf(), type }, null);
+        expect(screen.getByTestId('flow-node-card-invalid')).toBeInTheDocument();
+    });
+
+    it.each([
+        { flowNodes: [] },
+        { flowNodes: ['b', 'a'] },
+    ])('draws a Gateway as a diamond with successors $flowNodes', ({ flowNodes }) => {
         show({
             ...flowNodeOf(), type: 'gateway',
-            onSuccess: { flowNode: '', flowNodes: ['b', 'a'], mode: 'end', compact: false },
+            onSuccess: { flowNode: '', flowNodes, mode: 'end', compact: false },
         }, idle);
         const node = screen.getByTestId('flow-node-card');
         expect(node).toHaveAttribute('data-shape', 'diamond');
         expect(node).toHaveTextContent('Mine');
-        expect(chips()).toEqual(['2 branches']);
+        expect(chips()).toEqual([]);
+        expect(screen.queryByTestId('flow-node-card-invalid')).toBeNull();
         expect(screen.queryByTestId('play-flow-node')).toBeNull();
+    });
+
+    it('shows the remaining passes inside a running Limiter’s diamond', () => {
+        show({ ...flowNodeOf(), type: 'limiter', maxPasses: 3, remainingPasses: 1 }, { state: 'playing', onStop });
+        const diamond = screen.getByRole('img', { name: 'Limiter, 1 pass left' });
+        expect(diamond).toHaveTextContent(/^1$/);
+        expect(diamond.querySelector('svg')).toBeNull();
+        expect(chips()).toEqual([]);
     });
 
     it('draws a Scheduler as a circle with its datetime under it', () => {
@@ -798,7 +840,6 @@ describe('FlowNodeCard — BPMN symbols', () => {
                 next={null}
                 chain={chainProps}
                 onOpenChat={null}
-                onUnlinkClass={null}
                 selected={false}
                 play={idle}
                 menu={menu}
@@ -865,9 +906,11 @@ describe('Scheduler controls', () => {
         expect(onPlay).toHaveBeenCalledOnce();
         expect(onOpen).not.toHaveBeenCalled();
     });
-    it('offers Stop during a duration wait', () => {
+    it('shows the running ring and Stop during a duration wait', () => {
         const onStop = vi.fn();
         show({ ...flowNodeOf(), type: 'scheduler', duration: '15m' }, { state: 'scheduled', onStop });
+        expect(screen.getByTestId('flow-node-card')).toHaveClass(styles.symbolPlaying);
+        expect(screen.queryByTestId('flow-node-card-state')).toBeNull();
         fireEvent.click(screen.getByTestId('flow-node-card-scheduled'));
         expect(onStop).toHaveBeenCalledOnce();
     });
@@ -879,6 +922,15 @@ describe('display cards', () => {
         expect(screen.getByTestId('flow-node-note-card')).toHaveTextContent('Hello **board**');
         expect(screen.queryByTestId('flow-node-card-chip')).toBeNull();
         expect(screen.queryByTestId('flow-node-card-state')).toBeNull();
+    });
+
+    it('renders shared workflow values in note Markdown', () => {
+        const workflow = { id: 'release', name: 'Release', values: { revision: 'abc123' } };
+        show({
+            ...newFlowNode(''), type: 'note', workflow: workflow.id,
+            note: 'Revision **{{currentWorkflow.revision}}** in {{currentWokflow.name}}',
+        }, null, null, null, null, { workflow });
+        expect(screen.getByTestId('flow-node-note-body')).toHaveTextContent('Revision **abc123** in Release');
     });
 
     it('shows only a value title and its kind mark', () => {

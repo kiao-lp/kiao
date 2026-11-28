@@ -1,8 +1,7 @@
 import React from 'react';
-import { Button, ColorPicker, Flex, InputNumber, Segmented, Select } from 'antd';
+import { ColorPicker, Flex, InputNumber, Segmented, Select } from 'antd';
 import { FormatPainterOutlined } from '@ant-design/icons';
-import { Tooltip, useSelectionContext } from '@kiao-dashboard-core';
-import { ZoomControl } from '@kiao-dashboard-kit/zoom-control';
+import { IconButton, Tooltip, ZoomControl, useSelectionContext } from '@kiao-dashboard-core';
 import { NewShapeKind, SvgViewMode, useSvgStateContext } from '../state';
 import { useApplyStyleToSelection } from '../hooks/useShapes';
 
@@ -57,23 +56,20 @@ export const NewShapeControl: React.FC = () => {
                 aria-label="Stroke weight of a new shape"
                 options={[1, 2, 3, 4, 6, 8].map(width => ({ value: width, label: `${width}px` }))}
             />
-            <Tooltip title="Apply this style to the selected shapes">
-                <Button
-                    size="small"
-                    type="text"
-                    icon={<FormatPainterOutlined />}
-                    disabled={mode !== 'canvas' || selection.length === 0}
-                    onClick={applyStyleToSelection}
-                    aria-label="Apply this style to the selected shapes"
-                />
-            </Tooltip>
+            <IconButton
+                label="Apply this style to the selected shapes"
+                tooltip
+                icon={<FormatPainterOutlined />}
+                disabled={mode !== 'canvas' || selection.length === 0}
+                onClick={applyStyleToSelection}
+            />
         </Flex>
     );
 };
 
 export const SvgZoomControl: React.FC = () => {
     const { zoom, setZoom, mode } = useSvgStateContext();
-    return <ZoomControl zoom={zoom} onZoomChange={setZoom} disabled={mode !== 'canvas'} className="svg-zoom-control" />;
+    return <ZoomControl zoom={zoom} onZoomChange={setZoom} disabled={mode !== 'canvas'} />;
 };
 
 /** Canvas or source, and — on the canvas — the size the drawing is. */

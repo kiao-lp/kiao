@@ -56,7 +56,7 @@ const previous = (page: Page) => page.getByRole('button', { name: 'Previous imag
 const next = (page: Page) => page.getByRole('button', { name: 'Next image' });
 const remove = (page: Page) => page.getByRole('button', { name: 'Delete image' });
 /** The confirmation's own Delete, told apart from the banner's by the dialog it is in. */
-const confirm = (page: Page) => page.locator('.ant-modal-confirm').getByRole('button', { name: 'Delete' });
+const confirm = (page: Page) => page.getByRole('dialog', { name: /^Delete “/ }).getByRole('button', { name: 'Delete' });
 
 const showing = async (page: Page, name: string) => {
     await expect(page).toHaveURL(new RegExp(`${FOLDER}/${name}$`), { timeout: TIMEOUT });
@@ -106,7 +106,7 @@ test('deleting the open picture removes it and moves on to the next', async ({ p
     await expect(counter(page)).toHaveText('2 / 3', { timeout: TIMEOUT });
 
     await remove(page).click();
-    await expect(page.locator('.ant-modal-confirm')).toContainText('second.png', { timeout: TIMEOUT });
+    await expect(page.getByRole('dialog', { name: /^Delete “/ })).toContainText('second.png', { timeout: TIMEOUT });
     await confirm(page).click();
 
     // The reader lands on the picture that took its place, in a folder now one shorter.

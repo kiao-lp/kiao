@@ -8,11 +8,11 @@ type TaskSettings struct {
 	Agent     string
 	Harness   string
 	ProfileID string
-	// Model selects a model on Harness. Legacy cards pair it with the engine in Agent.
+	// Model selects a model on Harness. Legacy flow nodes pair it with the harness in Agent.
 	Model      string
 	Effort     string
 	Permission string
-	// Folder is a store-root link with a leading slash.
+	// Folder is a DCMS link or a context expression locating the task's working folder.
 	Folder string
 	// Runner pins play to a runner ID; empty allows play wherever requested.
 	// The runner enforces the pin at play time; it does not affect Runnable.
@@ -81,7 +81,7 @@ type Transition struct {
 	Compact bool
 }
 
-// For normalizes legacy/unknown modes and clears transitions on cards without conversations.
+// For normalizes legacy/unknown modes and clears transitions on flow nodes without conversations.
 func (t Transition) For(f FlowNodeType) Transition {
 	out := t
 	if out.Mode == LegacyTransitionCompact {
@@ -149,6 +149,8 @@ func (k Task) HasContent(title string) bool {
 type Task struct {
 	// Body is the prompt description; play results stay in the conversation and never replace it.
 	Body string
+	// MultiPartTemplate marks a body authored as a TemplateLang collection.
+	MultiPartTemplate bool
 	// Criteria are sent with the prompt when present.
 	Criteria []SuccessCriterion
 	// Complexity is an optional Fibonacci estimate, never sent with the prompt.

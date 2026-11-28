@@ -11,6 +11,7 @@ export interface HarnessCapabilities {
 
 export interface HarnessInstallation {
     id: string;
+    /** Harness ID. The profile wire format uses the key `engine`. */
     engine: string;
     version: string;
     path: string;

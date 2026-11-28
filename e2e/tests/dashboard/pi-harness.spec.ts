@@ -51,7 +51,7 @@ test('configures reusable Pi connections and diagnoses model capabilities', asyn
     await panel.getByLabel('Installation id', { exact: true }).fill('fixture');
     await panel.getByLabel('Installation executable', { exact: true }).fill(fakePi);
     await panel.getByRole('button', { name: 'Declare installation', exact: true }).click();
-    await expect.poll(async () => (await api('/profiles')).installations[0]).toMatchObject({ id: 'fixture', version: '1.5.2', protocol: 'pi-rpc-1.5' });
+    await expect.poll(async () => (await api('/profiles')).installations[0]).toMatchObject({ id: 'fixture', engine: 'pi', version: '1.5.2', protocol: 'pi-rpc-1.5' });
     await panel.getByRole('tab', { name: 'Profiles', exact: true }).click();
     for (const [name, provider] of [['Pi multi-provider', 'openai'], ['Pi second account', 'openai']]) {
         await panel.getByRole('button', { name: 'New profile', exact: true }).click();
@@ -185,6 +185,11 @@ test('runs a published Pi agent through chat, reconnect and stop', async ({ page
             profileId: 'pi-a', model: 'openai/shared-model', agentVersion: agent.published,
         });
         conversationId = conversation.id;
+        const details = page.getByTestId('conversation-details');
+        const summary = details.locator('summary');
+        await summary.click();
+        await expect(details.getByText('pi-a', { exact: true })).toBeVisible();
+        await summary.click();
         await flushViewState(page);
         await expect.poll(async () => {
             const response = await page.request.get(`${workerApi()}/config/dashboard-view-state.json`);
@@ -193,6 +198,9 @@ test('runs a published Pi agent through chat, reconnect and stop', async ({ page
         const box = page.locator('.chat-textarea');
         await box.fill('slow'); await box.press('Control+Enter');
         await expect.poll(() => prompts.length).toBe(1);
+        await expect(details.getByText(/\/pi\/sessions\/[^/]+\.jsonl$/)).toBeAttached();
+        const fontSize = (element: Element) => parseFloat(getComputedStyle(element).fontSize);
+        expect(await details.evaluate(fontSize)).toBeLessThan(await page.locator('.chat-message-bubble').first().evaluate(fontSize));
         expect(prompts[0].model).toBeUndefined();
         await expect(page.getByRole('combobox', { name: 'Message delivery', exact: true })).toBeVisible();
         await choose(page, 'Message delivery', 'After current work');

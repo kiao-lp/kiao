@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { indexForSlot, slotAt } from './reorder';
 
 /** Pointer-event drag for mouse, pen and touch. The list moves only on drop; the handle also works from the keyboard. */
@@ -77,10 +77,7 @@ export const useReorderable = ({ count, onMove, disabled = false }: ReorderableO
 
     const rows = useRef<(HTMLElement | null)[]>([]);
     const refCallbacks = useRef(new Map<number, (element: HTMLElement | null) => void>());
-
-    // Handlers are created once and read current values through `latest`.
-    const latest = useRef({ count, onMove, disabled });
-    latest.current = { count, onMove, disabled };
+    const focusAfterMove = useRef<{ handle: HTMLElement; to: number } | null>(null);
 
     const press = useRef<{ from: number; pointerId: number; startY: number } | null>(null);
     const pointerY = useRef(0);
@@ -92,17 +89,17 @@ export const useReorderable = ({ count, onMove, disabled = false }: ReorderableO
         setDrag(next);
     }, []);
 
-    const slotForPointer = useCallback(() => {
+    const slotForPointer = useCallback((y: number) => {
         const bounds = rows.current
-            .slice(0, latest.current.count)
+            .slice(0, count)
             .map(element => (element ? element.getBoundingClientRect() : null));
-        return slotAt(pointerY.current, bounds);
-    }, []);
+        return slotAt(y, bounds);
+    }, [count]);
 
     const refreshSlot = useCallback(() => {
         const current = dragRef.current;
         if (!current) return;
-        const slot = slotForPointer();
+        const slot = slotForPointer(pointerY.current);
         if (slot !== current.slot) applyDrag({ ...current, slot });
     }, [applyDrag, slotForPointer]);
 
@@ -133,9 +130,29 @@ export const useReorderable = ({ count, onMove, disabled = false }: ReorderableO
             cancelAnimationFrame(frame.current);
             frame.current = 0;
         }
-        document.body.classList.remove(DRAGGING_BODY_CLASS);
-        applyDrag(null);
+        if (dragRef.current) {
+            document.body.classList.remove(DRAGGING_BODY_CLASS);
+            applyDrag(null);
+        }
     }, [applyDrag]);
+
+    // Positional keys keep the old grip mounted, so follow the moved row after React commits.
+    useLayoutEffect(() => {
+        const pending = focusAfterMove.current;
+        focusAfterMove.current = null;
+        if (pending && (document.activeElement === pending.handle || document.activeElement === document.body)) {
+            rows.current[pending.to]?.querySelector<HTMLButtonElement>('.kiao-reorder-handle')?.focus();
+        }
+    });
+
+    useLayoutEffect(endDrag, [count, disabled, endDrag]);
+
+    const moveRow = (from: number, to: number, handle: HTMLElement) => {
+        if (disabled || from === to || to < 0 || to >= count) return false;
+        if (handle === document.activeElement) focusAfterMove.current = { handle, to };
+        onMove(from, to);
+        return true;
+    };
 
     // Escape cancels the drag; nothing has moved yet.
     useEffect(() => {
@@ -153,78 +170,69 @@ export const useReorderable = ({ count, onMove, disabled = false }: ReorderableO
     // The body class must not outlive the drag.
     useEffect(() => () => {
         if (frame.current) cancelAnimationFrame(frame.current);
-        document.body.classList.remove(DRAGGING_BODY_CLASS);
+        if (dragRef.current) document.body.classList.remove(DRAGGING_BODY_CLASS);
     }, []);
 
-    const handlers = useMemo(() => ({
-        onPointerDown: (index: number) => (event: React.PointerEvent<HTMLElement>) => {
-            if (latest.current.disabled || latest.current.count < 2) return;
-            if (event.pointerType === 'mouse' && event.button !== 0) return;
-            const element = event.currentTarget;
-            press.current = { from: index, pointerId: event.pointerId, startY: event.clientY };
-            pointerY.current = event.clientY;
-            element.setPointerCapture?.(event.pointerId);
-            // The press takes focus for keyboard use; it does not select text.
+    const onPointerDown = (index: number, event: React.PointerEvent<HTMLElement>) => {
+        if (disabled || count < 2 || press.current || event.isPrimary === false) return;
+        if (event.pointerType === 'mouse' && event.button !== 0) return;
+        const element = event.currentTarget;
+        press.current = { from: index, pointerId: event.pointerId, startY: event.clientY };
+        pointerY.current = event.clientY;
+        element.setPointerCapture?.(event.pointerId);
+        event.preventDefault();
+        element.focus();
+    };
+
+    const onPointerMove: React.PointerEventHandler<HTMLElement> = event => {
+        const pressed = press.current;
+        if (!pressed || pressed.pointerId !== event.pointerId) return;
+        pointerY.current = event.clientY;
+
+        if (!dragRef.current) {
+            if (Math.abs(event.clientY - pressed.startY) < DRAG_THRESHOLD_PX) return;
+            document.body.classList.add(DRAGGING_BODY_CLASS);
+            scroller.current = scrollParentOf(rows.current[pressed.from] ?? null);
+            applyDrag({ from: pressed.from, slot: pressed.from });
+            frame.current = requestAnimationFrame(autoScroll);
+        }
+        refreshSlot();
+    };
+
+    const onPointerUp: React.PointerEventHandler<HTMLElement> = event => {
+        const pressed = press.current;
+        if (!pressed || pressed.pointerId !== event.pointerId) return;
+        const to = dragRef.current ? indexForSlot(pressed.from, slotForPointer(event.clientY)) : pressed.from;
+        endDrag();
+        moveRow(pressed.from, to, event.currentTarget);
+    };
+
+    const cancelPointer: React.PointerEventHandler<HTMLElement> = event => {
+        if (press.current?.pointerId === event.pointerId) endDrag();
+    };
+
+    const onKeyDown = (index: number, event: React.KeyboardEvent<HTMLElement>) => {
+        const to =
+            event.key === 'ArrowUp' ? index - 1 :
+            event.key === 'ArrowDown' ? index + 1 :
+            event.key === 'Home' ? 0 :
+            event.key === 'End' ? count - 1 :
+            index;
+        if (moveRow(index, to, event.currentTarget)) {
             event.preventDefault();
-            element.focus?.();
-        },
-
-        onPointerMove: () => (event: React.PointerEvent<HTMLElement>) => {
-            const pressed = press.current;
-            if (!pressed || pressed.pointerId !== event.pointerId) return;
-            pointerY.current = event.clientY;
-
-            if (!dragRef.current) {
-                if (Math.abs(event.clientY - pressed.startY) < DRAG_THRESHOLD_PX) return;
-                document.body.classList.add(DRAGGING_BODY_CLASS);
-                scroller.current = scrollParentOf(rows.current[pressed.from] ?? null);
-                applyDrag({ from: pressed.from, slot: pressed.from });
-                frame.current = requestAnimationFrame(autoScroll);
-            }
-            refreshSlot();
-        },
-
-        onPointerUp: () => (event: React.PointerEvent<HTMLElement>) => {
-            const pressed = press.current;
-            if (!pressed || pressed.pointerId !== event.pointerId) return;
-            const dropped = dragRef.current;
             endDrag();
-            if (!dropped) return;
-            const to = indexForSlot(dropped.from, dropped.slot);
-            if (to !== dropped.from) latest.current.onMove(dropped.from, to);
-        },
+        }
+    };
 
-        onPointerCancel: () => () => endDrag(),
-
-        // Lost capture ends the drag with no drop.
-        onLostPointerCapture: () => () => {
-            if (press.current) endDrag();
-        },
-
-        onKeyDown: (index: number) => (event: React.KeyboardEvent<HTMLElement>) => {
-            const { count: total, onMove: move, disabled: off } = latest.current;
-            if (off) return;
-            const to =
-                event.key === 'ArrowUp' ? index - 1 :
-                event.key === 'ArrowDown' ? index + 1 :
-                event.key === 'Home' ? 0 :
-                event.key === 'End' ? total - 1 :
-                index;
-            if (to === index || to < 0 || to >= total) return;
-            event.preventDefault();
-            move(index, to);
-        },
-    }), [applyDrag, autoScroll, endDrag, refreshSlot]);
-
-    const refFor = useCallback((index: number) => {
+    const refFor = (index: number) => {
         const existing = refCallbacks.current.get(index);
         if (existing) return existing;
         const callback = (element: HTMLElement | null) => { rows.current[index] = element; };
         refCallbacks.current.set(index, callback);
         return callback;
-    }, []);
+    };
 
-    const rowProps = useCallback((index: number, className?: string): ReorderRowProps => {
+    const rowProps = (index: number, className?: string): ReorderRowProps => {
         const classes = className ? [className] : [];
         if (drag) {
             if (drag.from === index) classes.push(ROW_CLASS_DRAGGING);
@@ -232,18 +240,18 @@ export const useReorderable = ({ count, onMove, disabled = false }: ReorderableO
             else if (drag.slot === count && index === count - 1) classes.push(ROW_CLASS_DROP_AFTER);
         }
         return { ref: refFor(index), className: classes.length > 0 ? classes.join(' ') : undefined };
-    }, [count, drag, refFor]);
+    };
 
-    const handleProps = useCallback((index: number): ReorderHandleProps => ({
+    const handleProps = (index: number): ReorderHandleProps => ({
         disabled: disabled || count < 2,
         dragging: drag?.from === index,
-        onPointerDown: handlers.onPointerDown(index),
-        onPointerMove: handlers.onPointerMove(),
-        onPointerUp: handlers.onPointerUp(),
-        onPointerCancel: handlers.onPointerCancel(),
-        onLostPointerCapture: handlers.onLostPointerCapture(),
-        onKeyDown: handlers.onKeyDown(index),
-    }), [count, disabled, drag, handlers]);
+        onPointerDown: event => onPointerDown(index, event),
+        onPointerMove,
+        onPointerUp,
+        onPointerCancel: cancelPointer,
+        onLostPointerCapture: cancelPointer,
+        onKeyDown: event => onKeyDown(index, event),
+    });
 
     return { rowProps, handleProps, draggingIndex: drag?.from ?? null };
 };

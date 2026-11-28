@@ -7,11 +7,14 @@ func connectionShapeError(kind string, success FlowNodeSuccess) string {
 	if success.FlowNode != "" {
 		count++
 	}
-	if (kind == flowNodeTypeShutdown || kind == flowNodeTypeNote || kind == flowNodeTypeValue) && count > 0 {
+	if (kind == flowNodeTypeShutdown || isDisplay(kind)) && count > 0 {
 		return "cannot have a successor"
 	}
-	if kind != FlowNodeTypeGateway && count > 1 {
+	if !splits(kind) && count > 1 {
 		return "can have only one successor; use a gateway to split branches"
+	}
+	if kind == FlowNodeTypeLimiter && count > 2 {
+		return "can have only two successors"
 	}
 	return ""
 }
@@ -54,20 +57,20 @@ func (b *BoardContent) ConnectionError(root string) error {
 			name = node.ID
 		}
 		if node.invalidSuccess != nil {
-			return fmt.Errorf("card %q %s", name, connectionShapeError(node.Type, *node.invalidSuccess))
+			return fmt.Errorf("flow node %q %s", name, connectionShapeError(node.Type, *node.invalidSuccess))
 		}
 		if issue := connectionShapeError(node.Type, node.OnSuccess); issue != "" {
-			return fmt.Errorf("card %q %s", name, issue)
+			return fmt.Errorf("flow node %q %s", name, issue)
 		}
-		if (node.Type == flowNodeTypeNote || node.Type == flowNodeTypeValue) && len(incoming[id]) > 0 {
-			return fmt.Errorf("card %q cannot have a predecessor", name)
+		if (node.Type == FlowNodeTypeStart || isDisplay(node.Type)) && len(incoming[id]) > 0 {
+			return fmt.Errorf("flow node %q cannot have a predecessor", name)
 		}
-		if node.Type != FlowNodeTypeGateway && len(incoming[id]) > 1 {
-			return fmt.Errorf("card %q can have only one predecessor; use a gateway to join branches", name)
+		if !node.IsGateway() && node.Type != FlowNodeTypeExclusiveGateway && len(incoming[id]) > 1 {
+			return fmt.Errorf("flow node %q can have only one predecessor; use a gateway to join branches", name)
 		}
 		for _, next := range outgoing[id] {
 			if next == id {
-				return fmt.Errorf("card %q cannot be chained to itself", name)
+				return fmt.Errorf("flow node %q cannot be chained to itself", name)
 			}
 		}
 		pending = append(pending, outgoing[id]...)

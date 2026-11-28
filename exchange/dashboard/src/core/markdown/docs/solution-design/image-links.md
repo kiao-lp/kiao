@@ -15,8 +15,9 @@ and IDE previews.
 
 `ConfiguredMarkdown` joins the path before calling worker's `getDownloadUrl`. It uses the
 current document folder by default; off-document content supplies `documentFolder`, as the
-Conversations panel does with its working directory. A source beginning with `/` resolves from
-the store root.
+Conversations panel does with its working directory. A source written as a DCMS link resolves
+from the DCMS root.
 
-[imageLinkPath](../../../../kit/MarkdownEditor/imagePaste.ts) writes pasted images relatively
-when saved beside the document and as store-root links when saved elsewhere.
+[imageLinkPath](../../../../kit/MarkdownEditor/imagePaste.ts) uses a document-relative link
+for images under the document's folder and a DCMS link for other images. Callers can also
+request a DCMS link explicitly.

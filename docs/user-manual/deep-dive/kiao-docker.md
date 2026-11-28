@@ -76,7 +76,7 @@ Dashboard is then at <http://localhost:48302/dashboard/>. Line by line:
 |---|---|
 | `-p 127.0.0.1:48302:80` | there is no Dashboard. The host port can be changed; `:80` is nginx, serving the SPA and proxying the API |
 | `-p 127.0.0.1:48303:18080` | the API is only reachable through nginx. Publish it to call the worker directly |
-| `-v …:/data` | the container uses a disposable store, including its worker state |
+| `-v …:/data` | the default DCMS root and its worker state live in the container’s writable layer |
 | `-v kiao-dev:/opt/kiao/dev` | APM caches and installed tools live in the container's writable layer |
 | `-v kiao-postgres:/var/lib/postgresql/data` | the boards die with the container — see [Boards](#boards) |
 | `-e …MIGRATIONS_PATH` | no migration runs at startup |
@@ -85,7 +85,7 @@ Dashboard is then at <http://localhost:48302/dashboard/>. Line by line:
 ## What goes on the host
 
 ```
-C:\Users\you\qroot\                  the store, mounted at /data
+C:\Users\you\qroot\                  host folder mounted at the DCMS root (/data)
 └── .kiao-config\claude\             KIAO_CLAUDE_HOME — kept by the volume
     ├── managed-settings.json        policy → /etc/claude-code/managed-settings.json
     ├── .claude\settings.json        user settings (~/.claude/settings.json to the CLI)
@@ -181,9 +181,13 @@ with the same mounts. The launch examples already include both mounts used by AP
 
 Use `/agentic-resource-management/` in this instance's DCMS file browser to edit agent sources
 under `agents/` and skill and MCP sources under `dependencies/`. On upgrade, the image copies
-repositories from the old development volume layout, consolidates dependencies, then seeds
-missing repositories from the dependency checkouts staged at build time. A fresh published
-source checkout builds an image with an empty seed. Keep the existing volumes attached for the first start. If you override
+repositories from the old development volume layout and reconciles dependencies against the
+catalogue staged at build time. The startup log reports the expected commit and any draft
+or divergent checkout it retains. Keep the existing volumes attached for the first start.
+
+A private assembly can mount staged repositories read-only and set
+`KIAO_AGENTIC_EXTRA_DEPENDENCY_SEED_PATH` and `KIAO_AGENTIC_AGENT_SEED_PATH` to their directories.
+The agent seed checks the identity and reconciles agents already present in the store. If you override
 a storage path, mount persistent storage at the resulting path. With an external resource
 manager, use the DCMS instance that serves its working trees.
 
@@ -249,7 +253,7 @@ entirely.
 Everything the CLI keeps hangs off one directory, so it all survives together or not at all:
 
 ```
-<store>/.kiao-config/claude/          KIAO_CLAUDE_HOME
+<dcms-root>/.kiao-config/claude/          KIAO_CLAUDE_HOME
 ├── .claude/.credentials.json         the OAuth token the sign-in writes
 ├── .claude/settings.json             user settings
 ├── .claude/CLAUDE.md                 user memory — yours, plus one import line
@@ -277,7 +281,7 @@ loaded and one arriving in the store through a `git pull` is not. Adding `projec
 the container. The model and effort come from the panel, not from settings.
 
 **Skills.** Each turn uses the skills in its agent's published APM package.
-[Agent resource delivery](/docs/solution-design/agentic-resources.md)
+[Agentic resource delivery](/docs/solution-design/agentic-resources.md)
 
 ## Development tools
 
@@ -324,7 +328,7 @@ by the next container without saying so). Three things keep it on the durable pa
 copied from the image at every start:
 
 ```
-<store>\.kiao-config\claude\.claude\
+<dcms-root>\.kiao-config\claude\.claude\
 ├── kiao-container.md     the instructions, refreshed from the image at every start
 └── CLAUDE.md             yours — it gains one line, `@kiao-container.md`, and nothing else
 ```
@@ -484,11 +488,12 @@ copied in from the host — on a named volume, which is where this belongs. A Wi
 
 ## Configuration
 
-Everything is set with `docker run -e`, using the worker variable names.
+Set these variables with `docker run -e`. A non-empty `KIAO_WORKER_DCMS_ROOT` takes precedence
+over its compatibility alias `KIAO_WORKER_ROOT_PATH`.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `KIAO_WORKER_ROOT_PATH` | `/data` | the store; created on startup. Mount a volume here |
+| `KIAO_WORKER_DCMS_ROOT` | `/data` | DCMS root, created at startup. Mount the document volume at this path. |
 | `SERVER_PORT` | `18080` | worker internal port |
 | `KIAO_WORKER_AUTH_MODE` | `debug` | no login, matching the SPA's `VITE_NO_SECURITY=true` |
 | `PLANTUML_PORT` | `8080` | PlantUML renderer internal port |
@@ -503,7 +508,7 @@ Everything is set with `docker run -e`, using the worker variable names.
 | `KIAO_WORKER_HYBRIDFLOW_RUNNER_MUSE_LOGIN_ENABLED` | `true` | the endpoints the Usage tab's **Login** button uses. `false` withdraws them |
 | `KIAO_WORKER_HYBRIDFLOW_RUNNER_CODEX_LOGIN_ENABLED` | `true` | Codex device-code and API-key login from Usage. `false` withdraws the login endpoints |
 | `KIAO_WORKER_HYBRIDFLOW_RUNNER_CLAUDE_ENABLED` | `true` | whether this deployment offers Claude at all. `false` keeps it out of the Conversations tab whatever is installed and whatever the panel says |
-| `KIAO_WORKER_HYBRIDFLOW_RUNNER_CODEX_ENABLED` | `true` | the same for Codex. None of the four says an harness *is* offered: that also needs its CLI on the machine, and the panel's switch left on |
+| `KIAO_WORKER_HYBRIDFLOW_RUNNER_CODEX_ENABLED` | `true` | the same for Codex. Availability also requires its CLI on the machine and the panel's switch enabled |
 | `KIAO_WORKER_HYBRIDFLOW_RUNNER_MUSE_ENABLED` | `true` | the same for Muse |
 | `KIAO_WORKER_HYBRIDFLOW_RUNNER_BYPASS_ENABLED` | `false` | **off in this image only.** Allows **Bypass permissions**, which runs the CLI with `--dangerously-skip-permissions` and asks nothing. Off, the mode is not offered and is refused if asked for; the manual modes are unaffected |
 | `KIAO_CLAUDE_HOME` | `<state>/claude` | the CLI's sign-in, settings and transcripts. Inside the store's `.kiao-config`, so a volume over `/data` keeps them |
@@ -532,7 +537,7 @@ Everything is set with `docker run -e`, using the worker variable names.
   and `/var/log/hybridflow-store.log` and `/var/log/postgres.log` say why not.
 - **The container exits at once with `KIAO_WORKER_HYBRIDFLOW_URL is set`** — that variable
   names a boards service elsewhere, and this image serves its own; honouring it would write a
-  run's answer there while the SPA wrote the card here. Unset it for the embedded boards, or set
+  run's answer there while the SPA wrote the flow node here. Unset it for the embedded boards, or set
   `KIAO_HYBRIDFLOW_STORE_DATABASE_URL` to a PostgreSQL for this container's own service to serve
   instead — see [Boards](#boards).
 - **A fix is committed but the container still misbehaves** — a container is bound to the image *id*
@@ -570,7 +575,7 @@ Everything is set with `docker run -e`, using the worker variable names.
 - **A Claude turn reaches for `apt`, or installs with `apk add` and it does not last** — it was
   not told where it is. `docker logs` has one `Claude memory:` line per start; if it is missing,
   `KIAO_CLAUDE_CONTAINER_MEMORY` is `false` or the image predates the mechanism. If it is there,
-  check that `<store>/.kiao-config/claude/.claude/CLAUDE.md` still holds the `@kiao-container.md`
+  check that `<dcms-root>/.kiao-config/claude/.claude/CLAUDE.md` still holds the `@kiao-container.md`
   line — the import is added once, and a file replaced wholesale afterwards loses it.
 - **A tool installed yesterday is gone** — `docker exec kiao kiao-dev status`. Either
   `/opt/kiao/dev` is not a mount, and the install went into a container that has since been

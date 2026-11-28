@@ -1,4 +1,4 @@
-/** Read drag targets from DOM attributes: antd Dropdown composes a card's ref only at mount,. */
+/** Read drag targets from DOM attributes: Ant Design’s Dropdown composes a card’s ref only at mount. */
 
 export const BOARD_ATTRIBUTE = 'data-board';
 

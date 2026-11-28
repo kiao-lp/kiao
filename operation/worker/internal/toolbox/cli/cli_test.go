@@ -15,7 +15,7 @@ import (
 // Harness CLIs are catalogue components like any other. This is the rule the panel depends on
 // — a row per CLI, recognised by a binary — and the one the build script depends on: `preinstall
 // claude-cli` has to name something.
-func TestTheAgentCLIsAreRuntimesWithABinary(t *testing.T) {
+func TestHarnessCLIsAreRuntimesWithABinary(t *testing.T) {
 	catalog, err := toolcatalog.LoadCatalog("")
 	if err != nil {
 		t.Fatalf("LoadCatalog: %v", err)

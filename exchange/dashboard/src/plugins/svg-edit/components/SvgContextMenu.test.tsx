@@ -10,7 +10,8 @@ vi.mock('../state', async () => {
     return { ...actual, useSvgStateContext: () => svgState.value };
 });
 
-vi.mock('@kiao-dashboard-core', () => ({
+vi.mock('@kiao-dashboard-core', async () => ({
+    ContextMenu: (await import('src/core/ui-foundation/interactions/ContextMenu')).ContextMenu,
     useSelectionContext: () => [selectionState.value, selectionState.set],
 }));
 

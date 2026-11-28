@@ -27,11 +27,10 @@ export const BoardControlsProvider: React.FC<{ children?: React.ReactNode }> = (
     const [zoom, setZoom] = useState(1);
     const [filter, setFilter] = useState<string[]>([]);
 
-    const cards = useMemo(
+    const nodes = useMemo(
         () => (content?.flowNodes ?? []).filter(flowNode => !flowNode.archived),
         [content]);
-    const classes = useMemo(() => content?.flowNodeClasses ?? [], [content]);
-    const tags = useMemo(() => boardTags([...cards, ...classes]), [cards, classes]);
+    const tags = useMemo(() => boardTags(nodes), [nodes]);
     useEffect(() => setFilter(held => (held.length ? keptTags(held, tags) : held)), [tags]);
 
     const toggle = useCallback((label: string) => setFilter(held => toggleTag(held, label)), []);
@@ -39,9 +38,9 @@ export const BoardControlsProvider: React.FC<{ children?: React.ReactNode }> = (
 
     const value = useMemo(() => ({
         zoom, setZoom, tags, filter, toggle, clear,
-        shown: filterFlowNodes(cards, filter).length + filterFlowNodes(classes, filter).length,
-        total: cards.length + classes.length,
-    }), [zoom, tags, filter, toggle, clear, cards, classes]);
+        shown: filterFlowNodes(nodes, filter).length,
+        total: nodes.length,
+    }), [zoom, tags, filter, toggle, clear, nodes]);
 
     return <BoardControlsContext.Provider value={value}>{children}</BoardControlsContext.Provider>;
 };

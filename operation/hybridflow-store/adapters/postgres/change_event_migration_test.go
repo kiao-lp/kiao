@@ -37,10 +37,10 @@ func TestChangeEventSubtypeUpgradePreservesHistory(t *testing.T) {
 		FROM change_event e`).Scan(&before, &cursor); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Migrate(ctx, pool); err != nil {
+	if _, err := migrateThrough(ctx, pool, 30); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Migrate(ctx, pool); err != nil {
+	if _, err := migrateThrough(ctx, pool, 30); err != nil {
 		t.Fatalf("a second pass failed: %v", err)
 	}
 	if err := pool.QueryRow(ctx, `SELECT jsonb_agg(to_jsonb(e) ORDER BY seq)::text
@@ -144,16 +144,12 @@ func TestChangeEventRequiresOneMatchingSubtype(t *testing.T) {
 }
 
 func TestTriggersRecordEveryEventSubtype(t *testing.T) {
-	pool := testPoolAtVersion(t, 35)
+	pool := testPool(t)
 	ctx := context.Background()
 	if _, err := pool.Exec(ctx, `
 		INSERT INTO board(id, name, slug) VALUES ('11111111-1111-4111-8111-111111111111', 'Events', 'events');
 		INSERT INTO flow_node(id, board_id, title) SELECT id, id, 'Node' FROM board;
-		INSERT INTO flow_node_class(id, board_id, title) SELECT id, id, 'Class' FROM board;
-		INSERT INTO flow_node_class_version(id, flow_node_class_id, version_number) SELECT id, id, 1 FROM board;
 		INSERT INTO workflow(id, board_id, name) SELECT id, id, 'Workflow' FROM board;
-		INSERT INTO workflow_class(id, board_id, name) SELECT id, id, 'Workflow class' FROM board;
-		INSERT INTO agent(id, name, harness) SELECT id, 'Agent', 'claude' FROM board;
 		INSERT INTO runner(id, name) SELECT id, 'Runner' FROM board;`); err != nil {
 		t.Fatal(err)
 	}
@@ -166,11 +162,7 @@ func TestTriggersRecordEveryEventSubtype(t *testing.T) {
 		SELECT set_config('kiao.actor', 'manual-edit', true);
 		UPDATE board SET name = 'Renamed';
 		UPDATE flow_node SET title = 'Renamed';
-		UPDATE flow_node_class SET title = 'Renamed';
-		UPDATE flow_node_class_version SET body = 'Revised';
 		UPDATE workflow SET name = 'Renamed';
-		UPDATE workflow_class SET name = 'Renamed';
-		UPDATE agent SET name = 'Renamed';
 		UPDATE runner SET name = 'Renamed' WHERE name = 'Runner';`); err != nil {
 		t.Fatal(err)
 	}
@@ -185,12 +177,11 @@ func TestTriggersRecordEveryEventSubtype(t *testing.T) {
 		}
 		scopes[string(change.Scope)]++
 	}
-	want := map[string]int{"board": 1, "flowNode": 1, "flowNodeClass": 2, "workflow": 1,
-		"workflowClass": 1, "agent": 1, "runner": 1}
+	want := map[string]int{"board": 1, "flowNode": 1, "workflow": 1, "runner": 1}
 	if !reflect.DeepEqual(scopes, want) {
 		t.Fatalf("event scopes = %v, want %v", scopes, want)
 	}
-	if _, err := pool.Exec(ctx, `DELETE FROM board; DELETE FROM agent; DELETE FROM runner;`); err != nil {
+	if _, err := pool.Exec(ctx, `DELETE FROM board; DELETE FROM runner;`); err != nil {
 		t.Fatalf("deleting subjects failed: %v", err)
 	}
 	feed, _, err = changes.Since(ctx, from, "", 100)

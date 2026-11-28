@@ -1,5 +1,5 @@
 import React from 'react';
-import { act, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from 'src/test/render';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
@@ -17,9 +17,13 @@ const files = vi.hoisted(() => ({
     update: vi.fn(),
 }));
 
-vi.mock('@kiao-dashboard-core', () => ({ useWorkerClient: () => files }));
+vi.mock('@kiao-dashboard-core', async importOriginal => ({
+    ...await importOriginal<typeof import('@kiao-dashboard-core')>(),
+    useWorkerClient: () => files,
+}));
 
 import { TagsProvider, useTags } from './Tags-ctx';
+import { TagsPanel } from './TagsPanel';
 import { TAGS_PATH } from './tagsFile';
 
 /** Everything the provider offers, reachable from a test without a panel around it. */
@@ -81,6 +85,40 @@ describe('the store’s tags', () => {
         act(() => { took = api.rename(1, 'Bug'); });
         expect(took).toBe(false);
         expect(shown()).toBe('bug:#e66767 ui:#3987e5');
+    });
+
+    it('restores a rejected label and displays a normalized rename in the panel', async () => {
+        files.text = '[{"label":"bug","color":"#e66767"},{"label":"ui","color":"#3987e5"}]';
+        render(<TagsProvider><TagsPanel /></TagsProvider>);
+        const input = await screen.findByRole('textbox', { name: 'Name of ui' });
+        fireEvent.change(input, { target: { value: 'Bug' } });
+        fireEvent.keyDown(input, { key: 'Enter' });
+        expect(input).toHaveValue('ui');
+
+        fireEvent.change(input, { target: { value: '  needs   review  ' } });
+        fireEvent.blur(input);
+        expect(screen.getByRole('textbox', { name: 'Name of needs review' })).toHaveValue('needs review');
+    });
+
+    it('writes the order set from the panel grip with each tag’s colour', async () => {
+        const bug = { label: 'bug', color: '#e66767' };
+        const ui = { label: 'ui', color: '#3987e5' };
+        files.text = JSON.stringify([bug, ui]);
+        const { unmount } = render(<TagsProvider><TagsPanel /></TagsProvider>);
+        const grip = await screen.findByRole('button', { name: 'Move bug' });
+
+        grip.focus();
+        fireEvent.keyDown(grip, { key: 'ArrowDown' });
+        expect(screen.getAllByRole('textbox', { name: /^Name of/ })).toEqual([
+            screen.getByRole('textbox', { name: 'Name of ui' }),
+            screen.getByRole('textbox', { name: 'Name of bug' }),
+        ]);
+        expect(grip).toHaveFocus();
+
+        unmount();
+        const [path, content] = files.update.mock.calls[0];
+        expect(path).toBe(TAGS_PATH);
+        expect(JSON.parse(content)).toEqual([ui, bug]);
     });
 
     it('renames, recolours, reorders and removes', async () => {

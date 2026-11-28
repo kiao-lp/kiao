@@ -102,7 +102,7 @@ func validatePiProfiles(doc harnessapi.PiProfilesDocument) error {
 	}
 	ids := map[string]bool{}
 	for _, in := range doc.Installations {
-		if !PiIdentifier.MatchString(in.ID) || ids[in.ID] || in.Engine != harnessapi.HarnessPi || !in.External || (!filepath.IsAbs(in.Path) && !PiIdentifier.MatchString(in.Path)) {
+		if !PiIdentifier.MatchString(in.ID) || ids[in.ID] || in.Harness != harnessapi.HarnessPi || !in.External || (!filepath.IsAbs(in.Path) && !PiIdentifier.MatchString(in.Path)) {
 			return faults.Invalid("declare each external Pi installation with a unique id and absolute executable path")
 		}
 		if !piCompatible(in) {

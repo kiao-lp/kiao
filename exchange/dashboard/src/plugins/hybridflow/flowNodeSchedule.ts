@@ -3,12 +3,15 @@
  * Moving a board across timezones preserves local time, not an instant.
  */
 
+import { hasContextReference } from './nodeContext';
+
 const LOCAL_DATETIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/;
 
 /** Invalid or absent values become empty (unplayable); optional seconds are discarded. */
 export const readSchedule = (raw: unknown): string => {
     if (typeof raw !== 'string') return '';
     const said = raw.trim();
+    if (hasContextReference(said)) return said;
     if (!LOCAL_DATETIME.test(said)) return '';
     return said.slice(0, 16);
 };
@@ -20,6 +23,7 @@ const UNITS: Record<string, number> = { ms: 1, s: 1000, m: 60000, h: 3600000 };
 export const readDuration = (raw: unknown): string => {
     if (typeof raw !== 'string') return '';
     const said = raw.trim();
+    if (hasContextReference(said)) return said;
     if (!DURATION.test(said)) return '';
     const milliseconds = [...said.matchAll(/([0-9]+(?:\.[0-9]+)?)(ms|s|m|h)/g)]
         .reduce((sum, part) => sum + Number(part[1]) * UNITS[part[2]], 0);
@@ -33,7 +37,7 @@ export const scheduleLabel = (at: string, duration?: string): string => {
     const wait = readDuration(duration);
     if (wait) return `Wait ${wait}`;
     const said = readSchedule(at);
-    if (!said) return '';
+    if (!said || hasContextReference(said)) return said;
     const when = new Date(said);
     if (Number.isNaN(when.getTime())) return said;
     return when.toLocaleString([], {

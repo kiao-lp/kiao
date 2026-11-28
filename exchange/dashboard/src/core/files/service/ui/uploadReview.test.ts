@@ -253,6 +253,10 @@ describe('isReadableAsText', () => {
             'go.work', 'go.work.sum', '.gitignore', '.kiao-files']) {
             expect(isReadableAsText(name), name).toBe(true);
         }
+        for (const name of ['a.ash', 'a.dash', 'a.ksh', 'a.zsh', 'a.csh', 'a.tcsh', 'a.fish',
+            'a.PS1', 'a.psm1', 'a.psd1', 'a.bat', 'a.cmd']) {
+            expect(isReadableAsText(name), name).toBe(true);
+        }
         // `.docx` is a zip; it needs conversion, so it is excluded.
         for (const name of ['a.docx', 'a.pdf', 'a.jpg', 'a.zip', 'noextension']) {
             expect(isReadableAsText(name), name).toBe(false);

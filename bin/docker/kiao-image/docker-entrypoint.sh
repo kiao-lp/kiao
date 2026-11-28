@@ -11,11 +11,11 @@ log() { echo "[kiao] $*"; }
 # --- Configuration -----------------------------------------------------------
 # Every variable can be overridden at `docker run -e`, matching the worker
 # env names used by the dev/e2e scripts (SERVER_PORT, KIAO_WORKER_*).
-: "${KIAO_WORKER_ROOT_PATH:=/data}"
-# The service's own state — migration ledger, conversations, the Dashboard config documents — is
-# left to its default of <root>/.kiao-config, so a volume mounted over the content
-# store keeps it across `docker run`s along with the content it describes. Without such a volume it
-# is recreated, with defaults, on every start. It never shows up in the file browser.
+# Keep the compatibility variable available to the development volume's env.sh.
+: "${KIAO_WORKER_ROOT_PATH:=${KIAO_WORKER_DCMS_ROOT:-/data}}"
+dcms_root="${KIAO_WORKER_DCMS_ROOT:-$KIAO_WORKER_ROOT_PATH}"
+# The default state directory is <dcms-root>/.kiao-config. A volume mounted at the DCMS root
+# keeps documents and worker state together across container replacements.
 : "${SERVER_PORT:=18080}"
 : "${PLANTUML_PORT:=8080}"
 : "${HYBRIDFLOW_PORT:=18081}"
@@ -123,9 +123,8 @@ if [ -n "$REMOTE_HYBRIDFLOW_URL" ]; then
  fi
 fi
 
-# The worker refuses to start on a missing root; create it (also covers an
-# empty bind-mount volume).
-mkdir -p "$KIAO_WORKER_ROOT_PATH"
+# Create the DCMS root before the worker checks that it exists.
+mkdir -p "$dcms_root"
 
 # --- Claude Code state -------------------------------------------------------
 # Everything the CLI keeps — the sign-in token, the user settings, the session transcripts — hangs
@@ -134,7 +133,7 @@ mkdir -p "$KIAO_WORKER_ROOT_PATH"
 # same store: a volume mounted over the store then carries the sign-in with it, and nothing extra
 # has to be mounted for a login to outlive `docker rm`. That directory is hidden from the file API
 # and carries a .gitignore of "*", so the token reaches neither the file browser nor a commit.
-STATE_PATH="${KIAO_WORKER_STATE_PATH:-$KIAO_WORKER_ROOT_PATH/.kiao-config}"
+STATE_PATH="${KIAO_WORKER_STATE_PATH:-$dcms_root/.kiao-config}"
 : "${KIAO_CLAUDE_HOME:=$STATE_PATH/claude}"
 
 # 0700 on both, the mode the service gives its own state directory: .credentials.json is an OAuth
@@ -440,9 +439,12 @@ SQL
     POSTGRES_STARTED=1
 fi
 
+# An existing env.sh may still select the DCMS root through the alias.
+export KIAO_WORKER_DCMS_ROOT="${KIAO_WORKER_DCMS_ROOT:-${KIAO_WORKER_ROOT_PATH:-/data}}"
+
 AGENTIC_PID=""
 if [ -z "${KIAO_AGENTIC_RESOURCE_MANAGER_URL:-}" ]; then
-    resource_root="${KIAO_AGENTIC_RESOURCES_ROOT:-$KIAO_WORKER_ROOT_PATH/agentic-resource-management}"
+    resource_root="${KIAO_AGENTIC_RESOURCES_ROOT:-$KIAO_WORKER_DCMS_ROOT/agentic-resource-management}"
     set -- prepare "$resource_root"
     if [ -z "${KIAO_AGENTIC_RESOURCES_ROOT:-}" ]; then
         legacy_resources=/opt/kiao/dev/resources
@@ -461,11 +463,20 @@ if [ -z "${KIAO_AGENTIC_RESOURCE_MANAGER_URL:-}" ]; then
     export KIAO_AGENTIC_RESOURCES_PATH="${KIAO_AGENTIC_RESOURCES_PATH:-$resource_root/agents}"
     if [ -z "${KIAO_AGENTIC_DEPENDENCIES_PATH:-}" ]; then
         export KIAO_AGENTIC_DEPENDENCIES_PATH="$resource_root/dependencies"
-        python3 /opt/kiao/seed-agentic-resources.py seed /opt/kiao/agentic-seed "$KIAO_AGENTIC_DEPENDENCIES_PATH"
+        /opt/kiao/apm/bin/python /opt/kiao/seed-agentic-resources.py seed /opt/kiao/agentic-seed "$KIAO_AGENTIC_DEPENDENCIES_PATH"
     fi
+    if [ -n "${KIAO_AGENTIC_EXTRA_DEPENDENCY_SEED_PATH:-}" ]; then
+        /opt/kiao/apm/bin/python /opt/kiao/seed-agentic-resources.py seed "$KIAO_AGENTIC_EXTRA_DEPENDENCY_SEED_PATH" "$KIAO_AGENTIC_DEPENDENCIES_PATH"
+    fi
+    if [ -n "${KIAO_AGENTIC_AGENT_SEED_PATH:-}" ]; then
+        /opt/kiao/apm/bin/python /opt/kiao/seed-agentic-resources.py seed --agents --existing-only "$KIAO_AGENTIC_AGENT_SEED_PATH" "$KIAO_AGENTIC_RESOURCES_PATH"
+    fi
+    export KIAO_APM_GIT_SEEDS="${KIAO_APM_GIT_SEEDS:-/opt/kiao/agentic-seed${KIAO_AGENTIC_EXTRA_DEPENDENCY_SEED_PATH:+:$KIAO_AGENTIC_EXTRA_DEPENDENCY_SEED_PATH}}"
     export KIAO_AGENTIC_RESOURCE_MANAGER_URL="http://127.0.0.1:${KIAO_AGENTIC_RESOURCE_MANAGER_PORT:-18082}"
     export KIAO_AGENTIC_RESOURCE_MANAGER_AUTH_MODE=debug
-    /usr/local/bin/agentic-resource-manager > /var/log/agentic-resource-manager.log 2>&1 &
+    # A Git checkout needs a reflog identity. An email fallback avoids a DNS lookup
+    # of the container hostname when Git has no configured email.
+    EMAIL="${EMAIL:-kiao@localhost}" /usr/local/bin/agentic-resource-manager > /var/log/agentic-resource-manager.log 2>&1 &
     AGENTIC_PID=$!
 fi
 
@@ -478,7 +489,7 @@ fi
 # The service token is minted per start and never written down: the pair that has to agree on
 # it — this service and the worker child below — are both started here, and a token that
 # lives in memory for one run cannot be leaked by a file nobody remembered to delete. The
-# worker presents it when a run claims a card and files an answer, naming the run's owner
+# worker presents it when a run claims a flow node and files an answer, naming the run's owner
 # beside it; the browser presents nothing, and what it writes is recorded as anonymous.
 HYBRIDFLOW_PID=""
 if [ -z "$REMOTE_HYBRIDFLOW_URL" ]; then
@@ -511,7 +522,7 @@ PLANTUML_PID=$!
 
 # --- worker -----------------------------------------------------------
 log "starting worker on 0.0.0.0:$SERVER_PORT" \
-    "(root=$KIAO_WORKER_ROOT_PATH, auth=$KIAO_WORKER_AUTH_MODE," \
+    "(DCMS root=$KIAO_WORKER_DCMS_ROOT, auth=$KIAO_WORKER_AUTH_MODE," \
     "claude-home=$KIAO_CLAUDE_HOME," \
     "agent-bypass=$KIAO_WORKER_HYBRIDFLOW_RUNNER_BYPASS_ENABLED)"
 # HOME is what puts every piece of Claude state in one directory — the service derives its default

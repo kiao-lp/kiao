@@ -54,10 +54,10 @@ func TestOutputTypeFromAnotherBoard(t *testing.T) {
 	if _, err := nodes.StartPlay(ctx, id, "run-1", "run-1"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := nodes.EndPlay(ctx, id, "old-run", entities.StatusDone, "old-run", `{"stale":true}`); !errors.Is(err, entities.ErrConflict) {
+	if _, err := nodes.EndPlay(ctx, id, "old-run", "old-run", entities.PlayResult{Status: entities.StatusDone, Output: `{"stale":true}`}); !errors.Is(err, entities.ErrConflict) {
 		t.Fatalf("stale completion = %v", err)
 	}
-	done, err := nodes.EndPlay(ctx, id, "run-1", entities.StatusDone, "run-1", `{"message": "hello"}`)
+	done, err := nodes.EndPlay(ctx, id, "run-1", "run-1", entities.PlayResult{Status: entities.StatusDone, Output: `{"message": "hello"}`})
 	if err != nil || done.Output != `{"message":"hello"}` || done.RunID != "" {
 		t.Fatalf("done = %+v, %v", done, err)
 	}

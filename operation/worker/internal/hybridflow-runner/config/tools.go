@@ -1,6 +1,5 @@
 package config
 
-// AskUserQuestion uses can_use_tool and receives answers through updatedInput.
-// Treat it as a question, never a permission: bypass and manualLive auto-approval
-// must not answer on the user's behalf.
+// This can_use_tool request needs the user's answer in updatedInput,
+// so bypass and manualLive cannot auto-approve it.
 const ClaudeAskQuestionTool = "AskUserQuestion"

@@ -8,31 +8,22 @@ import type {
     BoardAgentPatch,
     BoardAgentVersion,
     BoardChanges,
-    BoardClassVersion,
-    BoardClassVersionPatch,
     BoardFlowNode,
-    BoardFlowNodeClass,
-    BoardFlowNodeClassPatch,
     BoardFlowNodePatch,
-    BoardInstantiateRequest,
-    BoardListedClass,
-    BoardListedWorkflowClass,
     BoardPatch,
     BoardRunner,
     BoardRunnerPatch,
+    BoardSpot,
     BoardUsageTotals,
     BoardWhole,
     BoardWorkflow,
-    BoardWorkflowClass,
-    BoardWorkflowClassPatch,
+    BoardWorkflowClipboard,
     BoardWorkflowPatch,
+    BoardWorkflowWithFlowNodes,
     NewBoardAgent,
-    NewBoardClassVersion,
     NewBoardFlowNode,
-    NewBoardFlowNodeClass,
     NewBoardRunner,
     NewBoardWorkflow,
-    NewBoardWorkflowClass,
 } from './hybridflow/model.js';
 import type { Config } from './config.js';
 import type {
@@ -146,6 +137,11 @@ export class WorkerClient {
 
     getFileInfo(path: string): Promise<FileDto> {
         return this.json<FileDto>('/info', undefined, { path });
+    }
+
+    async checkStore(): Promise<void> {
+        const root = await this.getFileInfo('/');
+        if (!root?.isDirectory) throw new Error('The worker file API cannot read the DCMS root.');
     }
 
     async getFileText(path: string): Promise<string> {
@@ -355,87 +351,8 @@ export class WorkerClient {
         );
     }
 
-    convertFlowNodeToClass(handle: string, id: string): Promise<BoardFlowNodeClass> {
-        return this.boardsJson<BoardFlowNodeClass>(
-            'POST', `${WorkerClient.boardPath(handle)}/flow-nodes/${encodeURIComponent(id)}/to-class`, {},
-        );
-    }
-
     listSchemaValues(): Promise<{ schemaValues: BoardSchemaValue[] }> {
         return this.boardsJson<{ schemaValues: BoardSchemaValue[] }>('GET', '/hybridflow-runner/schema-values');
-    }
-
-    listFlowNodeClasses(): Promise<{ flowNodeClasses: BoardListedClass[] }> {
-        return this.boardsJson<{ flowNodeClasses: BoardListedClass[] }>('GET', '/hybridflow-runner/flow-node-classes');
-    }
-
-    createFlowNodeClass(handle: string, flowNodeClass: NewBoardFlowNodeClass): Promise<BoardFlowNodeClass> {
-        return this.boardsJson<BoardFlowNodeClass>(
-            'POST', `${WorkerClient.boardPath(handle)}/flow-node-classes`, flowNodeClass,
-        );
-    }
-
-    getFlowNodeClass(handle: string, id: string): Promise<BoardFlowNodeClass> {
-        return this.boardsJson<BoardFlowNodeClass>(
-            'GET', `${WorkerClient.boardPath(handle)}/flow-node-classes/${encodeURIComponent(id)}`,
-        );
-    }
-
-    patchFlowNodeClass(
-        handle: string, id: string, patch: BoardFlowNodeClassPatch, ifMatch?: number,
-    ): Promise<BoardFlowNodeClass> {
-        return this.boardsJson<BoardFlowNodeClass>(
-            'PATCH', `${WorkerClient.boardPath(handle)}/flow-node-classes/${encodeURIComponent(id)}`,
-            patch, WorkerClient.ifMatch(ifMatch),
-        );
-    }
-
-    deleteFlowNodeClasses(handle: string, flowNodeClasses: string[]): Promise<void> {
-        return this.boardsVoid(
-            'DELETE', `${WorkerClient.boardPath(handle)}/flow-node-classes`, { flowNodeClasses },
-        );
-    }
-
-    chainFlowNodeClass(handle: string, id: string, flowNode: string): Promise<BoardFlowNodeClass> {
-        return this.boardsJson<BoardFlowNodeClass>(
-            'POST', `${WorkerClient.boardPath(handle)}/flow-node-classes/${encodeURIComponent(id)}/chain`,
-            { flowNode },
-        );
-    }
-
-    createClassVersion(
-        handle: string, classId: string, version: NewBoardClassVersion,
-    ): Promise<BoardClassVersion> {
-        return this.boardsJson<BoardClassVersion>(
-            'POST', `${WorkerClient.boardPath(handle)}/flow-node-classes/${encodeURIComponent(classId)}/versions`,
-            version,
-        );
-    }
-
-    patchClassVersion(
-        handle: string, classId: string, versionId: string, patch: BoardClassVersionPatch, ifMatch?: number,
-    ): Promise<BoardClassVersion> {
-        return this.boardsJson<BoardClassVersion>(
-            'PATCH',
-            `${WorkerClient.boardPath(handle)}/flow-node-classes/${encodeURIComponent(classId)}/versions/${encodeURIComponent(versionId)}`,
-            patch, WorkerClient.ifMatch(ifMatch),
-        );
-    }
-
-    deleteClassVersion(handle: string, classId: string, versionId: string): Promise<void> {
-        return this.boardsVoid(
-            'DELETE',
-            `${WorkerClient.boardPath(handle)}/flow-node-classes/${encodeURIComponent(classId)}/versions/${encodeURIComponent(versionId)}`,
-        );
-    }
-
-    instantiateFlowNodeClass(
-        handle: string, classId: string, request: BoardInstantiateRequest,
-    ): Promise<{ flowNodes: BoardFlowNode[] }> {
-        return this.boardsJson<{ flowNodes: BoardFlowNode[] }>(
-            'POST', `${WorkerClient.boardPath(handle)}/flow-node-classes/${encodeURIComponent(classId)}/instantiate`,
-            request,
-        );
     }
 
     createWorkflow(handle: string, workflow: NewBoardWorkflow): Promise<BoardWorkflow> {
@@ -450,6 +367,18 @@ export class WorkerClient {
         );
     }
 
+    copyWorkflow(handle: string, id: string): Promise<BoardWorkflowClipboard> {
+        return this.boardsJson(
+            'GET', `${WorkerClient.boardPath(handle)}/workflows/${encodeURIComponent(id)}/clipboard`,
+        );
+    }
+
+    pasteWorkflow(handle: string, clipboard: BoardWorkflowClipboard, spot?: BoardSpot): Promise<BoardWorkflowWithFlowNodes> {
+        return this.boardsJson(
+            'POST', `${WorkerClient.boardPath(handle)}/workflows/clipboard`, { clipboard, spot },
+        );
+    }
+
     patchWorkflow(handle: string, id: string, patch: BoardWorkflowPatch, ifMatch?: number): Promise<BoardWorkflow> {
         return this.boardsJson<BoardWorkflow>(
             'PATCH', `${WorkerClient.boardPath(handle)}/workflows/${encodeURIComponent(id)}`,
@@ -459,48 +388,6 @@ export class WorkerClient {
 
     deleteWorkflows(handle: string, workflows: string[]): Promise<void> {
         return this.boardsVoid('DELETE', `${WorkerClient.boardPath(handle)}/workflows`, { workflows });
-    }
-
-    listWorkflowClasses(): Promise<{ workflowClasses: BoardListedWorkflowClass[] }> {
-        return this.boardsJson<{ workflowClasses: BoardListedWorkflowClass[] }>(
-            'GET', '/hybridflow-runner/workflow-classes',
-        );
-    }
-
-    createWorkflowClass(handle: string, workflowClass: NewBoardWorkflowClass): Promise<BoardWorkflowClass> {
-        return this.boardsJson<BoardWorkflowClass>(
-            'POST', `${WorkerClient.boardPath(handle)}/workflow-classes`, workflowClass,
-        );
-    }
-
-    getWorkflowClass(handle: string, id: string): Promise<BoardWorkflowClass> {
-        return this.boardsJson<BoardWorkflowClass>(
-            'GET', `${WorkerClient.boardPath(handle)}/workflow-classes/${encodeURIComponent(id)}`,
-        );
-    }
-
-    patchWorkflowClass(
-        handle: string, id: string, patch: BoardWorkflowClassPatch, ifMatch?: number,
-    ): Promise<BoardWorkflowClass> {
-        return this.boardsJson<BoardWorkflowClass>(
-            'PATCH', `${WorkerClient.boardPath(handle)}/workflow-classes/${encodeURIComponent(id)}`,
-            patch, WorkerClient.ifMatch(ifMatch),
-        );
-    }
-
-    deleteWorkflowClasses(handle: string, workflowClasses: string[]): Promise<void> {
-        return this.boardsVoid(
-            'DELETE', `${WorkerClient.boardPath(handle)}/workflow-classes`, { workflowClasses },
-        );
-    }
-
-    instantiateWorkflowClass(
-        handle: string, id: string, request: BoardInstantiateRequest,
-    ): Promise<{ workflow: BoardWorkflow; flowNodes: BoardFlowNode[] }> {
-        return this.boardsJson<{ workflow: BoardWorkflow; flowNodes: BoardFlowNode[] }>(
-            'POST', `${WorkerClient.boardPath(handle)}/workflow-classes/${encodeURIComponent(id)}/instantiate`,
-            request,
-        );
     }
 
     listAgents(): Promise<{ agents: BoardAgent[] }> {

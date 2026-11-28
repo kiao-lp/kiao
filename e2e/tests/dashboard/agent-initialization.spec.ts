@@ -8,6 +8,63 @@ test.afterEach(resetViewState);
 
 const git = (dir: string, ...args: string[]) => execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
 
+test('locks the New agent form during creation and unlocks it after a missing Git path error', async ({ page }) => {
+    const scratch = mkdtempSync(join(tmpdir(), 'kiao-agent-missing-'));
+    const repository = join(scratch, 'missing.git');
+    let releaseCreate!: () => void;
+    const pendingCreate = new Promise<void>(resolve => { releaseCreate = resolve; });
+    try {
+        await page.route('**/api/agentic/agents', async route => {
+            if (route.request().method() === 'POST') await pendingCreate;
+            await route.continue();
+        });
+        await page.goto('works');
+        await page.locator('.cms-top-banner .anticon-more').click();
+        await page.getByRole('menuitem', { name: /Agentic resources…$/ }).click();
+        await page.getByTestId('new-agent').click();
+        const modal = page.getByRole('dialog', { name: 'New agent' });
+        await expect(modal).toBeVisible();
+        expect(await modal.evaluate(element => element.clientWidth)).toBeGreaterThan(520);
+        const settings = modal.getByText(/^(Harness|Model|Default effort)$/);
+        await expect(settings).toHaveCount(3);
+        const labelTops = await settings.evaluateAll(labels => labels.map(label => label.getBoundingClientRect().top));
+        expect(new Set(labelTops).size).toBe(1);
+
+        const repositoryInput = modal.getByRole('textbox', { name: 'Git repository URL or path' });
+        const harness = modal.getByRole('combobox', { name: 'New agent harness' });
+        await repositoryInput.fill(repository);
+        await modal.getByTestId('new-agent-harness').click();
+        await page.locator('.ant-select-dropdown:visible').getByText(/^Pi\b/).click();
+        const fields = [
+            repositoryInput,
+            modal.getByTestId('new-agent-name'),
+            modal.getByRole('combobox', { name: 'New agent profile' }),
+            harness,
+            modal.getByRole('combobox', { name: 'New agent model' }),
+            modal.getByRole('textbox', { name: 'New agent effort' }),
+            modal.getByTestId('new-agent-description'),
+            modal.getByTestId('new-agent-instructions'),
+        ];
+        const create = modal.getByTestId('create-agent');
+        await create.click();
+        await expect(create).toBeDisabled();
+        await expect(create.getByRole('img', { name: 'loading' })).toBeVisible();
+        for (const field of fields) await expect(field).toBeDisabled();
+        await page.keyboard.press('Escape');
+        await expect(modal).toBeVisible();
+
+        releaseCreate();
+        await expect(modal.getByRole('alert')).toContainText("Check that the path exists on the resource manager's machine");
+        await expect(repositoryInput).toHaveValue(repository);
+        for (const field of fields) await expect(field).toBeEnabled();
+        await expect(create).toBeEnabled();
+        await expect(create.getByRole('img', { name: 'loading' })).toBeHidden();
+    } finally {
+        releaseCreate();
+        rmSync(scratch, { recursive: true, force: true });
+    }
+});
+
 for (const populated of [false, true]) {
     test(`initializes ${populated ? 'a populated' : 'an empty'} Git repository from Agents`, async ({ page, request }) => {
         const scratch = mkdtempSync(join(tmpdir(), 'kiao-agent-init-'));
@@ -34,7 +91,7 @@ for (const populated of [false, true]) {
 
             await page.goto('works');
             await page.locator('.cms-top-banner .anticon-more').click();
-            await page.getByRole('menuitem', { name: /Agents…$/ }).click();
+            await page.getByRole('menuitem', { name: /Agentic resources…$/ }).click();
             await page.getByTestId('new-agent').click();
             const modal = page.getByRole('dialog', { name: 'New agent' });
             await modal.getByRole('textbox', { name: 'Git repository URL or path' }).fill(repository);

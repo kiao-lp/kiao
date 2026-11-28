@@ -15,9 +15,9 @@ import (
 	"time"
 )
 
-const agentSupervisorCommand = "--kiao-harness-process-supervisor-v1"
+const harnessSupervisorCommand = "--kiao-harness-process-supervisor-v1"
 
-// supervisedAgentProcess owns a turn's local descendants, including tools that
+// SupervisedHarnessProcess owns a turn's local descendants, including tools that
 // start a new session/process group. Its supervisor is a separate Linux subreaper,
 // so orphaned grandchildren are adopted here rather than by PID 1. Closing the
 // lifeline cancels it; a worker crash closes the same pipe in the kernel.
@@ -33,13 +33,13 @@ type SupervisedHarnessProcess struct {
 	stopOnce sync.Once
 }
 
-type agentProcessStatus struct {
+type harnessProcessStatus struct {
 	PID      int    `json:"pid,omitempty"`
 	Error    string `json:"error,omitempty"`
 	ExitCode int    `json:"exitCode"`
 }
 
-// startSupervisedAgent starts the supplied command's specification. The caller
+// StartSupervisedHarness starts the supplied command's specification. The caller
 // owns its stdin/stdout/stderr files; no exec.Cmd pipe copier can delay reaping.
 func StartSupervisedHarness(target *exec.Cmd) (*SupervisedHarnessProcess, error) {
 	if target.Err != nil {
@@ -57,7 +57,7 @@ func StartSupervisedHarness(target *exec.Cmd) (*SupervisedHarnessProcess, error)
 	}
 	defer statusW.Close()
 	// /proc/self/exe keeps using this worker even if its on-disk binary was replaced.
-	args := append([]string{agentSupervisorCommand, target.Path}, target.Args[1:]...)
+	args := append([]string{harnessSupervisorCommand, target.Path}, target.Args[1:]...)
 	cmd := exec.Command("/proc/self/exe", args...)
 	cmd.Dir, cmd.Env = target.Dir, target.Env
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = target.Stdin, target.Stdout, target.Stderr
@@ -74,7 +74,7 @@ func StartSupervisedHarness(target *exec.Cmd) (*SupervisedHarnessProcess, error)
 	statusW.Close()
 	process := &SupervisedHarnessProcess{Cmd: cmd, lifeline: lifeW,
 		status: json.NewDecoder(statusR), statusR: statusR, Done: make(chan struct{})}
-	var started agentProcessStatus
+	var started harnessProcessStatus
 	// Only bound the local startup handshake, never the duration of a harness turn.
 	_ = statusR.SetReadDeadline(time.Now().Add(10 * time.Second))
 	err = process.status.Decode(&started)
@@ -108,7 +108,7 @@ func (p *SupervisedHarnessProcess) wait() {
 	defer p.statusR.Close()
 	defer p.Stop()
 	err := p.Cmd.Wait()
-	var ended agentProcessStatus
+	var ended harnessProcessStatus
 	if decodeErr := p.status.Decode(&ended); err != nil || decodeErr != nil {
 		p.ExitCode = -1
 		p.Err = fmt.Errorf("harness supervisor ended without cleanup confirmation: %w", errors.Join(err, decodeErr))
@@ -123,14 +123,14 @@ func (p *SupervisedHarnessProcess) wait() {
 // RunHarnessProcessSupervisor handles the worker's private subprocess mode. Call
 // before reading server configuration (also from TestMain for self-exec tests).
 func RunHarnessProcessSupervisor() bool {
-	if len(os.Args) < 2 || os.Args[1] != agentSupervisorCommand {
+	if len(os.Args) < 2 || os.Args[1] != harnessSupervisorCommand {
 		return false
 	}
-	os.Exit(runAgentProcessSupervisor(os.Args[2:]))
+	os.Exit(runHarnessProcessSupervisor(os.Args[2:]))
 	return true
 }
 
-func runAgentProcessSupervisor(args []string) int {
+func runHarnessProcessSupervisor(args []string) int {
 	lifeline := os.NewFile(3, "harness-lifeline")
 	status := os.NewFile(4, "harness-status")
 	defer lifeline.Close()
@@ -140,7 +140,7 @@ func runAgentProcessSupervisor(args []string) int {
 	syscall.CloseOnExec(4)
 	report := json.NewEncoder(status)
 	fail := func(err error) int {
-		_ = report.Encode(agentProcessStatus{Error: err.Error(), ExitCode: -1})
+		_ = report.Encode(harnessProcessStatus{Error: err.Error(), ExitCode: -1})
 		return 1
 	}
 	if len(args) == 0 {
@@ -167,7 +167,7 @@ func runAgentProcessSupervisor(args []string) int {
 	// Only the launcher reads the prompt. Keeping our copy open would mask its
 	// closed stdin and leave the worker blocked on a large prompt forever.
 	_ = os.Stdin.Close()
-	_ = report.Encode(agentProcessStatus{PID: cmd.Process.Pid})
+	_ = report.Encode(harnessProcessStatus{PID: cmd.Process.Pid})
 	rootDone := make(chan error, 1)
 	go func() { rootDone <- cmd.Wait() }()
 	var rootErr error
@@ -179,7 +179,7 @@ func runAgentProcessSupervisor(args []string) int {
 	}
 	// Launcher exit and cancellation have the same cleanup, independently of any
 	// protocol output or pipe held open by a descendant.
-	cleanupErr := reapAgentDescendants()
+	cleanupErr := reapHarnessDescendants()
 	exitCode := 0
 	if rootErr != nil {
 		exitCode = -1
@@ -188,7 +188,7 @@ func runAgentProcessSupervisor(args []string) int {
 			exitCode = exitErr.ExitCode()
 		}
 	}
-	ended := agentProcessStatus{ExitCode: exitCode}
+	ended := harnessProcessStatus{ExitCode: exitCode}
 	if cleanupErr != nil {
 		ended.Error, ended.ExitCode = cleanupErr.Error(), -1
 	}
@@ -199,7 +199,7 @@ func runAgentProcessSupervisor(args []string) int {
 // Only enumerate this supervisor's children. As each is killed, its surviving
 // descendants are adopted here, including setsid/double-fork children. Reap until
 // ECHILD, rather than considering the launcher's death proof that its tools ended.
-func reapAgentDescendants() error {
+func reapHarnessDescendants() error {
 	var cleanupErr error
 	for {
 		pid, err := syscall.Wait4(-1, nil, syscall.WNOHANG, nil)

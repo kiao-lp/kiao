@@ -169,7 +169,7 @@ func TestMuseConcurrentControlCallsReleaseHostAndStagingBeforeStreamCloses(t *te
 	driver, _ := museStubDriver(t, "ask")
 	dir := t.TempDir()
 	if err := driver.Spawn(harnessapi.HarnessRun{
-		Prompt: "list files", WorkDir: dir, StoreRoot: dir,
+		Prompt: "list files", WorkDir: dir, DCMSRoot: dir,
 		MCPConfig: `{}`, MCPToken: "turn-token",
 	}); err != nil {
 		t.Fatal(err)

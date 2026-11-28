@@ -38,7 +38,7 @@ func TestCreateStagingOpensAnEmptyDirectoryUnderTheStagingRoot(t *testing.T) {
 	}
 }
 
-// In production the store root IS a git work tree. An upload waiting to be reviewed must not reach
+// In production the DCMS root IS a git work tree. An upload waiting to be reviewed must not reach
 // the Source Control panel, so the staging root hides itself the way the state directory does.
 func TestCreateStagingHidesTheStagingRootFromGit(t *testing.T) {
 	root := t.TempDir()
@@ -119,7 +119,7 @@ func TestDiscardStagingRefusesAnythingThatIsNotAStagingArea(t *testing.T) {
 
 	for _, p := range []string{
 		"units",                   // an ordinary folder of the store
-		"",                        // the store root
+		"",                        // the DCMS root
 		filesystem.StagingDirName, // the staging root, which holds every other upload
 		filesystem.StagingDirName + "/handwritten", // a folder in it this service did not mint
 	} {

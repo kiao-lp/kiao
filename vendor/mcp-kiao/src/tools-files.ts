@@ -8,7 +8,7 @@ export function registerFileTools(server: McpServer, files: WorkerClient): void 
     // ── Direct file access ──────────────────────────────────────────────────
 
     server.registerTool('files_list', {
-        description: 'List files and folders in a worker directory (path relative to the store root; "" for root).',
+        description: 'List files and folders by file API path relative to the DCMS root. Use an empty path for the root.',
         inputSchema: { path: z.string().default('') },
     }, guard(async ({ path }) => ok(await files.listFiles(path))));
 

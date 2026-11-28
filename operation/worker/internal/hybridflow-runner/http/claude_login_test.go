@@ -396,7 +396,7 @@ func TestClaudeAuthStatusNeverInventsASignIn(t *testing.T) {
 // harness, which is what answers the HarnessLogin port the endpoints are mounted on.
 func newLoginTestServer(t *testing.T, login *claudecli.ClaudeLoginService) *Service {
 	t.Helper()
-	cfg := &runnerconfig.Config{Config: &coreconfig.Config{AuthMode: "debug", RootPath: t.TempDir(), MaxUploadBytes: 1 << 20}}
+	cfg := &runnerconfig.Config{Config: &coreconfig.Config{AuthMode: "debug", DCMSRoot: t.TempDir(), MaxUploadBytes: 1 << 20}}
 	harness := &claudecli.ClaudeHarness{Cfg: cfg, Binary: claudecli.ClaudeBinaryName, Login: login}
 	hub := assembly.NewEngine(cfg, nil)
 	hub.Harnesses.Set(harnessapi.HarnessClaude, harness)

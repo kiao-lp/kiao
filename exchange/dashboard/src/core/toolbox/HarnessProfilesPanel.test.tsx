@@ -1,9 +1,10 @@
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { WorkerClient, WorkerClientMockProvider } from 'kiao-worker';
 import { describe, expect, it, vi } from 'vitest';
 import { HarnessProfilesPanel } from './HarnessProfilesPanel';
+import { PrivateKeysPanel } from './PrivateKeysPanel';
 
 describe('Pi profile checks', () => {
     it.each(['Check models', 'Test API connection'])('stops %s when the edited profile could not be saved', async button => {
@@ -53,4 +54,29 @@ describe('Pi profile checks', () => {
         const saved = client.putHarnessProfiles.mock.calls.at(-1)?.[0].profiles[0];
         expect(saved.connections[0].models[0].thinkingLevelMap).toEqual({ max: 'max', xhigh: 'xhigh' });
     });
+});
+
+it('keeps the submitted key fields locked until storing completes', async () => {
+    let finish!: () => void;
+    const putHarnessProfileSecret = vi.fn(() => new Promise<void>(resolve => { finish = resolve; }));
+    const workerClient = { putHarnessProfileSecret } as unknown as WorkerClient;
+    const onStored = vi.fn(async () => {});
+    render(<WorkerClientMockProvider mock={{ workerClient }}>
+        <PrivateKeysPanel secrets={[]} suggestedId="work" onStored={onStored} onDeleted={async () => {}} onBusyChange={() => {}} />
+    </WorkerClientMockProvider>);
+    const name = screen.getByLabelText('Private key reference');
+    const key = screen.getByLabelText('Private API key');
+    fireEvent.change(key, { target: { value: 'test-key' } });
+    const store = screen.getByRole('button', { name: 'Store key' });
+    fireEvent.click(store);
+
+    expect(store).toHaveAttribute('aria-busy', 'true');
+    expect(name).toBeDisabled();
+    expect(key).toBeDisabled();
+    expect(putHarnessProfileSecret).toHaveBeenCalledWith('work', 'test-key');
+
+    await act(async () => { finish(); });
+    expect(name).toBeEnabled();
+    expect(key).toHaveValue('');
+    expect(onStored).toHaveBeenCalledWith('private:work');
 });

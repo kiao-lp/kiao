@@ -5,10 +5,7 @@ import (
 	"testing"
 )
 
-// TestHarnessBriefing pins what the model is told about its own output surface. Both halves are
-// capabilities it cannot discover: a model that does not know a fenced mermaid block is drawn writes
-// out the source instead, and one that does not know a store path is a working link writes the path
-// as prose. Neither failure looks like a failure in the conversation.
+// TestHarnessBriefing covers the rendering and DCMS link guidance a turn receives.
 func TestHarnessBriefing(t *testing.T) {
 	briefing := HarnessBriefing("/srv/store")
 
@@ -17,20 +14,20 @@ func TestHarnessBriefing(t *testing.T) {
 			t.Errorf("briefing = %q, want it to name %s as a fence that renders", briefing, want)
 		}
 	}
-	if !strings.Contains(briefing, "/units/abc/cadre.md") {
-		t.Errorf("briefing = %q, want the store-relative link form spelled out", briefing)
+	if !strings.Contains(briefing, "DCMS link") || !strings.Contains(briefing, "[cadre.md](/units/abc/cadre.md)") {
+		t.Errorf("briefing = %q, want a DCMS link example", briefing)
 	}
 
-	// The rule is "relative to the store root", which is only actionable once the model can tell
+	// The rule is "relative to the DCMS root", which is only actionable once the model can tell
 	// which absolute path that root is — every path it reads in a turn arrives absolute.
 	if !strings.Contains(briefing, "/srv/store/units/abc/cadre.md") {
-		t.Errorf("briefing = %q, want this store's root anchoring the example", briefing)
+		t.Errorf("briefing = %q, want the absolute DCMS root in the example", briefing)
 	}
 
 	// An unresolvable root loses the anchor and keeps the rule: the alternative is a briefing that
-	// states a store root this deployment does not have.
+	// states a DCMS root this deployment does not have.
 	rootless := HarnessBriefing("  ")
-	if strings.Contains(rootless, "The store root is") {
+	if strings.Contains(rootless, "The DCMS root is") {
 		t.Errorf("rootless briefing = %q, must not name a root it could not resolve", rootless)
 	}
 	if !strings.Contains(rootless, "mermaid") || !strings.Contains(rootless, "/units/abc/cadre.md") {

@@ -1,6 +1,6 @@
 /**
  * Migration counterpart of worker's link fixer; keep their semantics compatible.
- * Only leading-slash path tokens are links; slashless Markdown links are document-relative.
+ * Match DCMS links at token boundaries, including raw and percent-encoded spellings.
  * Match raw and percent-encoded spellings (including mixed forms), preserve spelling and child
  * suffixes, and require token boundaries on both sides. Markdown destinations additionally
  * escape a replacement containing whitespace.

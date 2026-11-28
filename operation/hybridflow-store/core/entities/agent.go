@@ -6,11 +6,7 @@ import (
 	"time"
 )
 
-// Flow nodes reference agents by settings.agent ID, not engine. Legacy engine/model
-// settings remain readable and playable, but new writes use managed agents.
-
-// Harness lists known engines. Worker checks host availability per turn
-// and rejects unavailable harnesses at play time.
+// Harness identifies the tool that executes a turn. The worker checks local availability.
 type Harness string
 
 const (
@@ -29,7 +25,7 @@ func ReadHarness(said string) (Harness, bool) {
 	return harness, harnesses[harness]
 }
 
-// Agent requires a name and harness. Empty Model selects the CLI default;
+// Agent is a named resource for delegated work. Empty Model selects the harness default;
 // Description and Instructions may be empty.
 type Agent struct {
 	ID           string        `json:"id"`

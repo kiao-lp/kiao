@@ -12,7 +12,7 @@ import (
 )
 
 type legacyStateEntry struct {
-	from string // relative to the data root
+	from string // relative to the DCMS root
 	to   string // relative to the state directory
 }
 
@@ -66,7 +66,7 @@ func removeRetiredState(statePath string) {
 func adoptLegacyState(cfg *coreconfig.Config) int {
 	moved := 0
 	for _, entry := range legacyStateEntries {
-		src := filepath.Join(cfg.RootPath, entry.from)
+		src := filepath.Join(cfg.DCMSRoot, entry.from)
 		dst := filepath.Join(cfg.StatePath, entry.to)
 		if src == dst {
 			continue // a deployment that pointed its state path at the old directory
@@ -76,7 +76,7 @@ func adoptLegacyState(cfg *coreconfig.Config) int {
 		}
 		// Existing state wins; startup must not guess which copy is newer.
 		if _, err := os.Stat(dst); err == nil {
-			logging.LogMain.Warn("a file from the previous layout is still in the data root, but this "+
+			logging.LogMain.Warn("a file from the previous layout is still in the DCMS root, but this "+
 				"service already has its own; delete the old one",
 				"old", src, "current", dst)
 			continue
@@ -90,7 +90,7 @@ func adoptLegacyState(cfg *coreconfig.Config) int {
 		moved++
 	}
 	removeRetiredState(cfg.StatePath)
-	pruneLegacyStateDir(filepath.Join(cfg.RootPath, ".kiao"), cfg.StatePath)
+	pruneLegacyStateDir(filepath.Join(cfg.DCMSRoot, ".kiao"), cfg.StatePath)
 	return moved
 }
 

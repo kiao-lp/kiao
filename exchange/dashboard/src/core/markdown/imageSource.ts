@@ -1,5 +1,5 @@
 
-/** Drops traversal above the store root. */
+/** Drops traversal above the DCMS root. */
 const flatten = (path: string): string => {
     const segments: string[] = [];
     for (const segment of path.split('/')) {
@@ -10,6 +10,7 @@ const flatten = (path: string): string => {
     return segments.join('/');
 };
 
-/** Worker path without leading slash. Leading `/` is store-root-relative; otherwise resolves against `documentFolder` (`''` is the root). */
+/** Return a file API path. DCMS links resolve from the DCMS root and relative image
+ * destinations resolve from `documentFolder`. */
 export const storePathOfImage = (src: string, documentFolder: string): string =>
     src.startsWith('/') ? flatten(src) : flatten(`${documentFolder}/${src}`);

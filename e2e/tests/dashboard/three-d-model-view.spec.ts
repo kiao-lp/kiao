@@ -9,7 +9,7 @@ import { join } from 'node:path';
  * browser turns out to have no WebGL context to give it — so it is the honest selector here.
  *
  * The model is uploaded by the spec into `smoke/`, and taken away again: other specs list that
- * folder and the root of the store, and a fixture in the template would be in all of their
+ * folder and the DCMS root, and a fixture in the template would be in all of their
  * listings.
  */
 

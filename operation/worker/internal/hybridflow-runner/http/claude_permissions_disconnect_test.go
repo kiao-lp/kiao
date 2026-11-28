@@ -28,7 +28,7 @@ func TestClaudePermissionsAfterObserverDisconnects(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			srv.hub.Harnesses.Set(harnessapi.HarnessClaude, claudeAgentAt(cfg, binary))
+			srv.hub.Harnesses.Set(harnessapi.HarnessClaude, claudeHarnessAt(cfg, binary))
 			srv.hub.AutoAllowDelay = 50 * time.Millisecond
 			ts := httptest.NewServer(srv.handler())
 			defer ts.Close()
@@ -53,7 +53,7 @@ func TestClaudePermissionsAfterObserverDisconnects(t *testing.T) {
 			job := srv.hub.GetJob(conversation.ID)
 			conn.Close()
 			awaitPermissionCondition(t, func() bool { return srv.hub.SubscriberCount(conversation.ID) == 0 })
-			if err := os.WriteFile(filepath.Join(cfg.RootPath, "permission-fixture-continue"), nil, 0o600); err != nil {
+			if err := os.WriteFile(filepath.Join(cfg.DCMSRoot, "permission-fixture-continue"), nil, 0o600); err != nil {
 				t.Fatal(err)
 			}
 			if scenario.mode == runnerconfig.PermissionModeManual {
@@ -90,7 +90,7 @@ func TestClaudePermissionsAfterObserverDisconnects(t *testing.T) {
 			if last.ExitCode == nil || (*last.ExitCode != 0) != scenario.failure || last.Interrupted {
 				t.Fatalf("unexpected turn outcome: %+v", last)
 			}
-			second := filepath.Join(cfg.RootPath, "permission-fixture-second.txt")
+			second := filepath.Join(cfg.DCMSRoot, "permission-fixture-second.txt")
 			if scenario.failure {
 				if last.Terminal != "permission_channel_closed" || !strings.Contains(last.EndReason, "approval channel closed") {
 					t.Fatalf("failure reason = %q, terminal = %q", last.EndReason, last.Terminal)

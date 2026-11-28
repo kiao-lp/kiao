@@ -27,6 +27,7 @@ export const useGitStatus = (folder: string): GitStatusState => {
 
     const refresh = useCallback(async () => {
         const id = ++reqId.current;
+        setLoading(true);
         try {
             const s = await workerClient.gitStatus(folder);
             if (id === reqId.current) {

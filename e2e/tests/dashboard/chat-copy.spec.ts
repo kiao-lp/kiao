@@ -1,5 +1,6 @@
 import { test, expect, resetViewState, flushViewState } from '../harness';
 import type { Locator } from '../harness';
+import { HARNESS_PROTOCOL_VERSION } from '../../../reference/kiao-worker/src/harness-types';
 
 /**
  * E2E: a message put on the clipboard as the markdown it was written in.
@@ -29,7 +30,7 @@ test('copies a prompt and a reply as the markdown they were written in', async (
         }],
     } }));
     await page.route('**/hybridflow-runner/auth/status?harness=*', route => route.fulfill({ json: { loggedIn: true } }));
-    await page.route('**/hybridflow-runner/conversations', route => route.fulfill({ json: [conversation] }));
+    await page.route('**/hybridflow-runner/conversations?archived=true', route => route.fulfill({ json: [conversation] }));
     await page.route(`**/hybridflow-runner/conversations/${conversation.id}`, route => route.fulfill({ json: {
         ...conversation, messages: [
             { id: 'copy-prompt', role: 'user', at, text: prompt },
@@ -43,7 +44,7 @@ test('copies a prompt and a reply as the markdown they were written in', async (
     } }));
     await page.routeWebSocket('**/api/ws/hybridflow-runner', socket => {
         socket.send(JSON.stringify({
-            type: 'hello', protocolVersion: 21, serviceInstanceId: 'chat-copy',
+            type: 'hello', protocolVersion: HARNESS_PROTOCOL_VERSION, serviceInstanceId: 'chat-copy',
             harnesses: ['muse'], runningConversations: [], maxConcurrentTurns: 4, chainRuns: [],
         }));
     });
@@ -63,6 +64,8 @@ test('copies a prompt and a reply as the markdown they were written in', async (
         await expect(answered).toContainText('Found it.');
 
         await asked.hover();
+        await copy(asked).focus();
+        await expect(page.getByRole('tooltip', { name: 'Copy message as markdown' })).toBeVisible();
         await copy(asked).click();
         expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(prompt);
 

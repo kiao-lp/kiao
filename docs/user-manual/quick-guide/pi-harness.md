@@ -30,7 +30,7 @@ access to a supported model API. A local compatible API can be used without a pa
    output. Retry the test; if it repeats, include those details when reporting the problem.
    An error mentioning `createZstdDecompress` means Pi is using an incompatible Node.js runtime;
    install or update Node.js LTS. It does not indicate that your API key was rejected.
-6. In **Agents**, create an agent on **Pi (Harness)**, select its profile and model, and publish it.
+6. In **Agents**, create an agent, select **Pi (Harness)** and its profile and model, then publish it.
    Choose the agent in **New conversation** or in a board task.
 
 A profile can supply several agents with the same connections. Each agent supplies its own

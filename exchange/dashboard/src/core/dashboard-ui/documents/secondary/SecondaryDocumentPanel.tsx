@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { Button } from 'antd';
+import { IconButton } from '../../../ui-foundation/toolbar/IconButton';
 import { CloseOutlined, FileOutlined } from '@ant-design/icons';
 import { parentPath } from '../../../files/service';
 import { ScopedFileBrowsingProvider } from '../../../files/core/FileBrowsingPersistence-ctx';
@@ -48,12 +48,12 @@ export const SecondaryDocumentPanel: React.FC = () => {
                     <div style={{ padding: 16 }}>No viewer for this file</div>
                 )}
             </div>
-            <Button
+            <IconButton
+                label="Close secondary document"
+                size="middle"
                 className="cms-close-document"
-                type="text"
                 icon={<CloseOutlined />}
                 onClick={close}
-                aria-label="Close secondary document"
                 data-testid="close-secondary-document"
             />
         </div>

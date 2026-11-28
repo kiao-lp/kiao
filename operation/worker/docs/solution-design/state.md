@@ -16,14 +16,14 @@ Each service family owns its persisted documents; see [Components](./components.
 
 Operational state includes the migration ledger (`files-migrations.json` and its
 `files-migrations.lock`), conversation registry, process lock and Dashboard config documents.
-It lives under `KIAO_WORKER_STATE_PATH`, which defaults to `<root>/.kiao-config`.
+It lives under `KIAO_WORKER_STATE_PATH`, which defaults to `<dcms-root>/.kiao-config`.
 The default associates state with its store: two stores on one machine have separate ledgers
 and registries, and moving or copying a store takes its state with it. Wiping and re-cloning
-also removes that state; a deployment that needs it to survive sets the variable outside the root.
+also removes that state; a deployment that needs it to survive sets the variable outside the DCMS root.
 
-Inside the root, the service seeds a `.gitignore` containing `*`, keeping transcripts and prompt
-text out of Source Control and published stores. It writes this file only when absent, preserving
-the operator's edits on restart. Independently, `Storage` refuses paths into the state directory
+When the state directory is under the DCMS root, the worker seeds a `.gitignore` containing `*`
+in the state directory to keep transcripts and prompt text out of Source Control and published stores.
+The worker keeps any existing file. `Storage` refuses paths into the state directory
 (`filesystem.ErrStatePath` → `400`), so no file-API client can read, rename or delete its registries.
 Listings, search, link repair and delete-scope walks omit it. Automatic-pass exclusions for the
 rest of the store belong to [`.kiao-files`](/migrations/README.md#kiao-files).
@@ -39,8 +39,8 @@ refusal indicates a live second instance rather than a lock left by a crash.
 
 ## Legacy state adoption
 
-Startup moves `<root>/.kiao/conversations`
-into the state directory and adopts `<root>/config/quickcms.json` and
+Startup moves `<dcms-root>/.kiao/conversations`
+into the state directory and adopts `<dcms-root>/config/quickcms.json` and
 `quickcms-view-state.json` as `dashboard.json` and `dashboard-view-state.json`.
 Within the state directory it also renames `quickcms.json`, `quickcms-view-state.json` and
 `quickcms-view-state-small.json` to their Dashboard equivalents. These operations run under the
@@ -61,7 +61,7 @@ The [config-document contract](../../PROTOCOL/config-documents.md) owns allowed 
 
 Before runner initialization, `assembly.AdoptHarnessState` upgrades the runner's owned
 conversation metadata, common turn traces and chain logs to the `harness` field. A captured
-workflow agent publication retains its `agentId` and version and uses `harness` for its
+agent publication retains its `agentId` and version and uses `harness` for its
 execution tooling. Transcript text and native session files keep their contents.
 
 The same pass moves `agent-profiles.json` to `harness-profiles.json` and `agent-secrets/` to

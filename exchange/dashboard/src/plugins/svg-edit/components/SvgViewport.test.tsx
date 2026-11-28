@@ -11,7 +11,8 @@ vi.mock('../state', async () => {
     return { ...actual, useSvgStateContext: () => svgState.value };
 });
 
-vi.mock('@kiao-dashboard-core', () => ({
+vi.mock('@kiao-dashboard-core', async () => ({
+    ZoomSurface: (await import('src/core/ui-foundation/zoom/ZoomSurface')).ZoomSurface,
     useSelectionContext: () => [[], vi.fn()],
 }));
 

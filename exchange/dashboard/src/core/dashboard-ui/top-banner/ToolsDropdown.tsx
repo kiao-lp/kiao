@@ -1,4 +1,5 @@
 import React, { useCallback, useState } from 'react';
+import { IconButton } from '../../ui-foundation/toolbar/IconButton';
 import { Button, Dropdown, Flex, MenuProps, message, Modal } from 'antd';
 import { AppstoreOutlined, DownloadOutlined, MoreOutlined } from '@ant-design/icons';
 import { themeMode } from 'kiao-style';
@@ -182,9 +183,9 @@ export const ToolsDropdown: React.FC<ToolsDropdownProps> = ({ extraItems }) => {
             // other entry leaves it where it is.
             menu={{ items, selectable: true, selectedKeys: [themeMenuKey(theme)] }}
             trigger={['click']}
-            placement="bottomRight"
+            placement="bottomLeft"
         >
-            <Button aria-label="Tools" type="text" size="small" icon={<MoreOutlined />} />
+            <IconButton label="Tools" icon={<MoreOutlined />} />
         </Dropdown>
     );
 };

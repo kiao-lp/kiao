@@ -15,14 +15,14 @@ import (
 
 // SystemClock is ports.Clock over the wall clock, in UTC. UTC because every timestamp this service
 // stores is one, and a clock that handed out local times would be one conversion away from a board
-// whose cards claim to have been created before they were.
+// whose flow nodes claim to have been created before they were.
 type SystemClock struct{}
 
 func (SystemClock) Now() time.Time { return time.Now().UTC() }
 
 var _ ports.Clock = SystemClock{}
 
-// IDs is ports.IDs: uuids, for boards, cards, agents and runners.
+// IDs is ports.IDs: uuids, for boards, flow nodes, agents and runners.
 type IDs struct {
 	pool *pgxpool.Pool
 }

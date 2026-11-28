@@ -7,8 +7,6 @@ export * from './lib/markdown-to-html';
 export * from './lib/geometry';
 export * from './lib/edge-paths';
 
-export * from './lib/size-presets';
-
 export {
     useZoom, StyleInjector, ToolbarButton,
     IconCopy, IconPaste, IconCopyFile, IconPasteFile, IconRefresh, IconDownload,

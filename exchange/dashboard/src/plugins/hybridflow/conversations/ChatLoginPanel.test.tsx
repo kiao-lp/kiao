@@ -1,7 +1,8 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import type { HarnessAuthStatus } from 'kiao-worker';
+import * as clipboard from 'src/core/ui-foundation/clipboard/clipboard';
 
 const client = vi.hoisted(() => ({
     startHarnessLogin: vi.fn(),
@@ -10,6 +11,7 @@ const client = vi.hoisted(() => ({
 }));
 
 vi.mock('@kiao-dashboard-core', async () => ({
+    CopyTextButton: (await import('src/core/ui-foundation/clipboard/CopyButton')).CopyTextButton,
     useWorkerClient: () => client,
     Tooltip: (await import('antd')).Tooltip,
 }));
@@ -72,6 +74,13 @@ describe('ChatLoginPanel', () => {
 
         const input = await startSignIn();
         expect(screen.getByRole('link', { name: /authorisation page/i })).toHaveAttribute('href', authorizeURL);
+        const write = vi.spyOn(clipboard, 'setClipboard').mockResolvedValue(undefined);
+        try {
+            await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Copy the sign-in link' })); });
+            expect(write).toHaveBeenCalledWith(authorizeURL);
+        } finally {
+            write.mockRestore();
+        }
 
         fireEvent.change(input, { target: { value: '  code#state  ' } });
         fireEvent.click(screen.getByRole('button', { name: /validate/i }));

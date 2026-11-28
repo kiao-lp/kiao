@@ -52,9 +52,9 @@ func TestFlowNodeImageLinksReadsTheTargetTheWayMarkdownWritesIt(t *testing.T) {
 	}
 }
 
-// A card has no folder of its own, so its links are read from the store root — with a leading
-// slash, the way the editor writes them — and never against the folder the flow node will run in.
-func TestFlowNodeImagesResolveFromTheStoreRoot(t *testing.T) {
+// The editor writes image destinations as DCMS links so play can find the original files
+// independently of the task's working folder.
+func TestFlowNodeImagesResolveFromTheDCMSRoot(t *testing.T) {
 	root := t.TempDir()
 	mustWriteBytes(t, filepath.Join(root, "boards/shot.png"), []byte("1234"))
 	mustWriteBytes(t, filepath.Join(root, "design/mockup.png"), []byte("123456"))

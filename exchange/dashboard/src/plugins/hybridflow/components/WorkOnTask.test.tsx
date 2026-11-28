@@ -27,7 +27,10 @@ vi.mock('../Hybridflow-ctx', () => ({
 vi.mock('../service/HybridflowClient-ctx', () => ({
     useHybridflowClient: () => ({ schemaValues: async () => [] }),
 }));
-vi.mock('../usePlayFlowNode', () => ({ usePlayFlowNode: () => playback }));
+vi.mock('../usePlayFlowNode', async importOriginal => ({
+    ...(await importOriginal<typeof import('../usePlayFlowNode')>()),
+    usePlayFlowNode: () => playback,
+}));
 vi.mock('@kiao-dashboard-core', async importOriginal => ({
     ...(await importOriginal<typeof import('@kiao-dashboard-core')>()),
     ConfiguredMarkdown: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
@@ -65,9 +68,15 @@ describe('human output', () => {
         expect(workPanelId('human-2')).toBe('work-on-task-human-2');
     });
 
-    it.each(['draft', 'blocked', 'done', 'running', 'error'])('does not play a successor that is %s', status => {
+    it.each(['draft', 'blocked', 'running', 'error'])('does not play a successor that is %s', status => {
         Object.assign(readyAi(), { status });
         expect(successorToPlay(content, content.flowNodes[0])).toBeNull();
+    });
+
+    it('replays a completed AI successor after human work', () => {
+        const next = readyAi();
+        next.status = 'done';
+        expect(successorToPlay(content, content.flowNodes[0])).toBe(next.id);
     });
 
     it('requires a live, configured successor with a prompt', () => {
@@ -98,6 +107,23 @@ describe('WorkOnTask panel', () => {
         expect(playback.play).not.toHaveBeenCalled();
     });
 
+    it('shows predecessor output and workflow values in the Human task instructions', () => {
+        const task = content.flowNodes[0];
+        task.title = 'Review {{input.revision}}';
+        task.body = 'Check {{currentWorkflow.project}} revision {{input.revision}}.';
+        task.criteria[0].text = 'Result checked by {{input.missing}}';
+        task.workflow = 'release';
+        content.workflows.push({ id: 'release', name: 'Release', values: { project: 'KIAO' } });
+        content.flowNodes.push({
+            ...task, id: 'producer', status: 'done', output: { revision: 'abc123' },
+            onSuccess: { ...task.onSuccess, flowNode: task.id },
+        });
+        showTask();
+        expect(screen.getByText('Review abc123')).toBeVisible();
+        expect(screen.getByText('Check KIAO revision abc123.')).toBeVisible();
+        expect(screen.getByText('Result checked by {{input.missing}}')).toBeVisible();
+    });
+
     it('starts a ready AI successor after the human output is saved', async () => {
         readyAi();
         let finish!: (saved: boolean) => void;
@@ -106,12 +132,16 @@ describe('WorkOnTask panel', () => {
         fireEvent.change(screen.getByTestId('work-on-task-output'), { target: { value: 'Approved' } });
         fireEvent.click(screen.getByTestId('work-on-task-submit'));
         expect(editFlowNode).toHaveBeenCalledWith('human-1', { output: 'Approved', status: 'done' });
+        expect(screen.getByTestId('work-on-task-output')).toBeDisabled();
+        expect(screen.getByTestId('work-on-task-submit')).toHaveAttribute('aria-busy', 'true');
+        fireEvent.click(screen.getByTestId('work-on-task-submit'));
+        expect(editFlowNode).toHaveBeenCalledTimes(1);
         expect(playback.play).not.toHaveBeenCalled();
         expect(setWorking).not.toHaveBeenCalled();
 
         await act(async () => finish(true));
 
-        expect(playback.play).toHaveBeenCalledWith('human-2', expect.stringMatching(/^Started /));
+        expect(playback.play).toHaveBeenCalledWith('human-2', expect.stringMatching(/^Started /), true);
         expect(setWorking).toHaveBeenCalledWith(null);
     });
 
@@ -136,5 +166,16 @@ describe('WorkOnTask panel', () => {
 
         await waitFor(() => expect(setWorking).toHaveBeenCalledWith(null));
         expect(playback.play).not.toHaveBeenCalled();
+    });
+
+    it('passes the submitted predecessor to an exclusive gateway already playing', async () => {
+        const next = readyAi();
+        next.type = 'exclusive-gateway';
+        next.status = 'running';
+        playback.runOn.mockReturnValue({ id: 'run-1' });
+        showTask();
+        fireEvent.click(screen.getByTestId('work-on-task-submit'));
+
+        await waitFor(() => expect(playback.play).toHaveBeenCalledWith('human-2', expect.stringMatching(/^Started /), true, 'human-1'));
     });
 });

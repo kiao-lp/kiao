@@ -1,7 +1,7 @@
 import React from 'react';
 import { Alert, Button, Modal, Progress, Spin } from 'antd';
 import { SaveOutlined, StopOutlined } from '@ant-design/icons';
-import { extractName, Tooltip } from '@kiao-dashboard-core';
+import { IconButton, extractName, Tooltip } from '@kiao-dashboard-core';
 import type { SegmentsSave } from './useSaveSegments';
 import styles from './MovieEdit.module.css';
 
@@ -23,6 +23,7 @@ export const SaveSegmentsButton: React.FC<{ saving: SegmentsSave }> = ({ saving 
             icon={<SaveOutlined />}
             disabled={!saving.ready}
             loading={saving.phase.kind === 'starting'}
+            aria-busy={saving.phase.kind === 'starting'}
             onClick={saving.save}
             data-testid="save-segments"
         >
@@ -38,7 +39,7 @@ export const SaveSegmentsStatus: React.FC<{ saving: SegmentsSave }> = ({ saving 
         <>
             {phase.kind === 'installing' && (
                 <div className={styles.saving} data-testid="segments-installing">
-                    <div className={styles.savingHead}>
+                    <div className={styles.savingHead} role="status">
                         <Spin size="small" />
                         <span className={styles.savingWhat}>Installing FFmpeg…</span>
                     </div>
@@ -49,21 +50,20 @@ export const SaveSegmentsStatus: React.FC<{ saving: SegmentsSave }> = ({ saving 
             {phase.kind === 'saving' && (
                 <div className={styles.saving} data-testid="segments-saving">
                     <div className={styles.savingHead}>
-                        <span className={styles.savingWhat}>
-                            Saving {phase.job.current ? extractName(phase.job.current) : 'the segments'}
-                            {phase.job.files.length > 1
+                        <span className={styles.savingWhat} role="status">
+                            {saving.stopping ? 'Stopping segment export…' : `Saving ${phase.job.current ? extractName(phase.job.current) : 'the segments'}`}
+                            {!saving.stopping && phase.job.files.length > 1
                                 && ` (${Math.min(phase.job.done + 1, phase.job.files.length)} of ${phase.job.files.length})`}
                         </span>
-                        <Tooltip title="Stop: the segments already saved stay">
-                            <Button
-                                size="small"
-                                type="text"
-                                icon={<StopOutlined />}
-                                aria-label="Stop saving"
-                                onClick={saving.stop}
-                                data-testid="stop-saving"
-                            />
-                        </Tooltip>
+                        <IconButton
+                            label="Stop saving"
+                            tooltip="Stop: the segments already saved stay"
+                            icon={<StopOutlined />}
+                            loading={saving.stopping}
+                            disabled={saving.stopping}
+                            onClick={saving.stop}
+                            data-testid="stop-saving"
+                        />
                     </div>
                     <Progress percent={Math.floor(phase.job.progress * 100)} size="small" />
                 </div>

@@ -21,7 +21,7 @@ The runner and editor update a node's status; the runner also attaches its conve
 | `todo` | Human work to do | Teal |
 | `blocked` | External dependency; set and cleared by the user | Pink |
 | `running` | Taken by a run, or human work in progress | Blue |
-| `waiting-refresh` | Held until the agent's usage window reopens | Orange |
+| `waiting-refresh` | Held until the usage window for the harness account reopens | Orange |
 | `interrupted` | Stopped before completion | Violet |
 | `done` | Work completed; agent answer remains in the conversation | Green |
 | `error` | Execution failed or could not start | Red |
@@ -31,10 +31,10 @@ before sending the prompt, persists usage waits and records terminal state. A st
 replaced or abandoned run leaves unfinished work `interrupted`. Usage exhaustion does not
 mean completion; see [usage waits](playing-flow-nodes.md#waiting-for-a-usage-limit).
 
-Only `ready` offers a new Play. Reset terminal status explicitly to replay. The current AI or
-Scheduler node can instead show its run's Stop; Shutdown and Gateway use the runs panel.
-AI task inputs are editable in Draft or Ready and read-only in other states
-(`taskInputsReadOnly`). Human work can be opened while To do or In progress (`canWorkOn`).
+Configured executable flow nodes in Ready or Done can play. The current AI or Scheduler node can
+show its run's Stop. Shutdown and Gateway use the runs panel. AI task inputs are editable in
+Draft or Ready and read-only in other states (`taskInputsReadOnly`). Human tasks offer Work
+in To do, In progress and Done (`canWorkOn`).
 
 Task cards use a fixed 3 px status stripe, avoiding layout shifts. Error has a full red outline;
 active execution uses the accent outline. Symbol nodes use their ring. Each status has a glyph;
@@ -45,10 +45,11 @@ current status, and its labels and glyphs use the card colors.
 
 ## Conversation lifetime
 
-A task without a chat gets a new conversation; its ID is saved **before** the prompt goes out
-so the user can follow a live turn. A task already naming one reuses it, including a conversation
-handed over by a predecessor. Run notifications prompt the board to refresh without closing the
-selected editor.
+A Ready task with a linked conversation can reuse it. Replaying a Done AI task replaces its
+link with a new conversation and keeps the previous transcript in Conversations. A Continue
+link can supply a new fork of the predecessor's current-run conversation. The runner saves the
+conversation ID before sending the prompt so the user can follow the live turn. Run notifications
+refresh the board while the selected editor stays open.
 
 The AI editor's Chat button and the task card's speech bubble open Conversations. Forgetting a
 chat removes the node's reference without deleting the conversation; the next play creates one.

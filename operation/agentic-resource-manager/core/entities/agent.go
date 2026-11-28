@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// Harness identifies the execution engine requested by an agent.
+// Harness identifies the tooling an agent requests to execute its turns.
 type Harness string
 
 const (
@@ -48,6 +48,14 @@ type Agent struct {
 	Published    *AgentVersion `json:"published,omitempty"`
 
 	HasUnpublishedChanges bool `json:"hasUnpublishedChanges"`
+}
+
+// AgentRemote is what the agent's Git remote holds beyond its working tree.
+// Problem explains a remote that cannot be read, which leaves Behind unknown.
+type AgentRemote struct {
+	HasRemote bool   `json:"hasRemote"`
+	Behind    int    `json:"behind"`
+	Problem   string `json:"problem,omitempty"`
 }
 
 // AgentVersion is the immutable configuration for a publication or a draft conversation.

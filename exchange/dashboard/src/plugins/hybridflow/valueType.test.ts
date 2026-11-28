@@ -9,12 +9,12 @@ const TYPED_ID = '22222222-2222-2222-2222-222222222222';
 
 const node = (over: Partial<FlowNode>): FlowNode => ({
     id: 'x', title: 'X', type: 'value', note: '', value: {}, valueType: '', tags: [], body: '',
-    criteria: [], complexity: null, settings: {}, at: '', spot: null, status: 'ready',
-    archived: false, chat: '', onSuccess: noSuccess(), classVersion: null, workflow: '', ...over,
+    multiPartTemplate: false, criteria: [], complexity: null, settings: {}, at: '', spot: null, size: null, status: 'ready',
+    archived: false, chat: '', onSuccess: noSuccess(), workflow: '', ...over,
 });
 
 const board = (...flowNodes: FlowNode[]): BoardContent => ({
-    flowNodes, flowNodeClasses: [], workflows: [], workflowClasses: [],
+    flowNodes, workflows: [],
 });
 
 describe('readValueType', () => {
@@ -50,7 +50,7 @@ describe('value type options', () => {
 });
 
 describe('board codec', () => {
-    it('round-trips valueType on value cards and drops it elsewhere', () => {
+    it('round-trips valueType on value nodes and drops it elsewhere', () => {
         const content = readBoardContent({
             flowNodes: [
                 { id: SCHEMA_ID, type: 'value', title: 'Person', value: {}, valueType: 'json-schema' },

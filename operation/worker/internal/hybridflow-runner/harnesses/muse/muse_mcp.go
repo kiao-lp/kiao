@@ -17,7 +17,7 @@ const museTurnTokenVar = "KIAO_MCP_TURN_TOKEN"
 // buildMuseMCPConfig renders the mcp_servers object, omitting empty fields.
 // An empty result leaves the deployment's CLI configuration untouched.
 func BuildMuseMCPConfig(servers []equipment.MCPServer) string {
-	if len(servers) == 0 {
+	if servers == nil {
 		return ""
 	}
 	sorted := append([]equipment.MCPServer(nil), servers...)
@@ -30,7 +30,7 @@ func BuildMuseMCPConfig(servers []equipment.MCPServer) string {
 		}
 		entries[server.Name] = museMCPEntry(server)
 	}
-	if len(entries) == 0 {
+	if len(entries) == 0 && len(servers) > 0 {
 		return ""
 	}
 	rendered, err := json.Marshal(entries)

@@ -1,4 +1,4 @@
-// Usage is account- and engine-specific: never substitute one harness's figures for another's.
+// Usage is specific to the account used by each harness.
 
 import React, { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';

@@ -7,6 +7,6 @@ import (
 // MCPRegistry is queried on each prompt so toolbox changes take effect without restart.
 // Nil means no MCP config and all harnesses with an available binary.
 type MCPRegistry interface {
-	MCPServers() []equipment.MCPServer
+	MCPBindings() ([]equipment.MCPServer, []equipment.MCPDiagnostic)
 	HarnessGate
 }

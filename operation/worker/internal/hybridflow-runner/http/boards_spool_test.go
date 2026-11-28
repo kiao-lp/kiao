@@ -82,14 +82,14 @@ func (f *spoolFake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			answer(http.StatusNotFound, map[string]string{"error": "no such board"})
 			return
 		}
-		answer(http.StatusOK, pkgBoards.BoardPayload{FlowNodes: board.FlowNodes})
+		answer(http.StatusOK, board)
 		return
 	}
-	// POST /boards/{handle}/flow nodes/{id}/play — take the card.
+	// POST /boards/{handle}/flow-nodes/{id}/play — take the flow node.
 	if r.Method == http.MethodPost && len(parts) == 5 && parts[0] == "boards" && parts[2] == "flow-nodes" && parts[4] == "play" {
 		board, ok := f.boards[parts[1]]
 		if !ok || board.FlowNode(parts[3]) == nil {
-			answer(http.StatusNotFound, map[string]string{"error": "no such card"})
+			answer(http.StatusNotFound, map[string]string{"error": "no such flow node"})
 			return
 		}
 		board.Start(parts[3])
@@ -97,17 +97,14 @@ func (f *spoolFake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		answer(http.StatusOK, board.FlowNode(parts[3]))
 		return
 	}
-	// POST /boards/{handle}/flow nodes/{id}/played — hand it back at a status.
+	// POST /boards/{handle}/flow-nodes/{id}/played — hand it back at a status.
 	if r.Method == http.MethodPost && len(parts) == 5 && parts[0] == "boards" && parts[2] == "flow-nodes" && parts[4] == "played" {
 		board, ok := f.boards[parts[1]]
 		if !ok || board.FlowNode(parts[3]) == nil {
-			answer(http.StatusNotFound, map[string]string{"error": "no such card"})
+			answer(http.StatusNotFound, map[string]string{"error": "no such flow node"})
 			return
 		}
-		var payload struct {
-			Status string          `json:"status"`
-			Output json.RawMessage `json:"output"`
-		}
+		var payload pkgBoards.PlayResult
 		_ = json.NewDecoder(r.Body).Decode(&payload)
 		f.received = append(f.received, "played "+parts[3]+" "+payload.Status)
 		if status, forced := f.fail["played:"+parts[3]]; forced {
@@ -116,14 +113,17 @@ func (f *spoolFake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		board.SetStatus(parts[3], payload.Status)
 		board.FlowNode(parts[3]).Output = payload.Output
+		if update := payload.Workflow; update != nil {
+			board.Workflow(update.ID).MergeValues(update.Values)
+		}
 		answer(http.StatusOK, board.FlowNode(parts[3]))
 		return
 	}
-	// PATCH /boards/{handle}/flow nodes/{id} — one field of one card.
+	// PATCH /boards/{handle}/flow-nodes/{id} — one field of one flow node.
 	if r.Method == http.MethodPatch && len(parts) == 4 && parts[0] == "boards" && parts[2] == "flow-nodes" {
 		board, ok := f.boards[parts[1]]
 		if !ok || board.FlowNode(parts[3]) == nil {
-			answer(http.StatusNotFound, map[string]string{"error": "no such card"})
+			answer(http.StatusNotFound, map[string]string{"error": "no such flow node"})
 			return
 		}
 		var payload map[string]string
@@ -151,13 +151,13 @@ func (f *spoolFake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		answer(http.StatusOK, agent)
 		return
 	}
-	// POST /runs/{run}/settle — free the run's cards.
+	// POST /runs/{run}/settle — free the run's flow nodes.
 	if r.Method == http.MethodPost && len(parts) == 3 && parts[0] == "runs" && parts[2] == "settle" {
 		f.received = append(f.received, "settle "+parts[1])
 		answer(http.StatusOK, map[string]int{"settled": 0})
 		return
 	}
-	// POST /boards/{handle}/flow nodes/{id}/usage — file what a turn cost.
+	// POST /boards/{handle}/flow-nodes/{id}/usage — file what a turn cost.
 	if r.Method == http.MethodPost && len(parts) == 5 && parts[0] == "boards" && parts[2] == "flow-nodes" && parts[4] == "usage" {
 		var payload pkgBoards.UsagePayload
 		_ = json.NewDecoder(r.Body).Decode(&payload)
@@ -255,9 +255,9 @@ func TestSpoolingStoreWritesThroughWhenUp(t *testing.T) {
 	}
 }
 
-// Offering the card a turn again goes through like any other mark — and like any other mark it is
+// Offering the flow node a turn again goes through like any other mark — and like any other mark it is
 // queued while the link is down and replayed once it is back.
-func TestSpoolingStoreReadyOffersTheCardAgain(t *testing.T) {
+func TestSpoolingStoreReadyOffersTheFlowNodeAgain(t *testing.T) {
 	fake := newSpoolFake(map[string]*pkgBoards.BoardContent{"major": spoolBoard()})
 	store, spoolPath := newSpoolTestStore(t, fake)
 
@@ -317,7 +317,7 @@ func TestSpoolingStoreSpoolsWhileDownAndFlushesWhenUp(t *testing.T) {
 	if _, err := store.Chat("major", "flow-node-1", "conv-1"); err != nil {
 		t.Fatalf("Chat while down: %v", err)
 	}
-	board, err = store.Finish("major", "flow-node-1", "run-1", pkgBoards.FlowNodeStatusDone)
+	board, err = store.Finish("major", "flow-node-1", "run-1", pkgBoards.PlayResult{Status: pkgBoards.FlowNodeStatusDone})
 	if err != nil {
 		t.Fatalf("Finish while down: %v", err)
 	}
@@ -407,7 +407,7 @@ func TestSpoolingStoreDropsRefusedMarksAndKeepsGoing(t *testing.T) {
 		t.Fatalf("prime the cache: %v", err)
 	}
 	fake.setDown(true)
-	if _, err := store.Finish("major", "flow-node-1", "run-1", pkgBoards.FlowNodeStatusDone); err != nil {
+	if _, err := store.Finish("major", "flow-node-1", "run-1", pkgBoards.PlayResult{Status: pkgBoards.FlowNodeStatusDone}); err != nil {
 		t.Fatalf("Finish while down: %v", err)
 	}
 	if _, err := store.Chat("major", "flow-node-1", "conv-9"); err != nil {
@@ -507,7 +507,7 @@ func TestChainRunContinuesWhileHybridflowStoreIsDown(t *testing.T) {
 	if prompts := rt.prompts(); len(prompts) != 2 {
 		t.Fatalf("%d turns played while down, want the two of the chain", len(prompts))
 	}
-	// Take, chat and finish for each of the two cards.
+	// Take, chat and finish for each of the two flow nodes.
 	if lines := spoolLines(t, spoolPath); len(lines) != 6 {
 		t.Fatalf("the spool holds %d records, want the six marks of the chain", len(lines))
 	}
@@ -613,8 +613,11 @@ func TestSpoolingStoreDropsARefusedUsageBill(t *testing.T) {
 	waitForSpool(t, "the spool to empty", func() bool { return len(spoolLines(t, spoolPath)) == 0 })
 }
 
-func TestSpoolingStoreKeepsStructuredOutputDuringOutage(t *testing.T) {
-	fake := newSpoolFake(map[string]*pkgBoards.BoardContent{"major": spoolBoard()})
+func TestSpoolingStoreKeepsStructuredOutputAndWorkflowValuesDuringOutage(t *testing.T) {
+	initial := spoolBoard()
+	initial.FlowNode("flow-node-1").Workflow = "release"
+	initial.Workflows = []pkgBoards.Workflow{{ID: "release", Name: "Release"}}
+	fake := newSpoolFake(map[string]*pkgBoards.BoardContent{"major": initial})
 	store, spoolPath := newSpoolTestStore(t, fake)
 	if _, err := store.Board("major"); err != nil {
 		t.Fatal(err)
@@ -624,18 +627,28 @@ func TestSpoolingStoreKeepsStructuredOutputDuringOutage(t *testing.T) {
 		t.Fatal(err)
 	}
 	output := json.RawMessage(`{"message":"hello"}`)
-	board, err := store.Finish("major", "flow-node-1", "run-1", pkgBoards.FlowNodeStatusDone, output)
+	result := pkgBoards.PlayResult{Status: pkgBoards.FlowNodeStatusDone, Output: output, Workflow: &pkgBoards.WorkflowUpdate{
+		ID: "release", Values: map[string]json.RawMessage{"message": json.RawMessage(`"hello"`)},
+	}}
+	board, err := store.Finish("major", "flow-node-1", "run-1", result)
 	if err != nil || string(board.FlowNode("flow-node-1").Output) != string(output) {
 		t.Fatalf("cached output = %+v, %v", board, err)
 	}
+	if got := string(board.Workflow("release").Values["message"]); got != `"hello"` {
+		t.Fatalf("cached workflow value = %s", got)
+	}
 	records := spoolLines(t, spoolPath)
-	if len(records) != 2 || string(records[1].Output) != string(output) {
-		t.Fatalf("spooled output = %+v", records)
+	if len(records) != 2 || string(records[1].Output) != string(output) ||
+		records[1].Workflow == nil || string(records[1].Workflow.Values["message"]) != `"hello"` {
+		t.Fatalf("spooled completion = %+v", records)
 	}
 	fake.setDown(false)
-	waitForSpool(t, "output to flush", func() bool {
-		node := fake.flowNodeOf("major", "flow-node-1")
-		return node != nil && string(node.Output) == string(output)
+	waitForSpool(t, "completion to flush", func() bool {
+		fake.mu.Lock()
+		defer fake.mu.Unlock()
+		live := fake.boards["major"]
+		return string(live.FlowNode("flow-node-1").Output) == string(output) &&
+			string(live.Workflow("release").Values["message"]) == `"hello"`
 	})
 }
 

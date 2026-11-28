@@ -2,11 +2,11 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Checkbox, Input, Select } from 'antd';
 import { CloseOutlined, DisconnectOutlined, MessageOutlined, PlusOutlined } from '@ant-design/icons';
 import type { HarnessOption } from 'kiao-worker';
-import { useFileDrop, RevealInTreeButton, Tooltip } from '@kiao-dashboard-core';
+import { CommitInput, IconButton, useFileDrop, RevealInTreeButton, Tooltip } from '@kiao-dashboard-core';
 import { useTagsUi } from '@kiao-dashboard-kit/capabilities';
 import {
     AGENT_KEY, droppedFolder, EFFORT_KEY, FOLDER_KEY, folderLink, HARNESS_KEY, MODEL_KEY, PERMISSION_KEY, PROFILE_KEY, RUNNER_KEY,
-    effortsForAgent, isLegacyAgent, profileForAgent, SettingsChanges, settingsFolder, shortPermission, FlowNodeSettings,
+    effortsForSelection, hasLegacyHarness, profileForSelection, SettingsChanges, settingsFolder, shortPermission, FlowNodeSettings,
 } from '../flowNodeSettings';
 import { COMPLEXITIES, SuccessCriterion, TaskComplexity, newCriterion } from '../boardContent';
 import type { AgentDto, RunnerDto } from '../service';
@@ -21,7 +21,8 @@ import {
 } from '../flowNodeType';
 import { BoardContent } from '../boardContent';
 import { valueTypeOptions } from '../valueType';
-import { readDuration } from '../flowNodeSchedule';
+import { readDuration, readSchedule } from '../flowNodeSchedule';
+import { hasContextReference, renderNodeContext, type NodeContext } from '../nodeContext';
 import { canConnect } from '../flowConnections';
 import styles from '../Hybridflow.module.css';
 
@@ -41,13 +42,13 @@ export const EFFORT_HELP = 'Reasoning effort is required before this node can pl
 
 export const PERMISSION_HELP = 'Choose which actions the agent can perform without approval during unattended turns.';
 
-export const FOLDER_HELP = 'Drop a folder or file here to set the working directory.';
+export const FOLDER_HELP = 'Use a DCMS link, drop a file or folder, or reference a value such as {{input.folder}}.';
 
 export const RUNNER_HELP = 'Pins execution to this machine. Leave empty to run wherever Play is pressed.';
 
 export const SCHEDULE_HELP = 'Waits until this local time before playing the next node; past times continue immediately.';
 
-export const STATUS_HELP = 'Only Ready nodes can play. Choose Ready again to replay.';
+export const STATUS_HELP = 'Ready and Done nodes can play. Replaying a completed AI task starts a new conversation.';
 
 export const UNLINK_HELP = 'Detaches this conversation without deleting it; the next play starts a new one.';
 
@@ -74,7 +75,6 @@ interface OfferedProps {
     options: HarnessOption[];
 }
 
-/** **What kind of card this is**: one an agent plays, one a person does, one that turns the machine. */
 export const VALUE_TYPE_HELP = 'JSON Schema values define the structure expected of other values.';
 
 export const ValueTypeSelect: React.FC<{
@@ -122,7 +122,7 @@ export const TypeSelect: React.FC<{
             value={type}
             options={options}
             onChange={onChange}
-            aria-label="Node type"
+            aria-label="Flow node type"
             data-testid="flow-node-type"
             classNames={POPUP}
             popupMatchSelectWidth={false}
@@ -145,18 +145,18 @@ export const AgentSelect: React.FC<SettingProps & {
     const current = agents.find(agent => agent.id === settings.agent);
     const harness = settingsHarness(settings, agents);
     const own = optionsFor(harness);
-    const profile = profileForAgent(own, current, settings.profileId);
+    const profile = profileForSelection(own, current, settings.profileId);
     const profileId = settings.profileId || (harness === 'pi' ? (current?.published?.profileId || profile?.id) : undefined);
     const target = harness === 'pi' && profileId ? (profile?.name ?? profileId)
         : [own.label || harness, settings.model].filter(Boolean).join(' / ');
-    const label = current ? [current.name, target].filter(Boolean).join(' · ') : isLegacyAgent(settings)
+    const label = current ? [current.name, target].filter(Boolean).join(' · ') : hasLegacyHarness(settings)
         ? `${settings.agent} / ${settings.model}` : settings.agent ? `Missing agent · ${settings.agent}` : 'Choose agent';
 
     const pick = (choice?: AgentChoice) => {
         const changedHarness = choice && harness && harness !== choice.harness;
         const changedTarget = choice && (choice.agent !== settings.agent || choice.model !== settings.model || choice.profileId !== profileId);
         const invalidEffort = changedTarget && settings.effort &&
-            !effortsForAgent(optionsFor(choice.harness), agents.find(agent => agent.id === choice.agent), choice.profileId, choice.model)
+            !effortsForSelection(optionsFor(choice.harness), agents.find(agent => agent.id === choice.agent), choice.profileId, choice.model)
                 .some(effort => effort.value === settings.effort);
         onChange({
             [AGENT_KEY]: choice?.agent,
@@ -173,14 +173,18 @@ export const AgentSelect: React.FC<SettingProps & {
         <>
             <Tooltip title={help ?? AGENT_HELP}>
                 <Button size="small" className={styles.agentChoice} aria-label="Agent" aria-haspopup="dialog"
-                    aria-invalid={!!settings.agent && !current && !isLegacyAgent(settings)}
+                    aria-invalid={!!settings.agent && !current && !hasLegacyHarness(settings)}
                     data-testid={testId ?? 'flow-node-agent'} disabled={disabled} onClick={() => setOpen(true)}>
                     <span title={label}>{label}</span>
                 </Button>
             </Tooltip>
             {allowClear && settings.agent && (
-                <Button size="small" aria-label="Clear agent" icon={<CloseOutlined />} disabled={disabled}
-                    onClick={() => pick()} />
+                <IconButton
+                    label="Clear agent"
+                    type="default"
+                    icon={<CloseOutlined />} disabled={disabled}
+                    onClick={() => pick()}
+                />
             )}
             {open && (
                 <AgentMatrixDialog title="Choose agent and harness" agents={agents} agentsLoading={agentsLoading}
@@ -254,8 +258,7 @@ export const PermissionSelect: React.FC<SettingProps & OfferedProps> = ({ settin
 };
 
 /**
- * **Which runner plays the flow node**: one of the runners the store keeps, picked by name —.
- * Drawn only for an **AI** flow node, like the agent: a card nobody plays is pinned nowhere.
+ * Selects a runner from the shared store for an AI task.
  */
 export const RunnerSelect: React.FC<SettingProps & { runners: RunnerDto[] }> = ({
     settings, runners, onChange,
@@ -291,14 +294,15 @@ export const RunnerSelect: React.FC<SettingProps & { runners: RunnerDto[] }> = (
 };
 
 /** The folder the flow node is about. */
-export const FolderInput: React.FC<SettingProps & { required: boolean }> = ({
-    settings, required, onChange, disabled,
+export const FolderInput: React.FC<SettingProps & { required: boolean; context?: NodeContext }> = ({
+    settings, required, onChange, disabled, context = {},
 }) => {
     const { dropping, dropProps } = useFileDrop(dropped => {
         if (!disabled) onChange({ [FOLDER_KEY]: droppedFolder(dropped.path, dropped.isDirectory) });
     });
 
-    const folder = settings.folder?.trim() ? settingsFolder(settings) : null;
+    const rendered = renderNodeContext(settings.folder ?? '', context);
+    const folder = rendered.trim() && !hasContextReference(rendered) ? settingsFolder({ folder: rendered }) : null;
 
     return (
         <Tooltip title={FOLDER_HELP}>
@@ -308,7 +312,7 @@ export const FolderInput: React.FC<SettingProps & { required: boolean }> = ({
                 value={settings.folder ?? ''}
                 readOnly={disabled}
                 status={required && !settings.folder ? 'warning' : undefined}
-                placeholder="Folder (/ is the store root)"
+                placeholder="Folder (/ is the DCMS root)"
                 onChange={event => onChange({ [FOLDER_KEY]: folderLink(event.target.value) })}
                 aria-label="Working directory"
                 data-testid="flow-node-folder"
@@ -320,40 +324,56 @@ export const FolderInput: React.FC<SettingProps & { required: boolean }> = ({
 };
 
 /** Scheduler modes are mutually exclusive. */
+type ScheduleMode = 'duration' | 'datetime' | 'datetime-reference';
+
+const scheduleMode = (at: string, duration: string): ScheduleMode =>
+    duration ? 'duration' : hasContextReference(at) ? 'datetime-reference' : 'datetime';
+
 export const ScheduleInput: React.FC<{
     at: string;
     duration?: string;
     onChange: (at: string, duration?: string) => void;
 }> = ({ at, duration = '', onChange }) => {
-    const [mode, setMode] = useState(duration ? 'duration' : 'datetime');
-    const [draft, setDraft] = useState(duration);
+    const [mode, setMode] = useState(() => scheduleMode(at, duration));
+    const [draft, setDraft] = useState(duration || at);
     useEffect(() => {
-        setDraft(duration);
-        if (duration) setMode('duration');
-        else if (at) setMode('datetime');
+        setDraft(duration || at);
+        if (duration || at) setMode(scheduleMode(at, duration));
     }, [at, duration]);
+    const waitingForDuration = mode === 'duration';
+    const parsed = waitingForDuration ? readDuration(draft) : readSchedule(draft);
     return <>
-        <Select
+        <Select<ScheduleMode>
             size="small"
             value={mode}
-            options={[{ value: 'duration', label: 'Fixed duration' }, { value: 'datetime', label: 'Date time' }]}
+            options={[
+                { value: 'duration', label: 'Fixed duration' },
+                { value: 'datetime', label: 'Date time' },
+                { value: 'datetime-reference', label: 'Date time from a value' },
+            ]}
             onChange={next => { setMode(next); setDraft(''); onChange('', ''); }}
             aria-label="Schedule mode"
             data-testid="flow-node-schedule-mode"
             className={styles.metaSelect}
         />
-        {mode === 'duration' ? (
-            <Tooltip title="Wait from each play. Use hours, minutes or seconds, for example 1h30m.">
-                <Input
-                    size="small"
+        {mode !== 'datetime' ? (
+            <Tooltip title={waitingForDuration
+                ? 'Wait from each play. Enter a duration such as 1h30m or a reference such as {{input.delay}}.'
+                : 'Enter a value reference that supplies a local date and time.'}>
+                <CommitInput
                     value={draft}
-                    placeholder="30s, 15m, 1h30m"
-                    status={readDuration(draft) ? undefined : 'warning'}
-                    onChange={event => setDraft(event.target.value)}
-                    onBlur={() => { if (!draft.trim() || readDuration(draft)) onChange('', draft.trim()); }}
-                    onPressEnter={event => event.currentTarget.blur()}
-                    aria-label="Duration"
-                    data-testid="flow-node-duration"
+                    placeholder={waitingForDuration ? '30s, 15m, 1h30m' : '{{currentWorkflow.scheduledAt}}'}
+                    status={parsed ? undefined : 'warning'}
+                    onDraftChange={setDraft}
+                    onCommit={() => {
+                        if (!draft.trim() || parsed) {
+                            if (waitingForDuration) onChange('', parsed);
+                            else onChange(parsed, '');
+                        }
+                    }}
+                    blurOnEnter
+                    aria-label={waitingForDuration ? 'Duration' : 'Scheduled for'}
+                    data-testid={waitingForDuration ? 'flow-node-duration' : 'flow-node-schedule'}
                     className={styles.metaSelect}
                 />
             </Tooltip>
@@ -393,16 +413,13 @@ export const ChatLink: React.FC<{ chat: string; onOpen: () => void; onUnlink: ()
             >
                 Chat
             </Button>
-            <Tooltip title={UNLINK_HELP}>
-                <Button
-                    size="small"
-                    type="text"
-                    icon={<DisconnectOutlined />}
-                    aria-label="Forget the node’s chat"
-                    data-testid="unlink-flow-node-chat"
-                    onClick={onUnlink}
-                />
-            </Tooltip>
+            <IconButton
+                label="Forget the node’s chat"
+                tooltip={UNLINK_HELP}
+                icon={<DisconnectOutlined />}
+                data-testid="unlink-flow-node-chat"
+                onClick={onUnlink}
+            />
         </span>
     );
 };
@@ -415,18 +432,18 @@ interface NextFlowNodeProps {
     flowNodeId: string;
 
     multiple?: boolean;
+    exclusive?: boolean;
     onChange: (next: FlowNodeSuccess) => void;
     disabled?: boolean;
 }
 
 /**
- * The flow node played straight after this one — the only way two flow nodes are chained, and it.
- * It is asked of every card but a Shutdown, and not only of Claude's.
+ * Selects a successor for a flow node with one outgoing link.
  */
 export const NextFlowNodeSelect: React.FC<NextFlowNodeProps> = ({
-    success, content, flowNodeId, multiple, onChange, disabled,
+    success, content, flowNodeId, multiple, exclusive, onChange, disabled,
 }) => {
-    // Archived cards are never offered and never shown as named: their links stay stored but hidden, so a board mixing archived.
+    // Keep saved links to archived flow nodes out of the selector.
     const live = useMemo(() => new Map(
         content.flowNodes.filter(flowNode => !flowNode.archived).map(flowNode => [flowNode.id, flowNode] as const),
     ), [content]);
@@ -458,7 +475,7 @@ export const NextFlowNodeSelect: React.FC<NextFlowNodeProps> = ({
     if (multiple) {
         const visibleBranches = success.flowNodes.filter(id => !hiddenBranches.includes(id));
         return (
-            <Tooltip title={BRANCHES_HELP}>
+            <Tooltip title={exclusive ? 'Choose the successors available to the routes.' : BRANCHES_HELP}>
                 <Select
                     size="small"
                     mode="multiple"
@@ -467,7 +484,8 @@ export const NextFlowNodeSelect: React.FC<NextFlowNodeProps> = ({
                     disabled={disabled}
                     options={options}
                     onChange={value => onChange({ ...success, flowNodes: [...hiddenBranches, ...value] })}
-                    aria-label="Branches"
+                    aria-label={exclusive ? 'Linked successors' : 'Branches'}
+                    placeholder={exclusive ? 'Link successors' : undefined}
                     classNames={POPUP}
                     popupMatchSelectWidth={false}
                 />
@@ -560,7 +578,6 @@ export const CompactCheck: React.FC<{
     );
 };
 
-/** The tags the card wears. */
 export const TagsControl: React.FC<{
     tags: string[];
     onChange: (next: string[]) => void;
@@ -573,7 +590,7 @@ export const TagsControl: React.FC<{
                 value={tags}
                 onChange={onChange}
                 className={styles.metaTagPicker}
-                aria-label="Node tags"
+                aria-label="Flow node tags"
                 data-testid="flow-node-tags"
             />
         </div>
@@ -676,11 +693,9 @@ export const SuccessCriteriaEditor: React.FC<{
                             }
                         }}
                     />
-                    {!readOnly && <Button
-                        size="small"
-                        type="text"
+                    {!readOnly && <IconButton
+                        label="Remove success criterion"
                         icon={<CloseOutlined />}
-                        aria-label="Remove success criterion"
                         onClick={() => onChange(criteria.filter(held => held.id !== criterion.id))}
                     />}
                 </div>

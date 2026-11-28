@@ -115,7 +115,7 @@ the layout; see [central areas](../../src/core/dashboard-ui/docs/solution-design
 | [File drag and drop](../../src/core/files/docs/solution-design/file-drag-drop.md) | Payloads, targets and link insertion |
 | [Upload review](../../src/core/files/docs/solution-design/upload-review.md) | Staging and Delete/Import decisions |
 | [Import gate](../../src/core/import-gate/docs/solution-design/import-gate.md) | Secret scanning and redaction |
-| [Internal links](../../src/core/navigation/docs/solution-design/internal-links.md) | Stored links, mount paths and click interception |
+| [Internal links](../../src/core/navigation/docs/solution-design/internal-links.md) | DCMS links, mount paths and click interception |
 | [Passage links](../../src/core/text-fragment/docs/solution-design/passage-links.md) | Matching, highlighting and copying selected text |
 | [Image links](../../src/core/markdown/docs/solution-design/image-links.md) | Resolving document-relative images |
 | [Static versions](../../src/plugins/markdown-edit/docs/solution-design/static-versions.md) | Generating `.md` from `.src.md` with embedded diagrams |
@@ -130,6 +130,7 @@ the layout; see [central areas](../../src/core/dashboard-ui/docs/solution-design
 | [Backend access](../../src/core/auth/docs/solution-design/backend-access.md) | Worker client, tokens and authentication |
 | [Runtime configuration](../../src/core/config/docs/solution-design/runtime-config.md) | `dashboard.json` flags and plugin selection |
 | [Configuration panel](../../src/core/toolbox/docs/solution-design/configuration-panel.md) | Runtimes, MCP servers and plugins |
+| [Background operations](background-operations.md) | Review of progress feedback and form locking |
 | [Server actions](../../src/core/files/docs/solution-design/server-actions.md) | Manifest-driven file operations |
 | [File optimizations](../../src/plugins/file-optimizations/docs/solution-design/file-optimizations.md) | Duplicate consolidation and large-file reports |
 | [Entry point](entry-point.md) | Bootstrap, theme and web app manifest |

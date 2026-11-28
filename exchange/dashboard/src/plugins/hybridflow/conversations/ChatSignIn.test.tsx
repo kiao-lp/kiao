@@ -1,8 +1,9 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 import type { HarnessLoginOffer } from 'kiao-worker';
 import { WorkerError } from 'kiao-worker';
+import * as clipboard from 'src/core/ui-foundation/clipboard/clipboard';
 
 const client = vi.hoisted(() => ({
     startHarnessDeviceLogin: vi.fn(),
@@ -17,6 +18,7 @@ const feedback = vi.hoisted(() => ({
 }));
 
 vi.mock('@kiao-dashboard-core', async () => ({
+    CopyTextButton: (await import('src/core/ui-foundation/clipboard/CopyButton')).CopyTextButton,
     useWorkerClient: () => client,
     Tooltip: (await import('antd')).Tooltip,
 }));
@@ -80,6 +82,7 @@ describe('ChatSignIn', () => {
     });
 
     afterEach(() => {
+        vi.restoreAllMocks();
         vi.useRealTimers();
     });
 
@@ -111,6 +114,19 @@ describe('ChatSignIn', () => {
         expect(feedback.success).toHaveBeenCalledWith('Logged in.');
         expect(screen.queryByTestId('login-modal')).not.toBeInTheDocument();
         expect(client.cancelHarnessDeviceLogin).not.toHaveBeenCalled();
+    });
+
+    it('copies the link and the code with their respective confirmations', async () => {
+        const write = vi.spyOn(clipboard, 'setClipboard').mockResolvedValue(undefined);
+        client.startHarnessDeviceLogin.mockResolvedValue({ ok: true, url: PAGE, userCode: 'RDSN-TCSF' });
+        renderSignIn();
+        fireEvent.click(screen.getByRole('button', { name: 'Log in to Muse' }));
+
+        fireEvent.click(await screen.findByRole('button', { name: 'Copy the sign-in link' }));
+        await waitFor(() => expect(feedback.success).toHaveBeenCalledWith('Link copied'));
+        fireEvent.click(screen.getByRole('button', { name: 'Copy the sign-in code' }));
+        await waitFor(() => expect(feedback.success).toHaveBeenCalledWith('Code copied'));
+        expect(write.mock.calls).toEqual([[PAGE], ['RDSN-TCSF']]);
     });
 
     it('says a refused approval and offers another start', async () => {
@@ -181,17 +197,24 @@ describe('ChatSignIn', () => {
     it('signs in with an API key instead', async () => {
         vi.useFakeTimers();
         client.cancelHarnessDeviceLogin.mockResolvedValue({ ok: true });
-        client.submitHarnessApiKey.mockResolvedValue({ ok: true, message: 'credentials saved for provider meta' });
+        let finish!: (result: { ok: boolean; message: string }) => void;
+        client.submitHarnessApiKey.mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
         renderSignIn();
         await openOnTheWait();
 
         fireEvent.click(screen.getByRole('button', { name: 'Use an API key instead' }));
         expect(client.cancelHarnessDeviceLogin).toHaveBeenCalledWith('muse');
 
-        fireEvent.change(screen.getByPlaceholderText('Paste the API key'), { target: { value: 'the-key' } });
-        fireEvent.click(screen.getByRole('button', { name: 'Log in' }));
+        const key = screen.getByPlaceholderText('Paste the API key');
+        fireEvent.change(key, { target: { value: 'the-key' } });
+        const submit = screen.getByRole('button', { name: 'Log in' });
+        fireEvent.click(submit);
 
-        await vi.advanceTimersByTimeAsync(0);
+        expect(submit).toHaveAttribute('aria-busy', 'true');
+        expect(key).toBeDisabled();
+        expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
+        expect(screen.getByRole('button', { name: 'Back to the Muse sign-in' })).toBeDisabled();
+        await act(async () => { finish({ ok: true, message: 'credentials saved for provider meta' }); });
         expect(client.submitHarnessApiKey).toHaveBeenCalledWith('muse', 'the-key');
         expect(feedback.success).toHaveBeenCalledWith('credentials saved for provider meta');
         expect(screen.queryByTestId('login-modal')).not.toBeInTheDocument();

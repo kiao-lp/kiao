@@ -7,8 +7,8 @@ document:
 # Conversations — solution designs
 
 Free and board conversations, turns and harness execution. This partition owns designs
-for conversation behaviour spanning Dashboard, worker's conversation engine and,
-where board-linked, hybridflow. Container-specific detail stays in each container's
+for conversation behaviour spanning Dashboard, worker's turn coordination and
+board playback where applicable. Container-specific detail stays in each container's
 local `docs/solution-design` (for example worker's
 [conversations](/operation/worker/docs/solution-design/conversations.md)); this
 partition holds only designs spanning those parts.

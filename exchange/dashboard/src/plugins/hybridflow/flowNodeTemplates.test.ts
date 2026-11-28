@@ -3,7 +3,7 @@ import { WorkerClient } from 'kiao-worker';
 import { parseTempMd } from '@kiao-dashboard-kit/template-lang';
 import {
     AI_TEMPLATE_PATH, ensureDefaultFlowNodeTemplates, HUMAN_TEMPLATE_PATH, listFlowNodeTemplates,
-    FLOW_NODE_TEMPLATES_PATH, templateForType, templateName, versionBodyTemplate,
+    FLOW_NODE_TEMPLATES_PATH, flowNodeBodyTemplate, parseDescriptionTemplate, templateForType, templateName,
 } from './flowNodeTemplates';
 
 /** The folder a flow node's description is written from. */
@@ -47,8 +47,8 @@ describe('the flow node templates on offer', () => {
     });
 });
 
-describe('the two templates a card’s type names', () => {
-    it('is AI for a card Claude plays and Human for one somebody does', () => {
+describe('the two templates a node’s type names', () => {
+    it('is AI for a node Claude plays and Human for one somebody does', () => {
         expect(templateForType('ai')).toBe(AI_TEMPLATE_PATH);
         expect(templateForType('human')).toBe(HUMAN_TEMPLATE_PATH);
         expect(templateForType('shutdown')).toBeNull();
@@ -110,12 +110,12 @@ describe('the two templates a card’s type names', () => {
     });
 });
 
-describe('a class version body as a template', () => {
+describe('a multi-part task description', () => {
     /** Markdown, a line at a time — a template literal cannot hold the fences a .temp.md is made of. */
     const md = (...lines: string[]): string => lines.join('\n');
 
     it('is a complete .temp.md template, optional blocks included', () => {
-        const template = versionBodyTemplate(md(
+        const template = parseDescriptionTemplate(md(
             '# Review',
             '',
             '## Root',
@@ -139,7 +139,7 @@ describe('a class version body as a template', () => {
             '```text',
             ' Context: ${detail:text}.',
             '```',
-        ), 'Review');
+        ));
 
         expect(template.name).toBe('Review');
         expect(template.rootTemplate.textTemplate).toBe('Read ${what:text}.${context}');
@@ -149,10 +149,20 @@ describe('a class version body as a template', () => {
     });
 
     it('reads plain words as the Root alone, rather than dropping them', () => {
-        const template = versionBodyTemplate('Read ${what:text}.', 'Review');
+        const template = parseDescriptionTemplate('Read ${what:text}.');
 
-        expect(template.name).toBe('Review');
+        expect(template).not.toHaveProperty('name');
         expect(template.rootTemplate.textTemplate).toBe('Read ${what:text}.');
         expect(template.subTemplates).toEqual([]);
     });
+});
+
+it('reads a task template without its legacy title or index', () => {
+    const body = '# Review\n\nNotes for the old template.\n\n## Root\n\n### textTemplate\n\nReview ${artifact:text}.';
+
+    expect(flowNodeBodyTemplate(body, true)).toEqual({
+        rootTemplate: { id: 'root', textTemplate: 'Review ${artifact:text}.' },
+        subTemplates: [],
+    });
+    expect(flowNodeBodyTemplate(body, false).rootTemplate.textTemplate).toBe(body);
 });

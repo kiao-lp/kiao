@@ -5,7 +5,9 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	idgen "kiao/worker/internal/core/ids"
+	"kiao/worker/internal/hybridflow-runner/bitbucket"
 	"math"
 	"regexp"
 	"strings"
@@ -36,13 +38,23 @@ const flowNodeTypeHuman = "human"
 
 const flowNodeTypeShutdown = "shutdown"
 
+const FlowNodeTypeStart = "start"
+
 const FlowNodeTypeScheduler = "scheduler"
 
+const FlowNodeTypeBitbucketPRStatus = "bitbucket-pr-status"
+
+const FlowNodeTypeBitbucketCommitStatus = "bitbucket-commit-status"
+
 const FlowNodeTypeGateway = "gateway"
+const FlowNodeTypeExclusiveGateway = "exclusive-gateway"
+const FlowNodeTypeLimiter = "limiter"
 
 const flowNodeTypeNote = "note"
 
 const flowNodeTypeValue = "value"
+
+const flowNodeTypeRole = "role"
 
 const TransitionContinue = "continue"
 
@@ -54,11 +66,11 @@ const legacyTransitionCompact = "compact"
 // AI nodes require Agent, Effort, Permission and Folder; none defaults here.
 type FlowNodeSettings struct {
 	// Agent is a managed agent id resolved at each play (chain_agents.go).
-	// Legacy cards may name an engine here and supply Model.
+	// Legacy flow nodes may name a harness here and supply Model.
 	Agent     string `json:"agent,omitempty"`
 	Harness   string `json:"harness,omitempty"`
 	ProfileID string `json:"profileId,omitempty"`
-	// Model selects a model on Harness. Legacy cards pair it with the engine in Agent.
+	// Model selects a model on Harness. Legacy flow nodes pair it with the harness in Agent.
 	Model      string `json:"model,omitempty"`
 	Effort     string `json:"effort,omitempty"`
 	Permission string `json:"permission,omitempty"`
@@ -77,7 +89,7 @@ func (s FlowNodeSettings) empty() bool {
 		s.Runner == ""
 }
 
-// folder returns the store-relative working directory; explicit / means store root.
+// folder returns the working directory relative to the DCMS root. An explicit "/" selects the DCMS root.
 func (s FlowNodeSettings) WorkFolder() string {
 	folder := strings.TrimSpace(s.Folder)
 	if folder == "/" {
@@ -87,10 +99,10 @@ func (s FlowNodeSettings) WorkFolder() string {
 }
 
 // flowNodeSuccess selects successors and conversation handling independently.
-// Conversation handling also applies to cards without successors.
+// Conversation handling also applies to flow nodes without successors.
 type FlowNodeSuccess struct {
 	FlowNode string
-	// FlowNodes are Gateway-only parallel successors, in card order.
+	// FlowNodes are Gateway-only parallel successors, in flow node order.
 	FlowNodes []string
 	Mode      string
 	// Compact sends /compact as a separate turn after success, before any fork.
@@ -196,9 +208,20 @@ type FlowNodeSpot struct {
 	Y float64 `json:"y"`
 }
 
+// FlowNodeSize is preserved for the board. A zero height keeps the card's natural height.
+type FlowNodeSize struct {
+	W float64 `json:"w"`
+	H float64 `json:"h,omitempty"`
+}
+
 type successCriterion struct {
 	ID   string `json:"id"`
 	Text string `json:"text"`
+}
+
+type Route struct {
+	Condition string `json:"condition"`
+	FlowNode  string `json:"flowNode"`
 }
 
 var taskComplexities = map[int]bool{1: true, 2: true, 3: true, 5: true, 8: true, 13: true, 21: true}
@@ -239,6 +262,8 @@ func readCriteria(raw json.RawMessage) []successCriterion {
 type FlowNode struct {
 	ID    string `json:"id"`
 	Title string `json:"title"`
+	// Workflow names the group that supplies shared task values.
+	Workflow string
 	// Empty Type means human and is omitted when encoded.
 	Type string
 	// Tags are labels, not tag ids; preserved for the board, unused by the runner.
@@ -247,9 +272,14 @@ type FlowNode struct {
 	// OutputType names a JSON Schema value from any board.
 	OutputType string
 	Output     json.RawMessage
+	Routes     []Route
 	ValueType  string
-	// Value holds the raw JSON payload of a value card.
+	// Value holds the raw JSON payload of a value flow node.
 	Value json.RawMessage
+
+	RoleID      string
+	People      []string
+	Description string
 	// Body is the prompt description; play preserves it and stores responses in Chat.
 	Body string `json:"body,omitempty"`
 	// Criteria accompany the prompt when present.
@@ -260,17 +290,28 @@ type FlowNode struct {
 	// At is a Scheduler wall clock (YYYY-MM-DDTHH:mm), parsed in this process's location.
 	At       string
 	Duration string
+
+	PullRequestID     string
+	PullRequestStatus string
+	CommitID          string
+	CommitStatus      string
+	MaxPasses         int
+	RemainingPasses   int
+	Revision          int64
+	Completion        int64
 	// Spot is preserved for the board; nil means unplaced.
 	Spot *FlowNodeSpot
+	// Size is preserved for the board; nil means the kind's default width and natural height.
+	Size *FlowNodeSize
 	// Status is empty for ready.
 	Status string
-	// Archived hides the card everywhere without deleting it. The runner never plays it
+	// Archived hides the flow node everywhere without deleting it. The runner never plays it
 	// and never follows a link to or from it.
 	Archived bool `json:"archived,omitempty"`
 	// Chat is written as soon as the conversation exists, so running work can be opened.
 	Chat string
 	// Run identifies the owning run; empty means free. It distinguishes live ownership
-	// from a stale card left by a departed run.
+	// from a stale flow node left by a departed run.
 	Run            string
 	OnSuccess      FlowNodeSuccess
 	invalidSuccess *FlowNodeSuccess
@@ -281,12 +322,14 @@ func (t *FlowNode) UnmarshalJSON(data []byte) error {
 	var raw struct {
 		ID         string           `json:"id"`
 		Title      string           `json:"title"`
+		Workflow   string           `json:"workflow"`
 		Type       string           `json:"type"`
 		Tags       []string         `json:"tags"`
 		Note       string           `json:"note"`
 		Value      json.RawMessage  `json:"value"`
 		OutputType string           `json:"outputType"`
 		Output     json.RawMessage  `json:"output"`
+		Routes     []Route          `json:"routes"`
 		ValueType  string           `json:"valueType"`
 		Body       string           `json:"body"`
 		Criteria   json.RawMessage  `json:"criteria"`
@@ -295,11 +338,25 @@ func (t *FlowNode) UnmarshalJSON(data []byte) error {
 		At         string           `json:"at"`
 		Duration   string           `json:"duration"`
 		Spot       json.RawMessage  `json:"spot"`
+		Size       json.RawMessage  `json:"size"`
 		Status     string           `json:"status"`
 		Archived   bool             `json:"archived"`
 		Chat       string           `json:"chat"`
 		Run        string           `json:"run"`
 		OnSuccess  FlowNodeSuccess  `json:"onSuccess"`
+
+		RoleID      string   `json:"roleId"`
+		People      []string `json:"people"`
+		Description string   `json:"description"`
+
+		PullRequestID     string `json:"pullRequestId"`
+		PullRequestStatus string `json:"pullRequestStatus"`
+		CommitID          string `json:"commitId"`
+		CommitStatus      string `json:"commitStatus"`
+		MaxPasses         int    `json:"maxPasses"`
+		RemainingPasses   int    `json:"remainingPasses"`
+		Revision          int64  `json:"revision"`
+		Completion        int64  `json:"completion"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
@@ -315,17 +372,17 @@ func (t *FlowNode) UnmarshalJSON(data []byte) error {
 		// Absent onSuccess bypasses its UnmarshalJSON, so supply its default here.
 		success.Mode = TransitionEnd
 	}
-	// Match editor capabilities: only AI cards have chats; shutdown has no successor.
+	// Match editor capabilities: only AI flow nodes have chats; shutdown has no successor.
 	if flowNodeType != FlowNodeTypeAI {
 		success.Mode, success.Compact = TransitionEnd, false
 	}
 	if flowNodeType == flowNodeTypeShutdown {
 		success.FlowNode = ""
 	}
-	if flowNodeType == flowNodeTypeNote || flowNodeType == flowNodeTypeValue {
+	if isDisplay(flowNodeType) {
 		success.FlowNode, success.FlowNodes = "", nil
 	}
-	if flowNodeType == FlowNodeTypeGateway {
+	if splits(flowNodeType) {
 		success.FlowNode = ""
 	} else {
 		success.FlowNodes = nil
@@ -344,41 +401,57 @@ func (t *FlowNode) UnmarshalJSON(data []byte) error {
 	}
 	var criteria []successCriterion
 	var complexity *int
-	if flowNodeType != flowNodeTypeShutdown && flowNodeType != FlowNodeTypeScheduler &&
-		flowNodeType != flowNodeTypeNote && flowNodeType != flowNodeTypeValue {
+	if flowNodeType != FlowNodeTypeStart && flowNodeType != flowNodeTypeShutdown && flowNodeType != FlowNodeTypeScheduler && !IsBitbucketEvent(flowNodeType) &&
+		!isDisplay(flowNodeType) {
 		criteria, complexity = readCriteria(raw.Criteria), readComplexity(raw.Complexity)
 	}
 	title := raw.Title
 	tags := readTags(raw.Tags)
 	if flowNodeType == flowNodeTypeNote {
-		title, tags = "", nil
+		title = ""
 	}
-	if flowNodeType == flowNodeTypeValue {
+	if isDisplay(flowNodeType) {
 		tags = nil
 	}
 	*t = FlowNode{
 		ID:             id,
 		Title:          title,
+		Workflow:       strings.TrimSpace(raw.Workflow),
 		Type:           flowNodeType,
 		Tags:           tags,
 		Note:           raw.Note,
 		OutputType:     strings.TrimSpace(raw.OutputType),
 		Output:         raw.Output,
+		Routes:         raw.Routes,
 		ValueType:      raw.ValueType,
 		Value:          raw.Value,
 		Body:           raw.Body,
 		Criteria:       criteria,
 		Complexity:     complexity,
 		Settings:       raw.Settings,
-		At:             readSchedule(raw.At),
-		Duration:       readDuration(raw.Duration),
+		At:             readScheduleSetting(raw.At, readSchedule),
+		Duration:       readScheduleSetting(raw.Duration, readDuration),
 		Spot:           readSpot(raw.Spot),
+		Size:           readSize(raw.Size),
 		Status:         status,
+		Completion:     raw.Completion,
 		Archived:       raw.Archived,
 		Chat:           strings.TrimSpace(raw.Chat),
 		Run:            strings.TrimSpace(raw.Run),
 		OnSuccess:      success,
 		invalidSuccess: invalidSuccess,
+	}
+	switch flowNodeType {
+	case FlowNodeTypeBitbucketPRStatus:
+		t.PullRequestID = strings.TrimSpace(raw.PullRequestID)
+		t.PullRequestStatus = readBitbucketStatus(raw.PullRequestStatus)
+	case FlowNodeTypeBitbucketCommitStatus:
+		t.CommitID = strings.TrimSpace(raw.CommitID)
+		t.CommitStatus = readBitbucketStatus(raw.CommitStatus)
+	case FlowNodeTypeLimiter:
+		t.MaxPasses, t.RemainingPasses, t.Revision = raw.MaxPasses, raw.RemainingPasses, raw.Revision
+	case flowNodeTypeRole:
+		t.RoleID, t.People, t.Description = raw.RoleID, raw.People, raw.Description
 	}
 	return nil
 }
@@ -390,21 +463,37 @@ func flowNodeTypeOf(said string, settings FlowNodeSettings) string {
 		return FlowNodeTypeAI
 	case flowNodeTypeHuman:
 		return flowNodeTypeHuman
+	case FlowNodeTypeStart:
+		return FlowNodeTypeStart
 	case flowNodeTypeShutdown:
 		return flowNodeTypeShutdown
 	case FlowNodeTypeScheduler:
 		return FlowNodeTypeScheduler
+	case FlowNodeTypeBitbucketPRStatus:
+		return FlowNodeTypeBitbucketPRStatus
+	case FlowNodeTypeBitbucketCommitStatus:
+		return FlowNodeTypeBitbucketCommitStatus
 	case FlowNodeTypeGateway:
 		return FlowNodeTypeGateway
+	case FlowNodeTypeExclusiveGateway:
+		return FlowNodeTypeExclusiveGateway
+	case FlowNodeTypeLimiter:
+		return FlowNodeTypeLimiter
 	case flowNodeTypeNote:
 		return flowNodeTypeNote
 	case flowNodeTypeValue:
 		return flowNodeTypeValue
+	case flowNodeTypeRole:
+		return flowNodeTypeRole
 	}
 	if settings.Agent != "" || settings.Model != "" {
 		return FlowNodeTypeAI
 	}
 	return flowNodeTypeHuman
+}
+
+func isDisplay(kind string) bool {
+	return kind == flowNodeTypeNote || kind == flowNodeTypeValue || kind == flowNodeTypeRole
 }
 
 func readTags(raw []string) []string {
@@ -428,7 +517,7 @@ func readTags(raw []string) []string {
 	return tags
 }
 
-// Read spot separately so malformed coordinates leave one card unplaced
+// Read spot separately so malformed coordinates leave one flow node unplaced
 // rather than rejecting the entire board.
 func readSpot(raw json.RawMessage) *FlowNodeSpot {
 	if len(raw) == 0 {
@@ -444,9 +533,31 @@ func readSpot(raw json.RawMessage) *FlowNodeSpot {
 	return &FlowNodeSpot{X: math.Round(spot.X), Y: math.Round(spot.Y)}
 }
 
+// Read size separately so malformed dimensions keep the flow node's default rather than rejecting
+// the whole board.
+func readSize(raw json.RawMessage) *FlowNodeSize {
+	if len(raw) == 0 {
+		return nil
+	}
+	var size FlowNodeSize
+	if err := json.Unmarshal(raw, &size); err != nil {
+		return nil
+	}
+	if math.IsNaN(size.W) || math.IsInf(size.W, 0) || size.W <= 0 {
+		return nil
+	}
+	if math.IsNaN(size.H) || math.IsInf(size.H, 0) || size.H < 0 {
+		size.H = 0
+	}
+	return &FlowNodeSize{W: math.Round(size.W), H: math.Round(size.H)}
+}
+
 func (t FlowNode) MarshalJSON() ([]byte, error) {
 	fields := orderedFields{{"id", jsonOf(t.ID)}}
 	fields = append(fields, orderedField{"title", jsonOf(t.Title)})
+	if t.Workflow != "" {
+		fields = append(fields, orderedField{"workflow", jsonOf(t.Workflow)})
+	}
 	if t.Type != "" && t.Type != flowNodeTypeHuman {
 		fields = append(fields, orderedField{"type", jsonOf(t.Type)})
 	}
@@ -464,6 +575,9 @@ func (t FlowNode) MarshalJSON() ([]byte, error) {
 	}
 	if len(t.Output) > 0 {
 		fields = append(fields, orderedField{"output", t.Output})
+	}
+	if len(t.Routes) > 0 {
+		fields = append(fields, orderedField{"routes", jsonOf(t.Routes)})
 	}
 	if t.ValueType != "" {
 		fields = append(fields, orderedField{"valueType", jsonOf(t.ValueType)})
@@ -486,11 +600,49 @@ func (t FlowNode) MarshalJSON() ([]byte, error) {
 	if t.Duration != "" {
 		fields = append(fields, orderedField{"duration", jsonOf(t.Duration)})
 	}
+	switch t.Type {
+	case FlowNodeTypeBitbucketPRStatus:
+		if t.PullRequestID != "" {
+			fields = append(fields, orderedField{"pullRequestId", jsonOf(t.PullRequestID)})
+		}
+		if t.PullRequestStatus != "" {
+			fields = append(fields, orderedField{"pullRequestStatus", jsonOf(t.PullRequestStatus)})
+		}
+	case FlowNodeTypeBitbucketCommitStatus:
+		if t.CommitID != "" {
+			fields = append(fields, orderedField{"commitId", jsonOf(t.CommitID)})
+		}
+		if t.CommitStatus != "" {
+			fields = append(fields, orderedField{"commitStatus", jsonOf(t.CommitStatus)})
+		}
+	case FlowNodeTypeLimiter:
+		fields = append(fields, orderedFields{
+			{"maxPasses", jsonOf(t.MaxPasses)},
+			{"remainingPasses", jsonOf(t.RemainingPasses)},
+			{"revision", jsonOf(t.Revision)},
+		}...)
+	case flowNodeTypeRole:
+		if t.RoleID != "" {
+			fields = append(fields, orderedField{"roleId", jsonOf(t.RoleID)})
+		}
+		if len(t.People) > 0 {
+			fields = append(fields, orderedField{"people", jsonOf(t.People)})
+		}
+		if t.Description != "" {
+			fields = append(fields, orderedField{"description", jsonOf(t.Description)})
+		}
+	}
 	if t.Spot != nil {
 		fields = append(fields, orderedField{"spot", jsonOf(t.Spot)})
 	}
+	if t.Size != nil {
+		fields = append(fields, orderedField{"size", jsonOf(t.Size)})
+	}
 	if t.Status != "" {
 		fields = append(fields, orderedField{"status", jsonOf(t.Status)})
+	}
+	if t.Completion > 0 {
+		fields = append(fields, orderedField{"completion", jsonOf(t.Completion)})
 	}
 	if t.Archived {
 		fields = append(fields, orderedField{"archived", jsonOf(true)})
@@ -513,6 +665,7 @@ func (t FlowNode) MarshalJSON() ([]byte, error) {
 
 type BoardContent struct {
 	FlowNodes []FlowNode `json:"flowNodes"`
+	Workflows []Workflow `json:"workflows,omitempty"`
 }
 
 func (b *BoardContent) FlowNode(id string) *FlowNode {
@@ -528,7 +681,7 @@ func (b *BoardContent) FlowNode(id string) *FlowNode {
 }
 
 // predecessorsOf includes both single successors and Gateway branches, in board order.
-// Archived cards are never predecessors and never have predecessors shown: their links are hidden.
+// Archived flow nodes are never predecessors and never have predecessors shown: their links are hidden.
 func (b *BoardContent) PredecessorsOf(id string) []FlowNode {
 	if target := b.FlowNode(id); target == nil || target.Archived {
 		return nil
@@ -552,14 +705,27 @@ func (b *BoardContent) PredecessorsOf(id string) []FlowNode {
 	return out
 }
 
-// successorsOf preserves successor order and omits missing cards, ending those chains.
+// GatewayWaiting lists unfinished inputs. On an automatic replay, each input must have
+// completed since the gateway last fired so it joins results from the new play.
+func (b *BoardContent) GatewayWaiting(gateway FlowNode, afterPredecessor bool) []string {
+	replaying := gateway.Status == FlowNodeStatusDone && afterPredecessor
+	var waiting []string
+	for _, input := range b.PredecessorsOf(gateway.ID) {
+		if input.Status != FlowNodeStatusDone || (replaying && input.Completion <= gateway.Completion) {
+			waiting = append(waiting, "“"+input.Title+"”")
+		}
+	}
+	return waiting
+}
+
+// successorsOf preserves successor order and omits missing flow nodes, ending those chains.
 // Archived successors end the chain too: their link is hidden and never followed.
-func (b *BoardContent) SuccessorsOf(card FlowNode) []FlowNode {
-	if card.Archived {
+func (b *BoardContent) SuccessorsOf(flowNode FlowNode) []FlowNode {
+	if flowNode.Archived {
 		return nil
 	}
 	var out []FlowNode
-	for _, id := range successorIDs(card) {
+	for _, id := range successorIDs(flowNode) {
 		if next := b.FlowNode(id); next != nil && !next.Archived {
 			out = append(out, *next)
 		}
@@ -567,12 +733,12 @@ func (b *BoardContent) SuccessorsOf(card FlowNode) []FlowNode {
 	return out
 }
 
-func successorIDs(card FlowNode) []string {
-	if card.IsGateway() {
-		return card.OnSuccess.FlowNodes
+func successorIDs(flowNode FlowNode) []string {
+	if splits(flowNode.Type) {
+		return flowNode.OnSuccess.FlowNodes
 	}
-	if card.OnSuccess.FlowNode != "" {
-		return []string{card.OnSuccess.FlowNode}
+	if flowNode.OnSuccess.FlowNode != "" {
+		return []string{flowNode.OnSuccess.FlowNode}
 	}
 	return nil
 }
@@ -589,6 +755,14 @@ func (b *BoardContent) SetStatus(id, status string) bool {
 		return false
 	}
 	flowNode.Status = status
+	if status == FlowNodeStatusDone {
+		// Advance the cached order for writes waiting to reach hybridflow-store.
+		var latest int64
+		for _, node := range b.FlowNodes {
+			latest = max(latest, node.Completion)
+		}
+		flowNode.Completion = latest + 1
+	}
 	return true
 }
 
@@ -606,6 +780,7 @@ func (b *BoardContent) SetChat(id, chat string) bool {
 func (b *BoardContent) Start(id string) bool {
 	if node := b.FlowNode(id); node != nil && node.Status != FlowNodeStatusRunning && node.Status != FlowNodeStatusWaitingRefresh {
 		node.Output = nil
+		node.Chat = node.ChatForPlay()
 	}
 	return b.SetStatus(id, FlowNodeStatusRunning)
 }
@@ -632,7 +807,7 @@ func (b *BoardContent) fail(id string) bool {
 }
 
 // flowNodePrompt sends the description, falling back to the title, plus criteria.
-// Renaming a card with a description must not change its prompt.
+// Renaming a flow node with a description must not change its prompt.
 func FlowNodePrompt(flowNode FlowNode) string {
 	base := strings.TrimSpace(flowNode.Body)
 	if base == "" {
@@ -663,14 +838,23 @@ func (t FlowNode) IsHuman() bool { return t.Type == flowNodeTypeHuman }
 // A Gateway joins all incoming branches before starting all outgoing branches.
 func (t FlowNode) IsGateway() bool { return t.Type == FlowNodeTypeGateway }
 
+func splits(kind string) bool {
+	return kind == FlowNodeTypeGateway || kind == FlowNodeTypeExclusiveGateway || kind == FlowNodeTypeLimiter
+}
+
+func IsBitbucketEvent(kind string) bool {
+	return kind == FlowNodeTypeBitbucketPRStatus || kind == FlowNodeTypeBitbucketCommitStatus
+}
+
 // runsItself identifies run-owned steps without a prompt, conversation or folder.
-// AI and Human cards are the tasks (work done by an agent or person).
+// AI and Human flow nodes are the tasks (work done by an agent or person).
 func (t FlowNode) RunsItself() bool {
-	return t.Type == flowNodeTypeShutdown || t.Type == FlowNodeTypeScheduler || t.Type == FlowNodeTypeGateway
+	return t.Type == FlowNodeTypeStart || t.Type == flowNodeTypeShutdown || t.Type == FlowNodeTypeScheduler ||
+		IsBitbucketEvent(t.Type) || splits(t.Type)
 }
 
 // runnable checks type requirements only; status separately determines when to play.
-// Archived cards never run: they are hidden everywhere with their links.
+// Archived flow nodes never run: they are hidden everywhere with their links.
 func (t FlowNode) Runnable() bool {
 	if t.Archived {
 		return false
@@ -679,33 +863,70 @@ func (t FlowNode) Runnable() bool {
 	case FlowNodeTypeAI:
 		return t.Settings.playable()
 	case FlowNodeTypeScheduler:
-		return readSchedule(t.At) != "" || readDuration(t.Duration) != ""
-	case flowNodeTypeShutdown:
+		return readScheduleSetting(t.At, readSchedule) != "" || readScheduleSetting(t.Duration, readDuration) != ""
+	case FlowNodeTypeBitbucketPRStatus:
+		return (HasContextReference(t.PullRequestID) || bitbucket.ValidPullRequestID(t.PullRequestID)) &&
+			(HasContextReference(t.PullRequestStatus) || bitbucket.ValidPullRequestStatus(t.PullRequestStatus))
+	case FlowNodeTypeBitbucketCommitStatus:
+		return (HasContextReference(t.CommitID) || bitbucket.ValidCommitID(t.CommitID)) &&
+			(HasContextReference(t.CommitStatus) || bitbucket.ValidCommitStatus(t.CommitStatus))
+	case FlowNodeTypeStart, flowNodeTypeShutdown, FlowNodeTypeGateway, FlowNodeTypeExclusiveGateway:
 		return true
-	case FlowNodeTypeGateway:
-		return true
+	case FlowNodeTypeLimiter:
+		return len(t.OnSuccess.FlowNodes) == 2
 	}
 	return false
 }
 
-// Only AI cards require a nonempty prompt; other types do not consume text.
+// Only AI flow nodes require a nonempty prompt; other types do not consume text.
 func (t FlowNode) HasWork() bool { return !t.IsAI() || t.hasPrompt() }
 
-// scheduledAt uses this machine's wall clock, even if the board is viewed elsewhere.
-func (t FlowNode) ScheduledAt() (time.Time, bool) {
-	if duration := readDuration(t.Duration); duration != "" {
+// ChatForPlay excludes a completed AI task's previous conversation from a new play.
+func (t FlowNode) ChatForPlay() string {
+	if t.IsAI() && t.Status == FlowNodeStatusDone {
+		return ""
+	}
+	return t.Chat
+}
+
+func readBitbucketStatus(raw string) string {
+	said := strings.TrimSpace(raw)
+	if HasContextReference(said) {
+		return said
+	}
+	return strings.ToUpper(said)
+}
+
+func readScheduleSetting(raw string, readLiteral func(string) string) string {
+	if HasContextReference(raw) {
+		return strings.TrimSpace(raw)
+	}
+	return readLiteral(raw)
+}
+
+// ScheduledAt uses the runner's wall clock for absolute waits.
+func (t FlowNode) ScheduledAt(values NodeContext) (time.Time, error) {
+	if t.Duration != "" {
+		value, err := values.RenderField("duration", t.Duration)
+		if err != nil {
+			return time.Time{}, err
+		}
+		duration := readDuration(value)
+		if duration == "" {
+			return time.Time{}, fmt.Errorf("duration must be positive, such as 30s, 15m or 1h30m")
+		}
 		wait, _ := time.ParseDuration(duration)
-		return time.Now().Add(wait), true
+		return time.Now().Add(wait), nil
 	}
-	at := readSchedule(t.At)
-	if at == "" {
-		return time.Time{}, false
-	}
-	when, err := time.ParseInLocation(scheduleLayout, at, time.Local)
+	at, err := values.RenderField("scheduled datetime", t.At)
 	if err != nil {
-		return time.Time{}, false
+		return time.Time{}, err
 	}
-	return when, true
+	when, err := time.ParseInLocation(scheduleLayout, readSchedule(at), time.Local)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("scheduled datetime must be a local datetime such as 2026-10-16T22:00")
+	}
+	return when, nil
 }
 
 // datetime-local format: minutes, without zone or seconds.

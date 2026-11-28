@@ -1,6 +1,6 @@
 import React from 'react';
-import { Button, Dropdown } from 'antd';
-import { Tooltip } from '@kiao-dashboard-core';
+import { Dropdown } from 'antd';
+import { IconButton } from '@kiao-dashboard-core';
 import { STATUS_LABELS, type FlowNodeStatus } from '../flowNodeStatus';
 import { STATUS_GLYPH } from '../flowNodeStatusGlyph';
 import { STATUS_HELP } from './FlowNodeControls';
@@ -24,16 +24,13 @@ export const FlowNodeStatusMenu: React.FC<{
             onClick: ({ key }) => onChange(key as FlowNodeStatus),
         }}
     >
-        <Tooltip title={`${STATUS_LABELS[status]} — ${STATUS_HELP}`}>
-            <Button
-                type="text"
-                size="small"
-                icon={<span className={styles.statusTone} data-status={status}>{STATUS_GLYPH[status]}</span>}
-                aria-label="Status"
-                aria-haspopup="menu"
-                data-testid="flow-node-status"
-                data-status={status}
-            />
-        </Tooltip>
+        <IconButton
+            label="Status"
+            tooltip={`${STATUS_LABELS[status]} — ${STATUS_HELP}`}
+            icon={<span className={styles.statusTone} data-status={status}>{STATUS_GLYPH[status]}</span>}
+            aria-haspopup="menu"
+            data-testid="flow-node-status"
+            data-status={status}
+        />
     </Dropdown>
 );

@@ -73,11 +73,11 @@ describe('usePlayFlowNode', () => {
         const result = play();
         act(() => result.current.play('flow-node-1', 'Nightly'));
 
-        expect(content.play).toHaveBeenCalledWith(HANDLE, 'flow-node-1', 'Nightly');
+        expect(content.play).toHaveBeenCalledWith(HANDLE, 'flow-node-1', 'Nightly', undefined, undefined);
         expect(showTab).toHaveBeenCalledWith('conversations');
     });
 
-    it('marks the card the run is on, and reads out what it is doing', () => {
+    it('marks the node the run is on, and reads out what it is doing', () => {
         content.runs = [running()];
         expect(play().current.runOn('flow-node-1')).toMatchObject({ id: 'run-1', state: 'playing' });
 
@@ -94,7 +94,7 @@ describe('usePlayFlowNode', () => {
         expect(play().current.runOn('flow-node-1')).toMatchObject({ state: 'refreshing', retryAt: 9_000 });
     });
 
-    it('marks each card its own run is on', () => {
+    it('marks each node its own run is on', () => {
         content.runs = [running(), running({ id: 'run-2', name: 'Second', flowNodeId: 'flow-node-9', state: 'waiting', retryAt: 7_000 })];
 
         const result = play();
@@ -117,6 +117,18 @@ describe('usePlayFlowNode', () => {
         expect(play().current.runOn('flow-node-1')).toBeNull();
     });
 
+    it('resumes the suspended run for the node and its linked conversation', () => {
+        content.runs = [
+            running({ id: 'other-board', path: 'elsewhere', state: 'suspended' }),
+            running({ id: 'different-chat', chat: 'conv-2', state: 'suspended' }),
+            running({ state: 'suspended' }),
+        ];
+        const result = play();
+        act(() => result.current.resumeOn('flow-node-1', 'conv-1')?.());
+        expect(content.resume).toHaveBeenCalledExactlyOnceWith('run-1');
+        expect(showTab).toHaveBeenCalledWith('conversations');
+    });
+
     it('reports the latest write of this board, so the document is read again', () => {
         content.runs = [
             running({ documentAt: 42 }),
@@ -133,7 +145,7 @@ describe('usePlayFlowNode', () => {
         expect(content.play).not.toHaveBeenCalled();
     });
 
-    it('stops the run that holds a card, by its id', () => {
+    it('stops the run that holds a node, by its id', () => {
         content.runs = [running()];
         const result = play();
         const on = result.current.runOn('flow-node-1');
